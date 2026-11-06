@@ -42,18 +42,7 @@ class Router
         $requestMethod = $_SERVER['REQUEST_METHOD'] ?? 'GET';
         $requestUri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
 
-        // 处理 OPTIONS 跨域预检
-        if ($requestMethod === 'OPTIONS') {
-            header('Access-Control-Allow-Origin: *');
-            header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
-            header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
-            http_response_code(204);
-            exit;
-        }
-
-        header('Access-Control-Allow-Origin: *');
-        header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
-        header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
+        $this->handleCors($requestMethod);
 
         foreach ($this->routes as $route) {
             if ($route['method'] === $requestMethod && preg_match($route['pattern'], $requestUri, $matches)) {
@@ -82,6 +71,35 @@ class Router
         }
 
         Response::error('Not Found', 404, 404);
+    }
+
+    /**
+     * CORS 白名单校验：严禁 Access-Control-Allow-Origin 通配符 * 放行跨域读取。
+     * - 允许来源由环境变量 CORS_ALLOWED_ORIGINS 配置（逗号分隔，如
+     *   https://www.example.com,https://console.example.com）；未配置时仅放行同源请求。
+     * - 命中白名单：回显该 Origin 并发送 CORS 头（Vary: Origin 保证缓存正确性）。
+     * - 未命中：不发送任何 CORS 头，由浏览器侧拦截跨域读取。
+     */
+    private function handleCors(string $requestMethod): void
+    {
+        if ($requestMethod === 'OPTIONS') {
+            http_response_code(204);
+            exit;
+        }
+
+        $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+        if ($origin === '') {
+            return; // 同源/无 Origin 请求不涉及 CORS
+        }
+
+        $raw = getenv('CORS_ALLOWED_ORIGINS') ?: '';
+        $allowed = array_values(array_filter(array_map('trim', explode(',', $raw))));
+        if (in_array($origin, $allowed, true)) {
+            header('Access-Control-Allow-Origin: ' . $origin);
+            header('Vary: Origin', false);
+            header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
+            header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
+        }
     }
 
     private function convertPathToRegex(string $path): string

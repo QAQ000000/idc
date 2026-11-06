@@ -2,6 +2,20 @@
 SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
 
+CREATE TABLE IF NOT EXISTS `admins` (
+    `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    `username` VARCHAR(50) NOT NULL UNIQUE COMMENT '管理员登录名',
+    `email` VARCHAR(100) NOT NULL UNIQUE COMMENT '安全邮箱',
+    `password` VARCHAR(255) NOT NULL COMMENT '密码哈希 (Argon2id/Bcrypt)',
+    `role` ENUM('super_admin', 'finance', 'support', 'operator') NOT NULL DEFAULT 'operator' COMMENT '后台管理角色',
+    `two_factor_secret` VARCHAR(100) NULL COMMENT 'Google 2FA 密钥',
+    `status` ENUM('active', 'disabled') NOT NULL DEFAULT 'active' COMMENT '状态',
+    `last_login_at` TIMESTAMP NULL COMMENT '最后登录时间',
+    `last_login_ip` VARCHAR(45) NULL COMMENT '最后登录IP',
+    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='系统管理与运维员工表';
+
 CREATE TABLE IF NOT EXISTS `users` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     `email` VARCHAR(100) NOT NULL UNIQUE COMMENT '登录邮箱',
@@ -12,7 +26,6 @@ CREATE TABLE IF NOT EXISTS `users` (
     `available_commission` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '可提现的推广佣金',
     `total_spent` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '历史累计消费金额 (原子累加)',
     `affiliate_id` BIGINT UNSIGNED NULL COMMENT '推荐人 User ID',
-    `role` ENUM('client', 'admin') NOT NULL DEFAULT 'client' COMMENT '角色',
     `status` ENUM('active', 'suspended') NOT NULL DEFAULT 'active' COMMENT '状态',
     `last_login_at` TIMESTAMP NULL COMMENT '最后登录时间',
     `last_login_ip` VARCHAR(45) NULL COMMENT '最后登录IP',
@@ -20,7 +33,7 @@ CREATE TABLE IF NOT EXISTS `users` (
     `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX `idx_affiliate_id` (`affiliate_id`),
     INDEX `idx_login_spent` (`last_login_at`, `total_spent`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户账户表';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='终端客户账户与钱包表';
 
 CREATE TABLE IF NOT EXISTS `user_verifications` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -191,7 +204,7 @@ CREATE TABLE IF NOT EXISTS `transactions` (
     `user_id` BIGINT UNSIGNED NOT NULL,
     `invoice_id` BIGINT UNSIGNED NULL,
     `account_type` ENUM('wallet', 'available_commission', 'frozen_commission') NOT NULL DEFAULT 'wallet' COMMENT '资金分户',
-    `type` ENUM('recharge', 'pay_invoice', 'refund', 'commission_settle', 'commission_clawback', 'affiliate_to_balance', 'withdrawal_freeze', 'withdrawal_payout', 'withdrawal_reject_rollback', 'late_payment_credit') NOT NULL,
+    `type` ENUM('recharge', 'pay_invoice', 'refund', 'refund_rollback', 'commission_settle', 'commission_clawback', 'affiliate_to_balance', 'withdrawal_freeze', 'withdrawal_payout', 'withdrawal_reject_rollback', 'late_payment_credit') NOT NULL,
     `amount` DECIMAL(10,2) NOT NULL COMMENT '变动金额 (正数为增，负数为扣)',
     `balance_before` DECIMAL(10,2) NOT NULL COMMENT '变动前账户分户余额',
     `balance_after` DECIMAL(10,2) NOT NULL COMMENT '变动后账户分户余额',
@@ -250,12 +263,13 @@ CREATE TABLE IF NOT EXISTS `commission_withdrawals` (
     `destination` ENUM('balance', 'external') NOT NULL COMMENT '提现目标: balance=转入站内可用余额, external=站外转账',
     `channel_info` TEXT NULL COMMENT '站外提现信息 (用户自由备注: 如 支付宝账号 / 真实姓名 / 手机号)',
     `status` ENUM('pending', 'approved', 'rejected') NOT NULL DEFAULT 'pending' COMMENT '审批状态',
-    `admin_id` BIGINT UNSIGNED NULL COMMENT '经办/审核管理员',
+    `admin_id` INT UNSIGNED NULL COMMENT '经办/审核管理员ID',
     `admin_remark` VARCHAR(255) NULL COMMENT '转账流水号或驳回原因',
     `processed_at` TIMESTAMP NULL COMMENT '处理/打款时间',
     `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
+    FOREIGN KEY (`admin_id`) REFERENCES `admins` (`id`) ON DELETE SET NULL,
     INDEX `idx_status_created` (`status`, `created_at`),
     INDEX `idx_user_status` (`user_id`, `status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='推广返佣提现申请表';
@@ -268,13 +282,14 @@ CREATE TABLE IF NOT EXISTS `notification_deliveries` (
     `channel` VARCHAR(30) NOT NULL COMMENT '渠道标识 (如 mail, sms, telegram)',
     `user_id` BIGINT UNSIGNED NOT NULL COMMENT '接收用户 ID',
     `target` VARCHAR(100) NOT NULL COMMENT '投递目标 (邮箱/手机号/ChatID)',
-    `status` ENUM('pending', 'success', 'failed') NOT NULL DEFAULT 'pending',
+    `status` ENUM('pending', 'sending', 'success', 'failed', 'pending_manual_check') NOT NULL DEFAULT 'pending',
     `error_message` VARCHAR(255) NULL COMMENT '失败报错信息',
     `sent_at` TIMESTAMP NULL COMMENT '实际送达时间',
     `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY `uk_fingerprint_channel` (`fingerprint`, `channel`),
-    INDEX `idx_user_created` (`user_id`, `created_at`)
+    INDEX `idx_user_created` (`user_id`, `created_at`),
+    INDEX `idx_status_updated` (`status`, `updated_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='通知投递与幂等审计表';
 
 CREATE TABLE IF NOT EXISTS `web_push_subscriptions` (
@@ -297,7 +312,7 @@ CREATE TABLE IF NOT EXISTS `tickets` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     `user_id` BIGINT UNSIGNED NOT NULL COMMENT '提交人',
     `instance_id` BIGINT UNSIGNED NULL COMMENT '关联实例',
-    `assigned_admin_id` BIGINT UNSIGNED NULL COMMENT '当前承办管理员ID',
+    `assigned_admin_id` INT UNSIGNED NULL COMMENT '当前承办管理员ID',
     `title` VARCHAR(150) NOT NULL COMMENT '工单主题',
     `department` VARCHAR(50) NOT NULL DEFAULT 'general' COMMENT '部门 (技术/财务/售前)',
     `priority` ENUM('low', 'medium', 'high') NOT NULL DEFAULT 'medium',
@@ -305,6 +320,8 @@ CREATE TABLE IF NOT EXISTS `tickets` (
     `closed_at` TIMESTAMP NULL COMMENT '工单完结时间',
     `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
+    FOREIGN KEY (`assigned_admin_id`) REFERENCES `admins` (`id`) ON DELETE SET NULL,
     INDEX `idx_user_status` (`user_id`, `status`),
     INDEX `idx_assigned_status` (`assigned_admin_id`, `status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='工单表';
@@ -312,14 +329,17 @@ CREATE TABLE IF NOT EXISTS `tickets` (
 CREATE TABLE IF NOT EXISTS `ticket_replies` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     `ticket_id` BIGINT UNSIGNED NOT NULL,
-    `user_id` BIGINT UNSIGNED NOT NULL,
-    `role` ENUM('client', 'admin') NOT NULL,
+    `user_id` BIGINT UNSIGNED NULL COMMENT '客户ID (客户回复时必填)',
+    `admin_id` INT UNSIGNED NULL COMMENT '管理员ID (管理员回复或内部便签时必填)',
     `type` ENUM('reply', 'internal_note', 'transfer_log') NOT NULL DEFAULT 'reply' COMMENT '消息类型: reply客户可见回复 / internal_note内部私有便签 / transfer_log转派流水',
-    `transfer_to_admin_id` BIGINT UNSIGNED NULL COMMENT '转派目标管理员ID',
+    `transfer_to_admin_id` INT UNSIGNED NULL COMMENT '转派目标管理员ID',
     `content` TEXT NOT NULL,
     `attachments` JSON NULL COMMENT '附件文件路径列表',
     `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (`ticket_id`) REFERENCES `tickets` (`id`) ON DELETE CASCADE
+    FOREIGN KEY (`ticket_id`) REFERENCES `tickets` (`id`) ON DELETE CASCADE,
+    FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL,
+    FOREIGN KEY (`admin_id`) REFERENCES `admins` (`id`) ON DELETE SET NULL,
+    FOREIGN KEY (`transfer_to_admin_id`) REFERENCES `admins` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='工单回复表';
 
 CREATE TABLE IF NOT EXISTS `coupons` (
@@ -383,12 +403,14 @@ CREATE TABLE IF NOT EXISTS `marketing_rule_logs` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     `rule_id` INT UNSIGNED NOT NULL COMMENT '关联营销规则ID',
     `user_id` BIGINT UNSIGNED NOT NULL COMMENT '目标用户ID',
+    `idempotency_key` VARCHAR(100) NULL COMMENT '规则+用户+周期的原子防重占位键 (如 rule:1:user:42:202611)',
     `user_coupon_id` BIGINT UNSIGNED NULL COMMENT '生成的卡券ID',
     `action_status` ENUM('success', 'failed', 'skipped') NOT NULL DEFAULT 'success' COMMENT '执行结果',
     `remark` VARCHAR(255) NULL COMMENT '执行备注',
     `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (`rule_id`) REFERENCES `marketing_rules` (`id`) ON DELETE CASCADE,
     FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+    UNIQUE KEY `uk_rule_user_cycle` (`idempotency_key`),
     INDEX `idx_rule_user_success_time` (`rule_id`, `user_id`, `action_status`, `created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='营销规则触发与核销日志 (用于冷却防重校验)';
 

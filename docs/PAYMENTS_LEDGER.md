@@ -1,8 +1,8 @@
 # JianYun (简云) · 支付、多收、退款与资金账本协议 (Payments & Ledger Contract)
 
 > [!IMPORTANT]
-> 本协议为系统资金收单、分户账本、并发防重、退款状态机与原路返还的**唯一权威执行规范**。  
-> 核心原则：**账本物理不可变、金额绝无浮点误差、迟到款必定入账、退款必须预扣在途资金。**
+> **本契约已被正式冻结为资金安全与账本流转核心标准。**  
+> 明确规范：内核级物理平衡检查、绝对禁止浮点运算与纯字符串半五舍入、退款原子认领与防重复预扣、失败回滚补偿流水与网关超时对账协议。
 
 ---
 
@@ -34,111 +34,153 @@ flowchart LR
 $$\text{balance\_after} = \text{balance\_before} + \text{amount}$$
 
 > [!CAUTION]
-> **数据库内核物理强制**：  
-> 鉴于 MySQL 5.7 默认忽略表级 `CHECK` 约束，简云在数据库内核部署了强校验触发器：
-> 1. `trg_transactions_check_balance`: 在 `BEFORE INSERT` 时校验 `ROUND(balance_after, 2) == ROUND(balance_before + amount, 2)`，若不平衡直接抛出 `SQLSTATE 45000` 物理拦截；
-> 2. `trg_transactions_no_update` & `trg_transactions_no_delete`: 拦截任何对 `transactions` 表的修改与删除，从数据库底层强制确保只追加特性。
-
-### 1.2 铁律二：计算高精度与无浮点规范 (Zero-Float Policy)
-1. **类型禁止**：严禁在 PHP、SQL、API 或插件中出现 `float` 或 `double` 类型；
-2. **中间计算高精度**：所有涉及比例折扣（如 85 折）、返佣比例（如 15%）、日割退款比例的中间计算，强制使用 **BCMath 并设定内部精度 scale = 4**（如 `bcdiv($days, $totalDays, 4)`）；
-3. **入库终值舍入**：仅在生成最终账单金额、分户流水金额时，调用四舍五入规范保留 2 位小数 (`round($val, 2, PHP_ROUND_HALF_UP)`)。
+> **数据库内核物理强制与保证范围说明**：  
+> 1. `trg_transactions_check_balance`: 在 `BEFORE INSERT` 时校验 `ROUND(balance_after, 2) == ROUND(balance_before + amount, 2)`，若不平衡直接抛出 `SQLSTATE 45000` 拦截；
+> 2. `trg_transactions_no_update` & `trg_transactions_no_delete`: 拦截任何对 `transactions` 表的修改与删除；
+> 3. **边界厘清**：触发器负责保证单条分录自身的数学等式及不可变性；`users.balance` 与流水账本之间的实时一致性，必须由统一的资金应用服务 (`LedgerService`) 在单一数据库事务中先对 `users FOR UPDATE` 加锁后成对提交保证。
 
 ---
 
-## 2. 支付收单生命周期与迟到款/多收款闭环
+## 2. 协议四：零浮点纯十进制高精度计算与字符串舍入规范 (Zero-Float Policy)
 
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Gateway as 第三方支付网关 (Alipay/Epay/Wechat)
-    participant API as 回调接入点 CallbackController
-    participant PR as 支付流水表 payment_records
-    participant Inv as 账单表 invoices
-    participant Led as 资金账本 transactions
-    participant Out as 事务发件箱 tasks
+为彻底消灭“因过早截断比例或使用浮点 `round()` 产生的分币累计误差”：
 
-    Gateway->>API: 异步通知 (channel, gateway_trade_no, amount, status)
-    API->>PR: 步骤 1: 凭 uk_channel_gateway_trade 唯一索引幂等校验
-    
-    alt 场景 0: 重复通知已处理
-        PR-->>API: 发现相同网关单号且已记录终态
-        API-->>Gateway: 立即返回 SUCCESS (幂等返回)
-    end
+### 2.1 先乘后除铁律（Multiply First, Divide Second）
+> [!CAUTION]
+> **严禁在计算日割退款、比例分摊时先计算出截断的小数比例！**  
+> 必须遵循“基础金额乘以分子，再除以分母”的十进制原则。
 
-    API->>Inv: 步骤 2: 读取账单状态并加行排他锁 (SELECT FOR UPDATE)
-    
-    alt 场景 A: 正常付款 (账单 status = 'unpaid')
-        API->>Inv: UPDATE invoices SET status='paid', paid_at=NOW()
-        API->>PR: INSERT payment_records (status='success')
-        API->>Out: 写入实例开通/续费履约任务 (同事务)
-        API-->>Gateway: 返回 SUCCESS
-    else 场景 B: 迟到款 / 重复付款 (账单已由余额付清或已被取消)
-        Note over API,Led: ⚡ 致命场景闭环: 严禁假装成功后吞掉真金白银!
-        API->>PR: INSERT payment_records (status='late_credited_to_balance')
-        API->>Led: 自动将实际到账资金充入用户钱包可用余额 (type='late_payment_credit')
-        Note over API,Led: balance = balance + amount, 记流水并通知用户
-        API-->>Gateway: 返回 SUCCESS (确保网关停止回调)
-    end
+$$\text{CalcAmount} = \frac{\text{BaseAmount} \times \text{Numerator}}{\text{Denominator}}$$
+
+- **反例与正例对比（以 3000 元/月，剩余 1/31 周期为例）**：
+  - ❌ **严重错误（过早截断比例）**：先算 $1 \div 31 = 0.0322$（截取4位），再算 $3000 \times 0.0322 = 96.60$ 元。误差高达 **0.17 元**！
+  - ✔️ **正确标准（先乘后除）**：先算 $3000 \times 1 = 3000$，再计算 $3000 \div 31 = 96.774193...$，最终保留二位得到 **96.77 元**，分毫不差！
+
+### 2.2 内部计算高精度 (scale = 6)
+所有中间乘除运算强制开启 BCMath 高精度：
+```php
+$product = bcmul($basePrice, (string)$remainingDays, 6);
+$rawResult = bcdiv($product, (string)$totalDays, 6); // scale = 6 确保除法精度
 ```
 
-### 2.1 迟到款转余额业务规则
-- **场景**：用户生成支付宝二维码后未付，改用钱包余额付清账单；半小时后又在手机扫码完成了该二维码付款。
-- **闭环保证**：网关资金绝不丢失。系统在 `payment_records` 记入实收款项凭证，并在同一事务内将金额充入用户 `users.balance`，发送通知给客户。
+### 2.3 严禁 PHP 原生 `round()`，强制无浮点纯字符串半五舍入 (`bc_round`)
+PHP 内置的 `round((float)$val, 2)` 会将数字隐式转换为 C 语言 double 浮点数，破坏 Zero-Float 铁律。系统统一使用纯字符串运算的 `bc_round()` 函数：
+
+```php
+function bc_round(string $number, int $precision = 2): string 
+{
+    if (strpos($number, '.') === false) {
+        return bcadd($number, '0', $precision);
+    }
+    // 构造无浮点半五偏移量 (如 precision=2 时 offset 为 '0.005')
+    $offset = '0.' . str_repeat('0', $precision) . '5';
+    return $number[0] === '-' 
+        ? bcsub($number, $offset, $precision) 
+        : bcadd($number, $offset, $precision);
+}
+```
 
 ---
 
-## 3. 退款风控、持久化状态机与原路退回协议
+## 3. 协议三：退款幂等认领、预扣、回滚与状态机
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Paid: 账单支付成功
-    Paid --> RefundPending: 提交退款申请 (invoices.status='refund_pending')
+    [*] --> Paid: 账单支付成功 (invoices.status='paid')
+    Paid --> RefundPending: 发起退款，CAS原子认领+钱包预扣 (refund_status='pending')
     
-    RefundPending --> Paid: 财务/运维驳回退款，恢复正常状态
-    RefundPending --> RefundingGateway: 批准原路退款，调用网关接口
-    RefundPending --> RefundedBalance: 批准退回钱包余额
+    RefundPending --> Paid: 审核驳回，解除机器与账单冻结
+    RefundPending --> RefundingGateway: 批准原路退款，调用网关 refundPayment()
     
-    RefundingGateway --> Refunded: 网关明确返回成功 (payment_records.refund_status='success')
-    RefundingGateway --> RefundInvestigating: 网关网络超时 / 结果未决
+    RefundingGateway --> Refunded: 网关确认成功 (refund_status='success', invoices.status='refunded')
+    RefundingGateway --> RefundInvestigating: 网关网络超时 / 结果未决 (保持 pending 异步反查)
     
-    RefundInvestigating --> Refunded: 反查网关确认退款已入账
-    RefundInvestigating --> RefundManual: 网关明确失败/多次超时，人工财务介入
+    RefundInvestigating --> Refunded: 反查网关确认已退款成功
+    RefundInvestigating --> RefundRolledBack: 网关权威拒绝/不可退款，回滚补偿钱包余额
     
-    RefundedBalance --> Refunded: 资金冲入 users.balance
+    RefundRolledBack --> Paid: 恢复 paid 状态，款项以 refund_rollback 流水入账
     Refunded --> [*]
 ```
 
-### 3.1 退款持久化数据模型与状态字段
-在 `invoices` 表中：
-- 增加 `refund_pending` 状态：`status ENUM('unpaid', 'paid', 'refund_pending', 'refunded', 'cancelled')`。
-
-在 `payment_records` 表中：
-- `refund_status ENUM('none', 'pending', 'success', 'failed') NOT NULL DEFAULT 'none'`;
-- `refund_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00`;
-- `refund_reason VARCHAR(255) NULL`;
-- `refund_trade_no VARCHAR(128) NULL COMMENT '网关退款请求批次号'`;
-- `refunded_at TIMESTAMP NULL`。
-
-### 3.2 迟到款充入钱包后的原路退款风控（严防双重提现）
-当一笔迟到款已经自动充入客户的 `users.balance` 后，若客户或客服后续要求将该笔款项**原路退回第三方支付渠道**（如退回支付宝）：
+### 3.1 退款原子认领与钱包余额防透支预扣（Same-Transaction Claim）
+为彻底消灭“两个并发退款请求同时通过余额判定导致重复原路退款”的重大财务漏洞：
 
 > [!CAUTION]
-> **钱包余额预扣铁律**：  
-> 严禁在不核验钱包余额的情况下直接调用网关退款！否则客户若已将充值的余额消费或提现，原路退款将直接导致平台出现无抵押负债和真金白银亏损！
+> **退款认领、幂等键固化、在途余额预扣与记账必须在同一个数据库事务内完成！**
 
-#### 执行四步门禁：
-1. **余额充裕性检查**：
+```sql
+START TRANSACTION;
+
+-- 1. CAS 原子认领退款请求 (锁定 payment_records 凭证行)
+UPDATE `payment_records` 
+SET `refund_status` = 'pending',
+    `refund_amount` = :refund_amount,
+    `refund_reason` = :reason,
+    `refund_trade_no` = :stable_refund_trade_no -- 稳定退款幂等键 (如 ref_inv_1024_01)
+WHERE `id` = :payment_record_id 
+  AND `status` = 'success' 
+  AND `refund_status` = 'none';
+-- ⚡ 关键行级校验: 若 affected_rows === 0 说明已被其他并发请求认领，立即 ROLLBACK 并返回并发报错！
+
+-- 2. 若该款项此前已入钱包(如迟到款充值)，原子预扣钱包余额防止二次提现
+UPDATE `users` 
+SET `balance` = `balance` - :refund_amount 
+WHERE `id` = :user_id 
+  AND `balance` >= :refund_amount;
+-- ⚡ 关键行级校验: 若 affected_rows === 0 说明用户已将款项消费，立即 ROLLBACK 并阻断原路退款！
+
+-- 3. 插入预扣资金流水
+INSERT INTO `transactions` (
+    `user_id`, `account_type`, `type`, `amount`, 
+    `balance_before`, `balance_after`, `idempotency_key`, `remark`
+) VALUES (
+    :user_id, 'wallet', 'refund', -:refund_amount,
+    :balance_before, :balance_after, :pre_deduct_idempotency_key, '原路退款在途预扣冻结'
+);
+
+-- 4. 账单状态置为退款审批中
+UPDATE `invoices` SET `status` = 'refund_pending' WHERE `id` = :invoice_id;
+
+COMMIT;
+```
+
+### 3.2 外部网关调用与失败补偿协议 (`refund_rollback`)
+1. **调用时机**：上述数据库事务提交成功后，方可调用支付插件发起 `refundPayment()`；
+2. **场景 A：网关返回成功**：
    ```sql
-   -- 原子尝试扣减钱包余额并加锁
-   UPDATE `users` 
-   SET `balance` = `balance` - :refund_amount 
-   WHERE `id` = :user_id 
-     AND `balance` >= :refund_amount;
+   START TRANSACTION;
+   UPDATE `payment_records` SET `refund_status` = 'success', `refunded_at` = NOW() WHERE `id` = :id AND `refund_status` = 'pending';
+   UPDATE `invoices` SET `status` = 'refunded' WHERE `id` = :invoice_id;
+   COMMIT;
    ```
-2. **分支判断**：
-   - **扣减成功 (affected_rows == 1)**：在 `transactions` 记入预扣流水 (`type = 'refund'`, `remark = '原路退款预扣冻结'`)。随后方可调用支付插件发起 `refundPayment()`；
-   - **扣减失败 (affected_rows == 0)**：表明该笔资金已被客户用于消费其他云资源或申请了站外提现！**系统立即阻断原路退款**，标记为 `RISK_NEGATIVE_BALANCE_BLOCKED`，工单转入人工风控介入流程。
-3. **网关调用结果恢复**：
-   - 若网关返回超时，`payment_records.refund_status` 保持 `pending`，由退款对账任务调用 `queryRefund()`，绝不盲目重复发起扣款；
-   - 若网关确认彻底失败且不再重试，则补偿回滚将预扣的金额充回用户钱包 (`type = 'refund_rollback'`)。
+3. **场景 B：网关网络超时 / 结果未知**：
+   - `payment_records.refund_status` **继续保持 `pending`**；
+   - 绝不重复调用发起退款！由退款对账定时任务调用 `queryRefund(refund_trade_no)` 进行单向查询确认。
+4. **场景 C：网关明确拒绝退款（如账户注销/渠道超期不可退）**：
+   - 系统执行**单事务补偿回滚**，将此前预扣的款项返还至用户钱包：
+   ```sql
+   START TRANSACTION;
+   UPDATE `payment_records` SET `refund_status` = 'failed' WHERE `id` = :id AND `refund_status` = 'pending';
+   UPDATE `users` SET `balance` = `balance` + :refund_amount WHERE `id` = :user_id;
+   INSERT INTO `transactions` (
+       `user_id`, `account_type`, `type`, `amount`,
+       `balance_before`, `balance_after`, `idempotency_key`, `remark`
+   ) VALUES (
+       :user_id, 'wallet', 'refund_rollback', :refund_amount,
+       :before, :after, :rollback_idempotency_key, '原路退款网关拒绝补偿返还'
+   );
+   UPDATE `invoices` SET `status` = 'paid' WHERE `id` = :invoice_id;
+   COMMIT;
+   ```
+
+---
+
+## 4. 协议三与协议四失败场景与预期结果矩阵
+
+| 场景编号 | 场景描述 | 故障触发点 | 系统预期动作与终态 |
+|---|---|---|---|
+| **SC-P01** | 同一笔迟到款账单遭到前台客户与客服后台两路并发发起退款 | 两个请求在同一毫秒到达 | 第一个事务成功执行 CAS 认领 (`affected_rows=1`)；第二个事务 `affected_rows=0` 立即回滚并报错；绝不产生两次网关退款与两次预扣 |
+| **SC-P02** | 迟到款充入钱包后被客户购买了其他主机，随后发起原路退款 | `users.balance < refund_amount` | 事务步骤 2 扣减余额失败 (`affected_rows=0`)；事务回滚；系统阻断退款并标记 `RISK_NEGATIVE_BALANCE_BLOCKED` |
+| **SC-P03** | 调用网关退款时遭遇三方接口 504 响应丢失 | HTTP 客户端抛出网络超时 | `payment_records.refund_status` 保持 `pending`；退款查询任务调度反查；网关确认入账后置为 `success`，无重复退款 |
+| **SC-P04** | 原路退款被第三方网关明确驳回（如原银行卡已注销） | 网关返回业务拒绝错误码 | 触发回滚补偿事务；状态置为 `failed`；生成 `refund_rollback` 流水将款项全额返充回用户钱包可用余额 |
+| **SC-P05** | 高额机型（¥3000）日割折算退款 (31天剩1天) | 浮点截断计算导致分币差 | 强制使用 `bcmul` 先乘后除与 `bc_round`；精确得出 96.77 元；流水、入账与网关传参分毫不差 |

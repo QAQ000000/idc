@@ -14,24 +14,23 @@
 
 ### 1.1 严正修正后的导入脚本
 ```sql
--- 步骤 1: 显式导入真实管理员 (来自 shd_user, 赋予系统管理权限)
-INSERT INTO `jianyun`.`users` (
-    `id`, `email`, `phone`, `password`, `balance`, `role`, `status`, `created_at`
+-- 步骤 1: 显式导入真实管理员至独立的 admins 物理表 (保留原始 ID，绝无主键碰撞)
+INSERT INTO `jianyun`.`admins` (
+    `id`, `username`, `email`, `password`, `role`, `status`, `created_at`
 )
 SELECT 
-    100000 + u.id,
+    u.id,
+    u.user_login,
     u.user_email,
-    NULL,
-    u.user_pass, -- 旧魔方密码哈希 (系统支持登录时透明升级为 Bcrypt)
-    0.00,
-    'admin',
+    u.user_pass, -- 旧魔方密码哈希 (系统支持首次登录时透明升级为 Bcrypt)
+    'super_admin',
     'active',
     FROM_UNIXTIME(u.create_time)
 FROM `idc2`.`shd_user` u;
 
--- 步骤 2: 显式导入 3,363 位真实客户 (role 统一强制为 'client')
+-- 步骤 2: 显式导入 3,363 位真实终端客户至纯净的 users 表 (无管理员身份污染)
 INSERT INTO `jianyun`.`users` (
-    `id`, `email`, `phone`, `password`, `balance`, `role`, `status`, `created_at`
+    `id`, `email`, `phone`, `password`, `balance`, `status`, `created_at`
 )
 SELECT 
     c.id,
@@ -39,7 +38,6 @@ SELECT
     NULLIF(c.phonenumber, ''),
     c.password,
     c.credit,
-    'client', -- 严格全量为 client，严禁任何 IF(c.id=1, ...) 逻辑！
     IF(c.status = 1, 'active', 'suspended'),
     FROM_UNIXTIME(c.create_time)
 FROM `idc2`.`shd_clients` c
@@ -74,76 +72,97 @@ ON DUPLICATE KEY UPDATE `email` = VALUES(`email`);
 ### 3.1 实例迁移与映射审计 SQL
 
 ```sql
+-- 预置核准的 Provider 映射关系 (来自 providers 表)
+-- 1: SakuraIDC/DCIM 上游 (driver='zjmf')
+-- 2: Easypanel 虚拟主机 (driver='easypanel')
+-- 3: 宝塔面板节点 (driver='skymnbt')
+-- 4: Sub2API 订阅网关 (driver='sub2api')
+
 INSERT INTO `jianyun`.`instances` (
     `id`, `user_id`, `product_id`, `provider_id`, `remote_instance_id`,
     `name`, `ip_address`, `config_snapshot`, `billing_cycle`, `recurring_price`,
     `status`, `suspend_type`, `suspend_reason`, `auto_renew`, `start_date`, `due_date`
 )
 SELECT 
-    h.id,
-    h.uid,
-    h.productid,
-    -- provider_id 映射：按 serverid 或上游属性映射对应提供商 ID
+    sub.id,
+    sub.user_id,
+    sub.product_id,
+    sub.provider_id,
+    sub.remote_instance_id,
+    sub.name,
+    sub.ip_address,
+    sub.config_snapshot,
+    sub.billing_cycle,
+    sub.recurring_price,
+    -- ⚡ 统一门禁：只要 remote_instance_id 为 NULL 或空，状态一律强制为 suspended，绝无例外！
     CASE 
-        WHEN h.serverid = 0 THEN 1 -- 假设 1 为 SakuraIDC / DCIM 上游
-        WHEN h.serverid = 5 THEN 2 -- 假设 2 为 Easypanel
-        WHEN h.serverid = 7 THEN 3 -- 假设 3 为 宝塔节点
-        ELSE 4
-    END AS provider_id,
-    -- 真实远端标识提取，若为 0 或空则严格置为 NULL
-    CASE 
-        WHEN h.serverid = 0 AND h.dcimid > 0 THEN CAST(h.dcimid AS CHAR)
-        WHEN h.serverid IN (5, 7) AND LENGTH(TRIM(h.username)) > 0 THEN TRIM(h.username)
-        WHEN h.serverid = 8 AND LENGTH(TRIM(COALESCE(h.subscriptionid, h.username))) > 0 THEN TRIM(COALESCE(h.subscriptionid, h.username))
-        ELSE NULL 
-    END AS remote_instance_id,
-    COALESCE(NULLIF(h.domain, ''), CONCAT('vm-', h.id)),
-    NULLIF(h.dedicatedip, ''),
-    JSON_OBJECT(
-        'legacy_host_id', h.id,
-        'legacy_dcimid', h.dcimid,
-        'legacy_username', h.username,
-        'legacy_serverid', h.serverid,
-        'stream_info', h.stream_info
-    ),
-    LOWER(COALESCE(NULLIF(h.billingcycle, ''), 'monthly')),
-    h.amount,
-    -- 状态处置：若远端ID缺失，即便旧系统是Active也强制挂起为 suspended
-    CASE 
-        WHEN (h.serverid = 0 AND h.dcimid <= 0) OR (h.serverid IN (5, 7) AND LENGTH(TRIM(h.username)) = 0) THEN 'suspended'
-        WHEN h.domainstatus = 'Active' THEN 'active'
-        WHEN h.domainstatus = 'Suspended' THEN 'suspended'
+        WHEN sub.remote_instance_id IS NULL THEN 'suspended'
+        WHEN sub.legacy_domainstatus = 'Active' THEN 'active'
         ELSE 'suspended'
     END AS status,
-    -- 挂起类型
     CASE 
-        WHEN (h.serverid = 0 AND h.dcimid <= 0) OR (h.serverid IN (5, 7) AND LENGTH(TRIM(h.username)) = 0) THEN 'migration'
-        WHEN h.domainstatus = 'Suspended' THEN 'migration'
+        WHEN sub.remote_instance_id IS NULL THEN 'migration'
+        WHEN sub.legacy_domainstatus = 'Suspended' THEN 'migration'
         ELSE 'billing'
     END AS suspend_type,
-    -- 挂起原因
     CASE 
-        WHEN (h.serverid = 0 AND h.dcimid <= 0) OR (h.serverid IN (5, 7) AND LENGTH(TRIM(h.username)) = 0) THEN 'unverified_missing_remote_id: 割接缺少远端映射，物理阻断远程操作'
-        WHEN h.domainstatus = 'Suspended' THEN '旧魔方系统导入暂停状态，待客户工单核验'
+        WHEN sub.remote_instance_id IS NULL THEN 'unverified_missing_remote_id: 割接缺少远端映射，物理阻断远程操作'
+        WHEN sub.legacy_domainstatus = 'Suspended' THEN '旧魔方系统导入暂停状态，待客户工单核验'
         ELSE NULL
     END AS suspend_reason,
     1 AS auto_renew,
-    FROM_UNIXTIME(IF(h.regdate > 0, h.regdate, UNIX_TIMESTAMP())),
-    FROM_UNIXTIME(IF(h.nextduedate > 0, h.nextduedate, UNIX_TIMESTAMP() + 2592000))
-FROM `idc2`.`shd_host` h
-WHERE h.domainstatus IN ('Active', 'Suspended');
+    sub.start_date,
+    sub.due_date
+FROM (
+    SELECT 
+        h.id,
+        h.uid AS user_id,
+        h.productid AS product_id,
+        -- 严格 Provider 校验: 未知 serverid 直接拒绝并抛出异常
+        CASE 
+            WHEN h.serverid = 0 THEN 1
+            WHEN h.serverid = 5 THEN 2
+            WHEN h.serverid = 7 THEN 3
+            WHEN h.serverid = 8 THEN 4
+            ELSE (SELECT id FROM `jianyun`.`providers` WHERE 1=0) -- 抛出 NULL 触发 NOT NULL 约束阻断未知节点
+        END AS provider_id,
+        -- 远端唯一标识萃取：覆盖全部四种类型，提取失败严格置为 NULL
+        CASE 
+            WHEN h.serverid = 0 AND h.dcimid > 0 THEN CAST(h.dcimid AS CHAR)
+            WHEN h.serverid IN (5, 7) AND LENGTH(TRIM(COALESCE(h.username, ''))) > 0 THEN TRIM(h.username)
+            WHEN h.serverid = 8 AND LENGTH(TRIM(COALESCE(h.subscriptionid, h.username, ''))) > 0 THEN TRIM(COALESCE(h.subscriptionid, h.username))
+            ELSE NULL 
+        END AS remote_instance_id,
+        COALESCE(NULLIF(h.domain, ''), CONCAT('vm-', h.id)) AS name,
+        NULLIF(h.dedicatedip, '') AS ip_address,
+        JSON_OBJECT(
+            'legacy_host_id', h.id,
+            'legacy_dcimid', h.dcimid,
+            'legacy_username', h.username,
+            'legacy_serverid', h.serverid,
+            'stream_info', h.stream_info
+        ) AS config_snapshot,
+        LOWER(COALESCE(NULLIF(h.billingcycle, ''), 'monthly')) AS billing_cycle,
+        h.amount AS recurring_price,
+        h.domainstatus AS legacy_domainstatus,
+        FROM_UNIXTIME(IF(h.regdate > 0, h.regdate, UNIX_TIMESTAMP())) AS start_date,
+        FROM_UNIXTIME(IF(h.nextduedate > 0, h.nextduedate, UNIX_TIMESTAMP() + 2592000)) AS due_date
+    FROM `idc2`.`shd_host` h
+    WHERE h.domainstatus IN ('Active', 'Suspended')
+) sub;
 ```
 
 ### 3.2 2 笔已付款未交付主机 (#1401, #4052) 专项处理
 ```sql
--- 将 2 笔付款但魔方未成功交付的机器插入为 pending，并附带明确告警
+-- 将 2 笔付款但魔方未成功交付的机器插入为 pending，并附带明确告警与 recurring_price
 INSERT INTO `jianyun`.`instances` (
     `id`, `user_id`, `product_id`, `provider_id`, `remote_instance_id`,
-    `name`, `status`, `suspend_type`, `suspend_reason`, `start_date`, `due_date`
+    `name`, `recurring_price`, `status`, `suspend_type`, `suspend_reason`, `start_date`, `due_date`
 )
 SELECT 
     h.id, h.uid, h.productid, 1, NULL,
     CONCAT('pending-legacy-', h.id),
+    h.amount,
     'pending', 'migration', '旧魔方已收款但未开通成功，等待运维手动交付或退款',
     NOW(), DATE_ADD(NOW(), INTERVAL 30 DAY)
 FROM `idc2`.`shd_host` h
@@ -182,16 +201,16 @@ flowchart TD
 此时若强行回滚旧系统数据库，将导致**物理资产、上游资金与数据库账本彻底永久撕裂**！
 
 #### 应急防线与处置规则：
-- **阶段 A（割接开放 1 小时内且未发生外部开通/销毁/退款）**：
-  若发现前端死锁或重大逻辑漏洞，且核验 `payment_records` 与 `tasks` 确认**未产生任何已执行的上游副作用**：
-  1. 新系统切为维护模式；
-  2. 导出割接期间所有未核销的充值记录；
-  3. 执行资金回冲脚本：`UPDATE idc2.shd_clients SET credit = credit + :new_recharge WHERE id = :user_id;`
-  4. 恢复旧系统的 Nginx 与 Crontab。
-- **阶段 B（一旦发生外部副作用，进入不可逆阶段）**：
+- **阶段 A（割接开放 1 小时内且未发生任何外部副作用）**：
+  必须执行两项严格门禁检查：
+  1. `tasks` 状态核查：`SELECT COUNT(*) FROM tasks WHERE status IN ('running', 'investigating', 'success')` 必须严格等于 0！凡处于 `running` 或 `investigating` 者一律视同潜在外部副作用，不可草率判定为无副作用；
+  2. 本地流水审计：核实割接期间未发生任何站内余额消费、佣金划转或站外提现扣款。
+  - **处置规程**：新系统切维护模式；通过全账户净差额对账脚本计算每位客户在割接窗口期内的净余额变化：
+    $$\Delta \text{Credit} = \sum \text{充值到账} - \sum \text{本地消费} + \sum \text{本地退款}$$
+    将净差额更新回旧魔方：`UPDATE idc2.shd_clients SET credit = credit + :delta WHERE id = :user_id;`
+  - 恢复旧魔方的 Nginx 与 Crontab。
+- **阶段 B（一旦发生外部交付或存在未决任务，进入不可逆阶段）**：
   **绝对禁止回滚数据库到旧魔方！** 必须启动 **紧急维护模式 (Emergency Maintenance Mode)**：
   1. API 网关返回 `503 Service Temporarily in Emergency Reconciliation`，锁定所有交易与实例写操作；
   2. 运维与研发团队启动热修复（Hotfix）在线发布；
-  3. 若确需修复部分异常订单，必须使用 **增量对账与状态回写脚本 (Delta Reconciliation Script)**，逐笔计算：
-     $$\text{净变动} = \sum \text{实际充值} - \sum \text{已交付消耗} + \sum \text{失败退款}$$
-     以原子事务形式记入 `transactions`，确保全分户账本分毫不差。
+  3. 若确需修复部分异常订单，必须使用 **增量对账与状态回写脚本 (Delta Reconciliation Script)**，逐笔计算全账本分户流水，确保账实分毫不差。

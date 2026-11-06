@@ -70,14 +70,15 @@ CREATE TABLE IF NOT EXISTS `notification_deliveries` (
     `channel` VARCHAR(30) NOT NULL COMMENT '渠道标识 (如 mail, sms, telegram)',
     `user_id` BIGINT UNSIGNED NOT NULL COMMENT '接收用户 ID',
     `target` VARCHAR(100) NOT NULL COMMENT '投递目标 (邮箱/手机号/ChatID)',
-    `status` ENUM('pending', 'success', 'failed') NOT NULL DEFAULT 'pending',
+    `status` ENUM('pending', 'sending', 'success', 'failed', 'pending_manual_check') NOT NULL DEFAULT 'pending',
     `error_message` VARCHAR(255) NULL COMMENT '失败报错信息',
     `sent_at` TIMESTAMP NULL COMMENT '实际送达时间',
     `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     -- ⚡ 铁律唯一索引：相同指纹在同一个渠道下绝对只允许存在一条记录
     UNIQUE KEY `uk_fingerprint_channel` (`fingerprint`, `channel`),
-    INDEX `idx_user_created` (`user_id`, `created_at`)
+    INDEX `idx_user_created` (`user_id`, `created_at`),
+    INDEX `idx_status_updated` (`status`, `updated_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='通知投递与幂等审计表';
 ```
 

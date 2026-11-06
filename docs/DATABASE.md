@@ -6,7 +6,26 @@
 
 ## 1. 核心业务表 DDL
 
-### 1.1 `users`（用户与钱包账户）
+### 1.1 `admins`（系统管理与运维员工档案）
+```sql
+CREATE TABLE `admins` (
+    `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    `username` VARCHAR(50) NOT NULL UNIQUE COMMENT '管理员登录名',
+    `email` VARCHAR(100) NOT NULL UNIQUE COMMENT '安全邮箱',
+    `password` VARCHAR(255) NOT NULL COMMENT '密码哈希 (Argon2id/Bcrypt)',
+    `role` ENUM('super_admin', 'finance', 'support', 'operator') NOT NULL DEFAULT 'operator' COMMENT '后台权限角色',
+    `two_factor_secret` VARCHAR(100) NULL COMMENT 'Google 2FA 密钥',
+    `status` ENUM('active', 'disabled') NOT NULL DEFAULT 'active' COMMENT '状态',
+    `last_login_at` TIMESTAMP NULL COMMENT '最后登录时间',
+    `last_login_ip` VARCHAR(45) NULL COMMENT '最后登录IP',
+    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='系统管理与运维员工表';
+```
+
+---
+
+### 1.2 `users`（终端客户账户与钱包资产）
 ```sql
 CREATE TABLE `users` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -18,7 +37,6 @@ CREATE TABLE `users` (
     `available_commission` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '可提现的推广佣金',
     `total_spent` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '历史累计消费金额 (原子累加)',
     `affiliate_id` BIGINT UNSIGNED NULL COMMENT '推荐人 User ID',
-    `role` ENUM('client', 'admin') NOT NULL DEFAULT 'client' COMMENT '角色',
     `status` ENUM('active', 'suspended') NOT NULL DEFAULT 'active' COMMENT '状态',
     `last_login_at` TIMESTAMP NULL COMMENT '最后登录时间',
     `last_login_ip` VARCHAR(45) NULL COMMENT '最后登录IP',
@@ -26,7 +44,7 @@ CREATE TABLE `users` (
     `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX `idx_affiliate_id` (`affiliate_id`),
     INDEX `idx_login_spent` (`last_login_at`, `total_spent`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户账户表';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='终端客户账户与钱包表';
 ```
 
 ---
@@ -242,7 +260,7 @@ CREATE TABLE `transactions` (
     `user_id` BIGINT UNSIGNED NOT NULL,
     `invoice_id` BIGINT UNSIGNED NULL,
     `account_type` ENUM('wallet', 'available_commission', 'frozen_commission') NOT NULL DEFAULT 'wallet' COMMENT '资金分户',
-    `type` ENUM('recharge', 'pay_invoice', 'refund', 'commission_settle', 'commission_clawback', 'affiliate_to_balance', 'withdrawal_freeze', 'withdrawal_payout', 'withdrawal_reject_rollback', 'late_payment_credit') NOT NULL,
+    `type` ENUM('recharge', 'pay_invoice', 'refund', 'refund_rollback', 'commission_settle', 'commission_clawback', 'affiliate_to_balance', 'withdrawal_freeze', 'withdrawal_payout', 'withdrawal_reject_rollback', 'late_payment_credit') NOT NULL,
     `amount` DECIMAL(10,2) NOT NULL COMMENT '变动金额 (正数为增，负数为扣)',
     `balance_before` DECIMAL(10,2) NOT NULL COMMENT '变动前账户分户余额',
     `balance_after` DECIMAL(10,2) NOT NULL COMMENT '变动后账户分户余额',
@@ -342,14 +360,15 @@ CREATE TABLE `notification_deliveries` (
     `channel` VARCHAR(30) NOT NULL COMMENT '渠道标识 (如 mail, sms, telegram, wechat, qq)',
     `user_id` BIGINT UNSIGNED NOT NULL COMMENT '接收用户 ID',
     `target` VARCHAR(100) NOT NULL COMMENT '投递目标 (邮箱/手机号/ChatID)',
-    `status` ENUM('pending', 'success', 'failed') NOT NULL DEFAULT 'pending',
+    `status` ENUM('pending', 'sending', 'success', 'failed', 'pending_manual_check') NOT NULL DEFAULT 'pending',
     `error_message` VARCHAR(255) NULL COMMENT '失败报错信息',
     `sent_at` TIMESTAMP NULL COMMENT '实际送达时间',
     `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     -- ⚡ 铁律唯一索引：相同指纹在同一个渠道下绝对只允许存在一条记录
     UNIQUE KEY `uk_fingerprint_channel` (`fingerprint`, `channel`),
-    INDEX `idx_user_created` (`user_id`, `created_at`)
+    INDEX `idx_user_created` (`user_id`, `created_at`),
+    INDEX `idx_status_updated` (`status`, `updated_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='通知投递与幂等审计表';
 ```
 
@@ -493,13 +512,15 @@ CREATE TABLE `marketing_rule_logs` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     `rule_id` INT UNSIGNED NOT NULL COMMENT '关联营销规则ID',
     `user_id` BIGINT UNSIGNED NOT NULL COMMENT '目标用户ID',
+    `idempotency_key` VARCHAR(100) NULL COMMENT '规则+用户+周期的原子防重占位键',
     `user_coupon_id` BIGINT UNSIGNED NULL COMMENT '生成的卡券ID',
     `action_status` ENUM('success', 'failed', 'skipped') NOT NULL DEFAULT 'success' COMMENT '执行结果',
     `remark` VARCHAR(255) NULL COMMENT '执行备注',
     `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (`rule_id`) REFERENCES `marketing_rules` (`id`) ON DELETE CASCADE,
     FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
-    INDEX `idx_rule_user_time` (`rule_id`, `user_id`, `created_at`)
+    UNIQUE KEY `uk_rule_user_cycle` (`idempotency_key`),
+    INDEX `idx_rule_user_success_time` (`rule_id`, `user_id`, `action_status`, `created_at`)
 );
 ```
 

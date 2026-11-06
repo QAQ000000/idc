@@ -184,6 +184,20 @@ flowchart TD
        AND (`max_uses` = -1 OR `used_times` < `max_uses`);
      ```
    - 若 `affected_rows == 0`，表明卡券已被瞬间领罄或达到发放上限，直接熔断并回滚，防止超发。
+1.2 **用户与规则维度的原子防重占位（User-Rule Idempotency Reservation）**：
+   - 为彻底防止同一用户遭遇多个并发请求（如多个 Webhook 或高频触发）重复发放多张同规则卡券，发放前必须先向 `marketing_rule_logs` 插入原子防重占位：
+     ```sql
+     INSERT INTO `marketing_rule_logs` (
+         `rule_id`, `user_id`, `idempotency_key`, `action_status`, `remark`
+     ) VALUES (
+         :rule_id, :user_id, :user_rule_idempotency_key, 'pending', '发放预占位'
+     );
+     ```
+   - 幂等键生成规则：
+     - 自然年模式：`rule:{rule_id}:user:{user_id}:year:{YYYY}`
+     - 终身仅一次模式：`rule:{rule_id}:user:{user_id}:lifetime`
+     - 滚动周期模式：`rule:{rule_id}:user:{user_id}:cycle:{current_cycle_marker}`
+   - 利用唯一键 `uk_rule_user_cycle (idempotency_key)`：若存在并发请求，第二个请求直接报唯一键冲突并立即中止，确保单人单规则严格发放一次。发放成功后再将占位行更新为 `action_status = 'success'` 并回写 `user_coupon_id`。
 2. **自然年防重硬校验（Calendar Year Check）**：
    - 针对生日策略，系统校验 `YEAR(created_at) = YEAR(CURRENT_DATE)`。一个实名身份证一年仅且只有一次生日关怀机会。
 3. **退款风控（反薅羊毛）**：

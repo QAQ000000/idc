@@ -1,0 +1,25 @@
+# Environment & secrets
+.env
+.env.backup
+.env.production
+
+# Dependencies
+/vendor/
+/node_modules/
+
+# Logs & Temporary storage
+/storage/logs/
+/storage/cache/
+*.log
+
+# System & IDE files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Build outputs
+/public/build/
+/public/dist/

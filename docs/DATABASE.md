@@ -1,6 +1,6 @@
 # JianYun (简云) · 数据库设计字典 (Database Schema)
 
-本系统全面丢弃旧魔方 178 张表的臃肿设计，收敛为高内聚、模块化的生产数据架构。全表基于 **MySQL 8.0+ InnoDB** 引擎，字符集为 `utf8mb4_unicode_ci`，金额统一使用 `DECIMAL(10,2)`。
+本系统全面丢弃旧魔方 178 张表的臃肿设计，收敛为高内聚、模块化的生产数据架构（全系统共精简为 22 张表：8 张核心业务表 + 14 张支撑业务表）。全表基于 **MySQL 8.0+ / 5.7+ InnoDB** 引擎，字符集为 `utf8mb4_unicode_ci`，金额统一使用 `DECIMAL(10,2)`。
 
 ---
 
@@ -154,11 +154,9 @@ CREATE TABLE `instances` (
     `recurring_price` DECIMAL(10,2) NOT NULL COMMENT '标准下次续费价格',
     `override_price` DECIMAL(10,2) NULL COMMENT '运维后台手动改价覆盖值 (优先于 recurring_price)',
     `status` ENUM('pending', 'active', 'suspended', 'terminated') NOT NULL DEFAULT 'pending',
-    `suspend_type` ENUM('billing', 'compliance', 'abuse', 'manual', 'migration') NOT NULL DEFAULT 'billing' COMMENT '暂停原因类型 (续费仅可自动解挂billing类型)',
+    `suspend_type` ENUM('billing', 'compliance', 'abuse', 'manual') NOT NULL DEFAULT 'billing' COMMENT '暂停原因类型 (续费仅可自动解挂billing类型)',
     `suspend_reason` VARCHAR(255) NULL COMMENT '暂停原因详细描述',
     `auto_renew` TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否开启自动续费',
-    `locked_at` TIMESTAMP NULL COMMENT '操作互斥排他锁时间戳 (防止续费/销毁/变配并发踩踏)',
-    `lock_token` CHAR(36) NULL COMMENT '操作互斥排他锁所有者令牌 (UUID，仅持有者可释放或续约)',
     `start_date` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '开通时间',
     `due_date` TIMESTAMP NOT NULL COMMENT '到期时间',
     `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -166,10 +164,11 @@ CREATE TABLE `instances` (
     FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
     FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE RESTRICT,
     INDEX `idx_user_status` (`user_id`, `status`),
-    INDEX `idx_due_date` (`status`, `due_date`),
-    INDEX `idx_lock` (`locked_at`, `lock_token`)
+    INDEX `idx_due_date` (`status`, `due_date`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='已购云资源实例';
 ```
+> [!NOTE]
+> **Task-as-Lock 互斥设计**：实例排他锁不再冗余保存在 `instances.locked_at` 与 `lock_token`，而是以 `tasks` 表中对应实例状态为 `running` 或 `investigating` 且 `lease_until > NOW()` 的活跃任务作为单一事实来源（Single Source of Truth），彻底消除双锁脱节隐患。
 
 ---
 
@@ -185,6 +184,7 @@ CREATE TABLE `instance_snapshot_schedules` (
     `interval_days` INT NOT NULL DEFAULT 1 COMMENT '间隔天数 (1为每天, 3为每3天)',
     `retention_count` INT NOT NULL DEFAULT 3 COMMENT '保留最新份数 (必须 <= 商品最大配额)',
     `allow_risky_single_slot_purge` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '配额仅1份时是否允许先删后建高风险轮转(默认0安全暂停并告警)',
+    `last_risky_purge_at` TIMESTAMP NULL COMMENT '最近一次单槽位高风险轮转时间',
     `status` TINYINT(1) NOT NULL DEFAULT 1 COMMENT '1启用, 0暂停',
     `last_run_at` TIMESTAMP NULL COMMENT '最近一次触发执行时间',
     `next_run_at` TIMESTAMP NOT NULL COMMENT '下一次触发执行时间 (调度轮询使用)',
@@ -337,14 +337,18 @@ CREATE TABLE `commission_withdrawals` (
     `user_id` BIGINT UNSIGNED NOT NULL COMMENT '申请提现的用户ID',
     `amount` DECIMAL(10,2) NOT NULL COMMENT '提现金额',
     `destination` ENUM('balance', 'external') NOT NULL COMMENT '提现目标: balance=转入站内可用余额, external=站外转账',
-    `channel_info` TEXT NULL COMMENT '站外提现信息 (用户自由备注: 如 支付宝账号 / 真实姓名 / 手机号)',
+    `channel_type` ENUM('alipay', 'bank', 'manual') NOT NULL DEFAULT 'alipay' COMMENT '站外提现渠道: alipay=支付宝, bank=银行卡, manual=线下核验',
+    `account_name` VARCHAR(100) NULL COMMENT '收款人姓名/开户名',
+    `account_no` VARCHAR(100) NULL COMMENT '收款账号 (支付宝账号/银行卡号)',
+    `channel_info` TEXT NULL COMMENT '站外提现备注/附加信息 (如开户支行等)',
     `status` ENUM('pending', 'approved', 'rejected') NOT NULL DEFAULT 'pending' COMMENT '审批状态',
-    `admin_id` BIGINT UNSIGNED NULL COMMENT '经办/审核管理员',
+    `admin_id` INT UNSIGNED NULL COMMENT '经办/审核管理员ID',
     `admin_remark` VARCHAR(255) NULL COMMENT '转账流水号或驳回原因',
     `processed_at` TIMESTAMP NULL COMMENT '处理/打款时间',
     `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
+    FOREIGN KEY (`admin_id`) REFERENCES `admins` (`id`) ON DELETE SET NULL,
     INDEX `idx_status_created` (`status`, `created_at`),
     INDEX `idx_user_status` (`user_id`, `status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='推广返佣提现申请表';
@@ -481,52 +485,26 @@ CREATE TABLE `user_coupons` (
 
 ---
 
-### 1.19 `marketing_rules`（自动化营销与卡券触发规则）
+### 1.19 `coupon_issue_logs`（优惠券发放幂等与审计日志）
 ```sql
-CREATE TABLE `marketing_rules` (
-    `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    `name` VARCHAR(100) NOT NULL COMMENT '策略名称 (如: 老客30天流失召回 / 会员生日关怀礼)',
-    `trigger_type` ENUM('cron_daily', 'event_register', 'event_realname_verified', 'event_invoice_paid') NOT NULL DEFAULT 'cron_daily' COMMENT '触发时机',
-    `coupon_id` INT UNSIGNED NOT NULL COMMENT '绑定的优惠券模板ID',
-    `valid_days` INT NOT NULL DEFAULT 15 COMMENT '发放后的动态有效天数',
-    `conditions` JSON NOT NULL COMMENT '条件DSL树 (组合判断: 实名/生日/未登录天数/累计消费/在跑机器等)',
-    `cooldown_mode` ENUM('rolling_days', 'calendar_year', 'lifetime') NOT NULL DEFAULT 'rolling_days' COMMENT '防扰冷却模式',
-    `cooldown_days` INT NOT NULL DEFAULT 0 COMMENT '滚动冷却天数 (如90天内不重复打扰)',
-    `max_per_user` INT NOT NULL DEFAULT 1 COMMENT '单人上限次数',
-    `notify_channels` JSON NULL COMMENT '通知渠道: ["email", "web_push"]',
-    `notify_title` VARCHAR(150) NULL COMMENT '通知标题',
-    `notify_content` TEXT NULL COMMENT '通知文案',
-    `status` TINYINT(1) NOT NULL DEFAULT 1 COMMENT '1启用, 0禁用',
-    `total_issued_count` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '累计自动触发派发张数',
-    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (`coupon_id`) REFERENCES `coupons` (`id`) ON DELETE RESTRICT
-);
-```
-
----
-
-### 1.20 `marketing_rule_logs`（营销规则触发与核销日志）
-```sql
-CREATE TABLE `marketing_rule_logs` (
+CREATE TABLE `coupon_issue_logs` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    `rule_id` INT UNSIGNED NOT NULL COMMENT '关联营销规则ID',
     `user_id` BIGINT UNSIGNED NOT NULL COMMENT '目标用户ID',
-    `idempotency_key` VARCHAR(100) NULL COMMENT '规则+用户+周期的原子防重占位键',
-    `user_coupon_id` BIGINT UNSIGNED NULL COMMENT '生成的卡券ID',
-    `action_status` ENUM('success', 'failed', 'skipped') NOT NULL DEFAULT 'success' COMMENT '执行结果',
-    `remark` VARCHAR(255) NULL COMMENT '执行备注',
+    `coupon_id` INT UNSIGNED NOT NULL COMMENT '关联优惠券模板ID',
+    `user_coupon_id` BIGINT UNSIGNED NULL COMMENT '生成的卡券包资产ID',
+    `action_type` ENUM('register_gift', 'birthday_gift', 'winback_gift', 'admin_grant') NOT NULL COMMENT '发券业务类型',
+    `cycle_marker` VARCHAR(100) NOT NULL COMMENT '防重周期标记 (如 reg:user_42, bday:user_42:2026, winback:user_42:202611)',
     `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (`rule_id`) REFERENCES `marketing_rules` (`id`) ON DELETE CASCADE,
     FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
-    UNIQUE KEY `uk_rule_user_cycle` (`idempotency_key`),
-    INDEX `idx_rule_user_success_time` (`rule_id`, `user_id`, `action_status`, `created_at`)
-);
+    FOREIGN KEY (`coupon_id`) REFERENCES `coupons` (`id`) ON DELETE CASCADE,
+    UNIQUE KEY `uk_user_action_cycle` (`cycle_marker`),
+    INDEX `idx_user_action_time` (`user_id`, `action_type`, `created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='优惠券发放幂等与审计日志';
 ```
 
 ---
 
-### 1.21 `articles`（统一公告与帮助中心）
+### 1.20 `articles`（统一公告与帮助中心）
 ```sql
 CREATE TABLE `articles` (
     `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -552,17 +530,7 @@ CREATE TABLE `articles` (
 
 ---
 
-### 1.22 `downloads`（常用驱动与软件下载）
-```sql
-CREATE TABLE `downloads` (
-    `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    `title` VARCHAR(150) NOT NULL COMMENT '软件/文件名称',
-    `description` VARCHAR(255) NULL COMMENT '说明 (提取码、网盘密码、后台账号)',
-    `download_url` VARCHAR(255) NOT NULL COMMENT '下载链接 (网盘外链或本站附件)',
-    `downloads_count` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '累计下载次数',
-    `category` VARCHAR(50) NOT NULL DEFAULT '常用工具',
-    `status` TINYINT(1) NOT NULL DEFAULT 1,
-    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-```
+### 1.21 静态下载配置 (`config/downloads.json`)
+> [!NOTE]
+> 为避免过度设计与僵尸数据表，常用工具与客户端驱动下载彻底从数据库中解耦，采用静态配置文件 `config/downloads.json` 进行统一维护，具备零 SQL 查询损耗与极简维护优势。
 ```

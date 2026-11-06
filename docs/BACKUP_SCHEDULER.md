@@ -35,8 +35,9 @@
    - **分支 C (物理槽位已满 $TotalUsed \ge M$ 且 $M > 1$)**：仅清理属于当前计划任务的 `Auto_` 老快照（绝对禁止删除任何 `Manual_` 用户手动快照），确认腾出槽位后，再创建新快照。
 
 ### 关键状态安全防护：
-1. **删除前置依赖**：若最老快照删除失败（如上游网络超时或机器状态忙），**立即终止本次创建动作并记录告警**，绝对不盲目调创建接口，防止上游产生报错级联。
-2. **防并发互斥锁**：当机器正在进行重装系统、升降级、或已有手动快照正在生成时，调度器自动延后 15 分钟重试（Exponential Backoff）。
+1. **删除动作 Outbox 任务化**：所有快照删除操作均派发 Outbox `snapshot_delete` 任务，带有唯一防重幂等键 `snapshot_delete:{remote_id}`，若删除失败自动退避重试，防止上游配额泄漏；
+2. **高风险轮转审计**：命中单槽位 `allow_risky_single_slot_purge = 1` 执行先删后建时，调度器自动记录 `last_risky_purge_at = NOW()`；
+3. **防并发互斥排他 (Task-as-Lock)**：当实例名下存在其他正在执行的 Outbox 任务时，调度器自动延后 15 分钟重试。
 
 ---
 
@@ -53,6 +54,8 @@ CREATE TABLE IF NOT EXISTS `instance_snapshot_schedules` (
     `cron_time` TIME NOT NULL DEFAULT '03:00:00' COMMENT '执行时间点 (时:分:秒)',
     `interval_days` INT NOT NULL DEFAULT 1 COMMENT '间隔天数 (1为每天, 3为每3天)',
     `retention_count` INT NOT NULL DEFAULT 3 COMMENT '保留最新份数 (必须 <= 商品最大配额)',
+    `allow_risky_single_slot_purge` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '配额仅1份时是否允许先删后建高风险轮转(默认0安全暂停并告警)',
+    `last_risky_purge_at` TIMESTAMP NULL COMMENT '最近一次单槽位高风险轮转时间',
     `status` TINYINT(1) NOT NULL DEFAULT 1 COMMENT '1启用, 0暂停',
     `last_run_at` TIMESTAMP NULL COMMENT '最近一次触发执行时间',
     `next_run_at` TIMESTAMP NOT NULL COMMENT '下一次触发执行时间 (调度轮询使用)',

@@ -92,20 +92,8 @@ LEFT JOIN idc2.shd_news n ON m.id = n.relid
 LEFT JOIN idc2.shd_news_type t ON m.parent_id = t.id;
 ```
 
-### 4. `shd_downloads` $\rightarrow$ `downloads` (10 个文件/外链)
-```sql
-INSERT INTO jianyun.downloads (
-    id, title, description, download_url, downloads_count, created_at
-)
-SELECT 
-    d.id,
-    d.title,
-    d.description,
-    IF(d.description LIKE '%http%', d.description, d.url),
-    d.downloads,
-    FROM_UNIXTIME(d.create_time)
-FROM idc2.shd_downloads d;
-```
+### 4. `shd_downloads` $\rightarrow$ `config/downloads.json` (10 个文件/外链)
+为了消灭无状态死数据表，常用工具下载直接固化迁移至前端/配置目录 `config/downloads.json` 静态维护，不再在 MySQL 中建表维护。
 
 ---
 

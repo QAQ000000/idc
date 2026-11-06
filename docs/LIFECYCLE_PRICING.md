@@ -2,21 +2,21 @@
 
 > [!IMPORTANT]
 > **本契约已被正式冻结为核心业务状态机标准。**  
-> 明确规范：统一事务行级锁排它竞争、Lock Token 锁防误清、续费与销毁共同排他协议、挂起类型风控隔离、全额配额计算与单槽位安全熔断。
+> 明确规范：统一事务行级锁排它竞争、Task-as-Lock 任务租约防踩踏、续费与销毁共同排他协议、挂起类型风控隔离、全额配额计算与快照删除 Outbox 审计化。
 
 ---
 
-## 1. 实例生命周期互斥状态机与 Lock Token 防护
+## 1. 实例生命周期互斥状态机与 Task-as-Lock 租约体系
 
-实例在整个生命周期中，**绝不允许续费、变配、暂停、销毁、备份等并发动作产生状态踩踏**：
+实例在整个生命周期中，**绝不允许续费、变配、暂停、销毁、备份等并发动作产生状态踩踏**。系统采用 **Task-as-Lock（任务即锁）** 极简架构，以 `tasks` 表中持有未过期租约的任务作为实例互斥的单一事实来源（Single Source of Truth），彻底消除双表双锁维护的技术债务：
 
 ```mermaid
 stateDiagram-v2
     [*] --> Pending: 支付成功，等待交付
     Pending --> Active: Outbox 开通履约完成
     
-    Active --> Locked: 发起变配 / 续费代扣 / 备份执行 (持有 lock_token 排他锁)
-    Locked --> Active: 动作完成，持有者凭 token 释放锁
+    Active --> Busy: 发起变配 / 续费代扣 / 备份执行 (Task 持有 lease_until 租约)
+    Busy --> Active: 动作完成，任务结束，租约自然释放
     
     Active --> Suspended: 逾期欠费停机 (billing) / 合规滥用阻断 (compliance/abuse)
     
@@ -29,34 +29,47 @@ stateDiagram-v2
     Terminated --> [*]
 ```
 
-### 1.1 排他锁所有者令牌机制 (`instances.lock_token`)
-为解决“A 任务执行超时被 B 接管后，A 返回并在 `finally` 中误清空 B 的锁”的严重并发漏洞，引入 UUID 锁持有者令牌：
+### 1.1 Task-as-Lock 互斥协议
+为杜绝“旧慢任务回写清空新任务锁”及“两张表锁状态脱节”的并发问题，简云取消 `instances.locked_at` 与 `instances.lock_token`，统一由 `tasks` 承载分布式排他锁：
 
 ```sql
--- 1. 尝试原子抢占锁 (生成唯一 UUID 作为 lock_token)
-UPDATE `instances` 
-SET `locked_at` = NOW(),
-    `lock_token` = :worker_generated_uuid
-WHERE `id` = :instance_id 
-  AND (`locked_at` IS NULL OR `locked_at` < DATE_SUB(NOW(), INTERVAL 10 MINUTE));
+-- 1. 检查实例是否已被其他活跃任务锁定
+SELECT `id`, `action`, `worker_id`, `lease_until` 
+FROM `tasks` 
+WHERE `instance_id` = :instance_id 
+  AND `status` IN ('running', 'investigating')
+  AND `lease_until` > NOW();
+-- 若查询到记录，说明当前有其他 Worker 正在操作该实例，新动作立即退避等待。
 
--- 2. 检查影响行数 (affected_rows)
--- 若为 0，说明被其他任务持有且未过期，当前任务自动退避并延后重试。
+-- 2. Worker 认领任务并建立实例排他租约
+UPDATE `tasks`
+SET `status` = 'running',
+    `worker_id` = :worker_id,
+    `execution_token` = `execution_token` + 1,
+    `lease_until` = DATE_ADD(NOW(), INTERVAL 5 MINUTE),
+    `updated_at` = NOW()
+WHERE `id` = :task_id 
+  AND `status` = 'pending'
+  AND (`next_retry_at` IS NULL OR `next_retry_at` <= NOW());
 
--- 3. 长任务续约心跳 (针对大盘备份或耗时变配，每 3 分钟执行一次)
-UPDATE `instances` 
-SET `locked_at` = NOW() 
-WHERE `id` = :instance_id 
-  AND `lock_token` = :worker_generated_uuid;
+-- 3. 长任务心跳续约 (如镜像备份或耗时变配，每 2 分钟续约一次)
+UPDATE `tasks`
+SET `lease_until` = DATE_ADD(NOW(), INTERVAL 5 MINUTE),
+    `updated_at` = NOW()
+WHERE `id` = :task_id 
+  AND `worker_id` = :worker_id 
+  AND `execution_token` = :acquired_token;
 
--- 4. 仅持有者可安全释放锁 (在 finally 块中执行)
-UPDATE `instances` 
-SET `locked_at` = NULL,
-    `lock_token` = NULL 
-WHERE `id` = :instance_id 
-  AND `lock_token` = :worker_generated_uuid;
+-- 4. 任务完结原子释放锁 (状态变为 success，租约自动失效)
+UPDATE `tasks`
+SET `status` = 'success',
+    `lease_until` = NULL,
+    `payload` = :final_payload,
+    `updated_at` = NOW()
+WHERE `id` = :task_id 
+  AND `execution_token` = :acquired_token;
 ```
-- **核心保证**：若 A 任务耗时超过 10 分钟且未续约导致锁被 B 接管，A 在 `finally` 执行释放时因 `lock_token != :worker_a_uuid` 影响行数为 0，**绝不会清掉 B 的锁**！
+- **核心保证**：只有持有最新 `execution_token` 的 Worker 才能成功更新任务和提交实例变更；一旦任务终态落地，实例锁自然释放，无需在 `instances` 上再清空字段，彻底消灭慢任务释放他人锁的缺陷！
 
 ---
 
@@ -72,7 +85,7 @@ WHERE `id` = :instance_id
 #### 步骤 1：加锁与状态提取
 ```sql
 -- 支付处理事务与销毁 Worker 事务，起始第一句强制执行：
-SELECT `id`, `status`, `suspend_type`, `due_date`, `locked_at`, `lock_token` 
+SELECT `id`, `status`, `suspend_type`, `due_date` 
 FROM `instances` 
 WHERE `id` = :instance_id 
 FOR UPDATE;
@@ -118,12 +131,11 @@ FOR UPDATE;
 - `billing`: 纯财务欠费暂停；
 - `compliance`: 管理员因合规/实名/备案下发的人工暂停；
 - `abuse`: 安全网关/上游通报的 DDoS/暴力破解/发信违规暂停；
-- `manual`: 运维临时维护手动暂停；
-- `migration`: 割接历史遗留未确认资产挂起。
+- `manual`: 运维临时维护或历史割接未核准资产手动暂停。
 
 > [!CAUTION]
 > **交清续费仅可自动解挂 `suspend_type = 'billing'`！**  
-> 若实例处于 `compliance`、`abuse`、`manual` 或 `migration` 状态，支付成功后**仅累加其 `due_date`，实例依然保持 `suspended` 挂起状态**，并在前台提示用户联系客服处理合规工单，绝不允许财务缴费绕过安全风控！
+> 若实例处于 `compliance`、`abuse` 或 `manual` 状态，支付成功后**仅累加其 `due_date`，实例依然保持 `suspended` 挂起状态**，并在前台提示用户联系客服处理合规工单，绝不允许财务缴费绕过安全风控！
 
 ---
 
@@ -179,3 +191,8 @@ flowchart TD
 ### 5.2 计划任务快照归属凭证
 - 每次快照创建成功后，必须将上游返回的 `remote_snapshot_id` 与本计划任务 ID 严格关联存储；
 - 滚动清理候选**严格仅限于当前 `schedule_id` 下产生的历史记录**，严禁使用模糊名称匹配，防止误删用户手动备份或同一实例其他计划的备份。
+
+### 5.3 快照清理 Outbox 化与高风险轮转审计
+- **快照清理全面 Outbox 化**：为彻底防止 Worker 在执行快照清理时由于进程崩溃或网络超时引发物理配额泄漏，系统严禁同步裸调上游删除接口，统一派发 `snapshot_delete` Outbox 任务；
+- **任务幂等键**：`idempotency_key = CONCAT('snapshot_delete:', :remote_snapshot_id)`，确保即便重试也绝对幂等；
+- **单槽位高风险轮转审计**：当命中 `allow_risky_single_slot_purge = 1` 执行先删后建路径时，系统在派发清理任务的同时原子更新调度表 `instance_snapshot_schedules.last_risky_purge_at = NOW()`，提供精确到秒级的高危操作追溯能力。

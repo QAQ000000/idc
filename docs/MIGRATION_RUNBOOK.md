@@ -53,7 +53,7 @@ ON DUPLICATE KEY UPDATE `email` = VALUES(`email`);
 | 旧状态 (`domainstatus`) | 实例数 | 真实业务物理分布 | 简云迁移处置规范 |
 |---|---|---|---|
 | **Active** | 118 | 106 台 DCIM 云服务器、5 台 Easypanel 主机、6 台 宝塔(skymnbt)、1 台 Sub2API | 严格校验真实远端 ID。100% 验证通过导入 `active`；缺映射者强制挂起 |
-| **Suspended** | 22 | 20 台 DCIM 云服务器、2 台 Easypanel 主机 | 导入为 `suspended`，`suspend_type = 'migration'`，保持停机锁闭 |
+| **Suspended** | 22 | 20 台 DCIM 云服务器、2 台 Easypanel 主机 | 导入为 `suspended`，`suspend_type = 'manual'`，保持停机锁闭 |
 | **Pending** | 14 | 11 笔未付款订单、1 笔空测试单、**2 笔已付款未交付主机 (#1401, #4052)** | 未付款单仅转为未支付账单；2 笔已付款未交付转入工单阻断人工核办 |
 
 ---
@@ -101,8 +101,8 @@ SELECT
         ELSE 'suspended'
     END AS status,
     CASE 
-        WHEN sub.remote_instance_id IS NULL THEN 'migration'
-        WHEN sub.legacy_domainstatus = 'Suspended' THEN 'migration'
+        WHEN sub.remote_instance_id IS NULL THEN 'manual'
+        WHEN sub.legacy_domainstatus = 'Suspended' THEN 'manual'
         ELSE 'billing'
     END AS suspend_type,
     CASE 
@@ -163,7 +163,7 @@ SELECT
     h.id, h.uid, h.productid, 1, NULL,
     CONCAT('pending-legacy-', h.id),
     h.amount,
-    'pending', 'migration', '旧魔方已收款但未开通成功，等待运维手动交付或退款',
+    'pending', 'manual', '旧魔方已收款但未开通成功，等待运维手动交付或退款',
     NOW(), DATE_ADD(NOW(), INTERVAL 30 DAY)
 FROM `idc2`.`shd_host` h
 WHERE h.id IN (1401, 4052);

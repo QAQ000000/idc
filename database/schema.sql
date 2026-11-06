@@ -8,12 +8,12 @@ CREATE TABLE IF NOT EXISTS `admins` (
     `email` VARCHAR(100) NOT NULL UNIQUE COMMENT '安全邮箱',
     `password` VARCHAR(255) NOT NULL COMMENT '密码哈希 (Argon2id/Bcrypt)',
     `role` ENUM('super_admin', 'finance', 'support', 'operator') NOT NULL DEFAULT 'operator' COMMENT '后台管理角色',
-    `two_factor_secret` VARCHAR(100) NULL COMMENT 'Google 2FA 密钥',
+    `two_factor_secret` VARCHAR(255) NULL COMMENT 'Google 2FA 密钥 (AES-256-GCM 加密存储, 严禁明文)',
     `status` ENUM('active', 'disabled') NOT NULL DEFAULT 'active' COMMENT '状态',
-    `last_login_at` TIMESTAMP NULL COMMENT '最后登录时间',
+    `last_login_at` DATETIME NULL COMMENT '最后登录时间',
     `last_login_ip` VARCHAR(45) NULL COMMENT '最后登录IP',
-    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='系统管理与运维员工表';
 
 CREATE TABLE IF NOT EXISTS `users` (
@@ -27,10 +27,10 @@ CREATE TABLE IF NOT EXISTS `users` (
     `total_spent` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '历史累计消费金额 (原子累加)',
     `affiliate_id` BIGINT UNSIGNED NULL COMMENT '推荐人 User ID',
     `status` ENUM('active', 'suspended') NOT NULL DEFAULT 'active' COMMENT '状态',
-    `last_login_at` TIMESTAMP NULL COMMENT '最后登录时间',
+    `last_login_at` DATETIME NULL COMMENT '最后登录时间',
     `last_login_ip` VARCHAR(45) NULL COMMENT '最后登录IP',
-    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX `idx_affiliate_id` (`affiliate_id`),
     INDEX `idx_login_spent` (`last_login_at`, `total_spent`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='终端客户账户与钱包表';
@@ -45,9 +45,9 @@ CREATE TABLE IF NOT EXISTS `user_verifications` (
     `status` ENUM('pending', 'verified', 'rejected') NOT NULL DEFAULT 'pending' COMMENT '认证状态',
     `reject_reason` VARCHAR(255) NULL COMMENT '驳回原因',
     `verified_type` ENUM('manual', 'api_three_factor', 'api_face') NOT NULL DEFAULT 'manual' COMMENT '认证方式',
-    `verified_at` TIMESTAMP NULL COMMENT '认证通过时间',
-    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    `verified_at` DATETIME NULL COMMENT '认证通过时间',
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
     INDEX `idx_birthday` (`id_card_birthday`),
     INDEX `idx_status` (`status`)
@@ -58,10 +58,10 @@ CREATE TABLE IF NOT EXISTS `providers` (
     `name` VARCHAR(50) NOT NULL COMMENT '节点名称 (如: SakuraIDC上游 / 亚太自营PVE / Sub2API)',
     `driver` VARCHAR(50) NOT NULL COMMENT '驱动标识: zjmf | easypanel | sub2api | pve | manual',
     `endpoint` VARCHAR(255) NULL COMMENT '接口地址 URL',
-    `credentials` JSON NULL COMMENT '认证密钥 JSON',
+    `credentials` JSON NULL COMMENT '认证密钥 JSON (值经 AES-256-GCM 加密保存 api_token / secret, 严禁明文落库与日志)',
     `status` TINYINT(1) NOT NULL DEFAULT 1 COMMENT '1启用, 0禁用',
-    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='上游提供方与自营节点';
 
 CREATE TABLE IF NOT EXISTS `product_categories` (
@@ -76,8 +76,8 @@ CREATE TABLE IF NOT EXISTS `product_categories` (
     `seo_description` VARCHAR(500) NULL COMMENT '分类独立SEO描述',
     `order_num` INT NOT NULL DEFAULT 0 COMMENT '排序权重',
     `status` TINYINT(1) NOT NULL DEFAULT 1 COMMENT '1启用, 0隐藏',
-    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX `idx_slug` (`slug`),
     INDEX `idx_type_status` (`type`, `status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='产品分类与聚合落地页表';
@@ -99,8 +99,8 @@ CREATE TABLE IF NOT EXISTS `products` (
     `seo_keywords` VARCHAR(255) NULL COMMENT '单品独立SEO关键词',
     `seo_description` VARCHAR(500) NULL COMMENT '单品独立SEO描述',
     `order_num` INT NOT NULL DEFAULT 0 COMMENT '排序权重',
-    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (`category_id`) REFERENCES `product_categories` (`id`) ON DELETE SET NULL,
     FOREIGN KEY (`provider_id`) REFERENCES `providers` (`id`) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='商品目录';
@@ -121,10 +121,10 @@ CREATE TABLE IF NOT EXISTS `instances` (
     `suspend_type` ENUM('billing', 'compliance', 'abuse', 'manual') NOT NULL DEFAULT 'billing' COMMENT '暂停原因类型 (续费仅可自动解挂billing类型)',
     `suspend_reason` VARCHAR(255) NULL COMMENT '暂停原因详细描述',
     `auto_renew` TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否开启自动续费',
-    `start_date` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '开通时间',
-    `due_date` TIMESTAMP NOT NULL COMMENT '到期时间',
-    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    `start_date` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '开通时间',
+    `due_date` DATETIME NOT NULL COMMENT '到期时间',
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
     FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE RESTRICT,
     INDEX `idx_user_status` (`user_id`, `status`),
@@ -141,16 +141,36 @@ CREATE TABLE IF NOT EXISTS `instance_snapshot_schedules` (
     `interval_days` INT NOT NULL DEFAULT 1 COMMENT '间隔天数 (1为每天, 3为每3天)',
     `retention_count` INT NOT NULL DEFAULT 3 COMMENT '保留最新份数 (必须 <= 商品最大配额)',
     `allow_risky_single_slot_purge` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '配额仅1份时是否允许先删后建高风险轮转(默认0安全暂停并告警)',
-    `last_risky_purge_at` TIMESTAMP NULL COMMENT '最近一次单槽位高风险轮转时间',
+    `last_risky_purge_at` DATETIME NULL COMMENT '最近一次单槽位高风险轮转时间',
     `status` TINYINT(1) NOT NULL DEFAULT 1 COMMENT '1启用, 0暂停',
-    `last_run_at` TIMESTAMP NULL COMMENT '最近一次触发执行时间',
-    `next_run_at` TIMESTAMP NOT NULL COMMENT '下一次触发执行时间 (调度轮询使用)',
-    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    `last_run_at` DATETIME NULL COMMENT '最近一次触发执行时间',
+    `next_run_at` DATETIME NOT NULL COMMENT '下一次触发执行时间 (调度轮询使用)',
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (`instance_id`) REFERENCES `instances` (`id`) ON DELETE CASCADE,
     FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
     INDEX `idx_scheduler_poll` (`status`, `next_run_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='快照与备份自主计划任务表';
+
+CREATE TABLE IF NOT EXISTS `instance_snapshots` (
+    `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    `instance_id` BIGINT UNSIGNED NOT NULL COMMENT '所属云实例ID',
+    `schedule_id` BIGINT UNSIGNED NULL COMMENT '来源计划任务ID (手动/外部来源为NULL; 计划任务删除后转孤儿, 不参与自动清理)',
+    `user_id` BIGINT UNSIGNED NOT NULL COMMENT '所属用户ID (冗余, 便于用户侧列表查询)',
+    `type` ENUM('snapshot', 'backup') NOT NULL DEFAULT 'snapshot' COMMENT '操作类型: snapshot快照 / backup备份',
+    `origin` ENUM('manual', 'scheduled') NOT NULL DEFAULT 'manual' COMMENT '产生来源: manual手动 / scheduled计划任务 (配额全额计数模型依赖此字段区分)',
+    `remote_snapshot_id` VARCHAR(100) NOT NULL COMMENT '上游快照/备份唯一标识 (清理任务幂等键 snapshot_delete:{remote_snapshot_id} 的依据)',
+    `size_bytes` BIGINT UNSIGNED NULL COMMENT '快照/备份大小 (字节, 上游可查时回填)',
+    `status` ENUM('creating', 'active', 'deleting', 'deleted', 'failed') NOT NULL DEFAULT 'creating' COMMENT '生命周期: creating创建中 / active可用 / deleting删除中 / deleted已删除墓碑 / failed创建失败',
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (`instance_id`) REFERENCES `instances` (`id`) ON DELETE CASCADE,
+    FOREIGN KEY (`schedule_id`) REFERENCES `instance_snapshot_schedules` (`id`) ON DELETE SET NULL,
+    FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+    UNIQUE KEY `uk_remote_snapshot_id` (`remote_snapshot_id`),
+    INDEX `idx_schedule_cleanup` (`schedule_id`, `status`, `created_at`),
+    INDEX `idx_instance_type_status` (`instance_id`, `type`, `status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='云快照与备份归属凭证台账 (清理候选严格按schedule_id查询, 严禁模糊名称匹配)';
 
 CREATE TABLE IF NOT EXISTS `invoices` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -161,14 +181,15 @@ CREATE TABLE IF NOT EXISTS `invoices` (
     `status` ENUM('unpaid', 'paid', 'refund_pending', 'refunded', 'cancelled') NOT NULL DEFAULT 'unpaid',
     `cycle_marker` VARCHAR(50) NULL COMMENT '防重标记 (如 instance_id:2026-12-01)',
     `price_snapshot` JSON NULL COMMENT '下单时锁定的规格配置明细、周期、基准价与折扣快照',
-    `quote_expired_at` TIMESTAMP NULL COMMENT '报价锁定期截止时间 (超时需重新核价)',
+    `quote_expired_at` DATETIME NULL COMMENT '报价锁定期截止时间 (超时需重新核价)',
     `payment_method` VARCHAR(50) NULL COMMENT '最终支付通道',
-    `paid_at` TIMESTAMP NULL COMMENT '付款时间',
-    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    `paid_at` DATETIME NULL COMMENT '付款时间',
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
     UNIQUE KEY `uk_cycle_instance` (`cycle_marker`),
-    INDEX `idx_status_due` (`status`, `created_at`)
+    INDEX `idx_status_due` (`status`, `created_at`),
+    INDEX `idx_instance_type` (`instance_id`, `type`, `status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='账单结算表';
 
 CREATE TABLE IF NOT EXISTS `payment_records` (
@@ -185,11 +206,11 @@ CREATE TABLE IF NOT EXISTS `payment_records` (
     `refund_amount` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '已退款金额',
     `refund_reason` VARCHAR(255) NULL COMMENT '退款原因',
     `refund_trade_no` VARCHAR(128) NULL COMMENT '网关退款批次/流水号',
-    `refunded_at` TIMESTAMP NULL COMMENT '退款成功时间',
-    `paid_at` TIMESTAMP NULL,
+    `refunded_at` DATETIME NULL COMMENT '退款成功时间',
+    `paid_at` DATETIME NULL,
     `payload` JSON NULL COMMENT '网关异步回调原始报文快照',
-    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (`invoice_id`) REFERENCES `invoices` (`id`) ON DELETE RESTRICT,
     FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
     UNIQUE KEY `uk_channel_gateway_trade` (`channel`, `gateway_trade_no`),
@@ -202,14 +223,14 @@ CREATE TABLE IF NOT EXISTS `transactions` (
     `user_id` BIGINT UNSIGNED NOT NULL,
     `invoice_id` BIGINT UNSIGNED NULL,
     `account_type` ENUM('wallet', 'available_commission', 'frozen_commission') NOT NULL DEFAULT 'wallet' COMMENT '资金分户',
-    `type` ENUM('recharge', 'pay_invoice', 'refund', 'refund_rollback', 'commission_settle', 'commission_clawback', 'affiliate_to_balance', 'withdrawal_freeze', 'withdrawal_payout', 'withdrawal_reject_rollback', 'late_payment_credit') NOT NULL,
+    `type` ENUM('recharge', 'pay_invoice', 'refund', 'refund_rollback', 'refund_to_balance', 'commission_settle', 'commission_clawback', 'affiliate_to_balance', 'withdrawal_freeze', 'withdrawal_payout', 'withdrawal_reject_rollback', 'late_payment_credit') NOT NULL,
     `amount` DECIMAL(10,2) NOT NULL COMMENT '变动金额 (正数为增，负数为扣)',
     `balance_before` DECIMAL(10,2) NOT NULL COMMENT '变动前账户分户余额',
     `balance_after` DECIMAL(10,2) NOT NULL COMMENT '变动后账户分户余额',
     `idempotency_key` VARCHAR(100) NOT NULL UNIQUE COMMENT '资金流水幂等防重键',
     `trade_no` VARCHAR(100) NULL COMMENT '关联外部/内部交易单号',
     `remark` VARCHAR(255) NOT NULL COMMENT '流水摘要说明',
-    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
     INDEX `idx_user_account` (`user_id`, `account_type`, `created_at`),
     CONSTRAINT `chk_ledger_balance` CHECK (`balance_after` = `balance_before` + `amount`)
@@ -225,15 +246,16 @@ CREATE TABLE IF NOT EXISTS `tasks` (
     `status` ENUM('pending', 'running', 'investigating', 'success', 'failed') NOT NULL DEFAULT 'pending' COMMENT 'investigating: 超时结果反查中',
     `worker_id` VARCHAR(50) NULL COMMENT '抢占此任务的 Worker 标识',
     `execution_token` INT UNSIGNED NOT NULL DEFAULT 1 COMMENT '单调递增防护令牌 (Fencing Token, 防止脑裂/旧Worker延迟回写)',
-    `lease_until` TIMESTAMP NULL COMMENT '分布式执行租约截止时间 (超时允许其他Worker安全接管)',
+    `lease_until` DATETIME NULL COMMENT '分布式执行租约截止时间 (超时允许其他Worker安全接管)',
     `upstream_task_id` VARCHAR(100) NULL COMMENT '上游异步处理流水号',
     `retry_count` INT NOT NULL DEFAULT 0 COMMENT '已重试次数',
     `max_retries` INT NOT NULL DEFAULT 5 COMMENT '最大重试次数',
-    `next_retry_at` TIMESTAMP NULL COMMENT '下一次重试时间',
+    `next_retry_at` DATETIME NULL COMMENT '下一次重试时间',
     `last_error` TEXT NULL COMMENT '最近一次报错信息',
-    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX `idx_poll_lease` (`status`, `lease_until`, `next_retry_at`),
+    INDEX `idx_instance_lease` (`instance_id`, `status`, `lease_until`),
     INDEX `idx_fencing` (`id`, `execution_token`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='事务发件箱与幂等任务队列';
 
@@ -243,11 +265,11 @@ CREATE TABLE IF NOT EXISTS `commissions` (
     `buyer_user_id` BIGINT UNSIGNED NOT NULL COMMENT '买家 B',
     `invoice_id` BIGINT UNSIGNED NOT NULL COMMENT '触发返利的账单',
     `amount` DECIMAL(10,2) NOT NULL COMMENT '提成金额',
-    `freeze_until` TIMESTAMP NOT NULL COMMENT '冻结到期时间 (统一规范为付款后15天无理由退款期)',
+    `freeze_until` DATETIME NOT NULL COMMENT '冻结到期时间 (统一规范为付款后15天无理由退款期)',
     `status` ENUM('pending', 'available', 'cancelled', 'clawbacked') NOT NULL DEFAULT 'pending',
     `remark` VARCHAR(255) NULL,
-    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (`affiliate_user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
     FOREIGN KEY (`buyer_user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
     FOREIGN KEY (`invoice_id`) REFERENCES `invoices` (`id`) ON DELETE RESTRICT,
@@ -261,14 +283,14 @@ CREATE TABLE IF NOT EXISTS `commission_withdrawals` (
     `destination` ENUM('balance', 'external') NOT NULL COMMENT '提现目标: balance=转入站内可用余额, external=站外转账',
     `channel_type` ENUM('alipay', 'bank', 'manual') NOT NULL DEFAULT 'alipay' COMMENT '站外提现渠道',
     `account_name` VARCHAR(100) NULL COMMENT '收款人姓名/开户名',
-    `account_no` VARCHAR(100) NULL COMMENT '收款账号 (支付宝账号/银行卡号)',
+    `account_no` VARCHAR(255) NULL COMMENT '收款账号 (支付宝账号/银行卡号, AES-256-GCM 加密存储)',
     `channel_info` TEXT NULL COMMENT '站外提现备注/附加信息 (如开户支行等)',
     `status` ENUM('pending', 'approved', 'rejected') NOT NULL DEFAULT 'pending' COMMENT '审批状态',
     `admin_id` INT UNSIGNED NULL COMMENT '经办/审核管理员ID',
     `admin_remark` VARCHAR(255) NULL COMMENT '转账流水号或驳回原因',
-    `processed_at` TIMESTAMP NULL COMMENT '处理/打款时间',
-    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    `processed_at` DATETIME NULL COMMENT '处理/打款时间',
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
     FOREIGN KEY (`admin_id`) REFERENCES `admins` (`id`) ON DELETE SET NULL,
     INDEX `idx_status_created` (`status`, `created_at`),
@@ -285,9 +307,9 @@ CREATE TABLE IF NOT EXISTS `notification_deliveries` (
     `target` VARCHAR(100) NOT NULL COMMENT '投递目标 (邮箱/手机号/ChatID)',
     `status` ENUM('pending', 'sending', 'success', 'failed', 'pending_manual_check') NOT NULL DEFAULT 'pending',
     `error_message` VARCHAR(255) NULL COMMENT '失败报错信息',
-    `sent_at` TIMESTAMP NULL COMMENT '实际送达时间',
-    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    `sent_at` DATETIME NULL COMMENT '实际送达时间',
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY `uk_fingerprint_channel` (`fingerprint`, `channel`),
     INDEX `idx_user_created` (`user_id`, `created_at`),
     INDEX `idx_status_updated` (`status`, `updated_at`)
@@ -299,12 +321,12 @@ CREATE TABLE IF NOT EXISTS `web_push_subscriptions` (
     `endpoint` TEXT NOT NULL COMMENT '浏览器推送网关 Endpoint URL',
     `endpoint_hash` CHAR(64) NOT NULL COMMENT 'Endpoint SHA256 哈希 (用于唯一索引)',
     `p256dh_key` VARCHAR(255) NOT NULL COMMENT '客户端公钥 P256DH',
-    `auth_token` VARCHAR(255) NOT NULL COMMENT '客户端鉴权密钥 Auth Secret',
+    `auth_token` VARCHAR(255) NOT NULL COMMENT '客户端鉴权密钥 Auth Secret (AES-256-GCM 加密存储)',
     `browser` VARCHAR(30) NULL COMMENT '浏览器类型: chrome | edge | safari | firefox',
     `device_name` VARCHAR(50) NULL COMMENT '设备别名 (如 Mac Chrome, iPhone Safari)',
     `status` ENUM('active', 'revoked') NOT NULL DEFAULT 'active' COMMENT '订阅状态',
-    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY `uk_endpoint_hash` (`endpoint_hash`),
     INDEX `idx_user_status` (`user_id`, `status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='WebPush浏览器订阅表';
@@ -318,9 +340,9 @@ CREATE TABLE IF NOT EXISTS `tickets` (
     `department` VARCHAR(50) NOT NULL DEFAULT 'general' COMMENT '部门 (技术/财务/售前)',
     `priority` ENUM('low', 'medium', 'high') NOT NULL DEFAULT 'medium',
     `status` ENUM('open', 'in_progress', 'answered', 'customer_replied', 'closed') NOT NULL DEFAULT 'open',
-    `closed_at` TIMESTAMP NULL COMMENT '工单完结时间',
-    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    `closed_at` DATETIME NULL COMMENT '工单完结时间',
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
     FOREIGN KEY (`assigned_admin_id`) REFERENCES `admins` (`id`) ON DELETE SET NULL,
     INDEX `idx_user_status` (`user_id`, `status`),
@@ -336,7 +358,7 @@ CREATE TABLE IF NOT EXISTS `ticket_replies` (
     `transfer_to_admin_id` INT UNSIGNED NULL COMMENT '转派目标管理员ID',
     `content` TEXT NOT NULL,
     `attachments` JSON NULL COMMENT '附件文件路径列表',
-    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (`ticket_id`) REFERENCES `tickets` (`id`) ON DELETE CASCADE,
     FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL,
     FOREIGN KEY (`admin_id`) REFERENCES `admins` (`id`) ON DELETE SET NULL,
@@ -357,9 +379,9 @@ CREATE TABLE IF NOT EXISTS `coupons` (
     `max_uses_per_user` INT NOT NULL DEFAULT 1 COMMENT '单用户限用次数',
     `used_times` INT NOT NULL DEFAULT 0 COMMENT '已使用次数',
     `is_stackable` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否允许与其他优惠叠加 (默认0禁止)',
-    `expire_at` TIMESTAMP NULL COMMENT '绝对过期时间 (主要用于公开优惠码)',
+    `expire_at` DATETIME NULL COMMENT '绝对过期时间 (主要用于公开优惠码)',
     `status` TINYINT(1) NOT NULL DEFAULT 1 COMMENT '1启用, 0禁用',
-    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='优惠券与促销模板表';
 
 CREATE TABLE IF NOT EXISTS `user_coupons` (
@@ -369,11 +391,11 @@ CREATE TABLE IF NOT EXISTS `user_coupons` (
     `source_type` ENUM('campaign', 'admin_grant', 'code_redeem', 'event_register') NOT NULL DEFAULT 'campaign' COMMENT '发放来源',
     `source_id` INT UNSIGNED NULL COMMENT '关联的营销策略ID或管理员ID',
     `status` ENUM('unused', 'used', 'expired') NOT NULL DEFAULT 'unused' COMMENT '状态',
-    `start_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '生效时间',
-    `expire_at` TIMESTAMP NOT NULL COMMENT '失效时间 (动态计算生成)',
-    `used_at` TIMESTAMP NULL COMMENT '使用核销时间',
-    `order_invoice_id` INT UNSIGNED NULL COMMENT '核销的账单ID',
-    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `start_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '生效时间',
+    `expire_at` DATETIME NOT NULL COMMENT '失效时间 (动态计算生成)',
+    `used_at` DATETIME NULL COMMENT '使用核销时间',
+    `order_invoice_id` BIGINT UNSIGNED NULL COMMENT '核销的账单ID',
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
     FOREIGN KEY (`coupon_id`) REFERENCES `coupons` (`id`) ON DELETE CASCADE,
     INDEX `idx_user_status_expire` (`user_id`, `status`, `expire_at`),
@@ -387,7 +409,7 @@ CREATE TABLE IF NOT EXISTS `coupon_issue_logs` (
     `user_coupon_id` BIGINT UNSIGNED NULL COMMENT '生成的卡券包资产ID',
     `action_type` ENUM('register_gift', 'birthday_gift', 'winback_gift', 'admin_grant') NOT NULL COMMENT '发券业务类型',
     `cycle_marker` VARCHAR(100) NOT NULL COMMENT '防重周期标记 (如 reg:user_42, bday:user_42:2026, winback:user_42:202611)',
-    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
     FOREIGN KEY (`coupon_id`) REFERENCES `coupons` (`id`) ON DELETE CASCADE,
     UNIQUE KEY `uk_user_action_cycle` (`cycle_marker`),
@@ -408,12 +430,26 @@ CREATE TABLE IF NOT EXISTS `articles` (
     `views` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '阅读量/点击量',
     `is_pinned` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否置顶',
     `status` ENUM('published', 'draft') NOT NULL DEFAULT 'published',
-    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (`related_product_id`) REFERENCES `products` (`id`) ON DELETE SET NULL,
     INDEX `idx_type_status` (`type`, `status`, `created_at`),
     INDEX `idx_slug` (`slug`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='文章与帮助文档中心';
+
+CREATE TABLE IF NOT EXISTS `admin_audit_logs` (
+    `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    `admin_id` INT UNSIGNED NOT NULL COMMENT '操作管理员ID',
+    `action` VARCHAR(100) NOT NULL COMMENT '动作标识 (如 task.force_retry / instance.price_override / invoice.refund.approve)',
+    `target_type` VARCHAR(50) NULL COMMENT '目标资源类型 (instance / invoice / user / task 等, 多态关联不设外键)',
+    `target_id` BIGINT UNSIGNED NULL COMMENT '目标资源ID',
+    `context` JSON NULL COMMENT '结构化操作上下文 (如 force-retry 人工核验工单号、改价前后价格、退款原因)',
+    `ip` VARCHAR(45) NULL COMMENT '操作来源IP',
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (`admin_id`) REFERENCES `admins` (`id`) ON DELETE RESTRICT,
+    INDEX `idx_admin_created` (`admin_id`, `created_at`),
+    INDEX `idx_target` (`target_type`, `target_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='管理员高危操作审计日志 (仅追加, UPDATE/DELETE被触发器物理拦截)';
 
 -- =========================================================================
 -- 物理强制触发器：强制保证 transactions 资金流水账本
@@ -441,5 +477,24 @@ END;;
 CREATE TRIGGER `trg_transactions_no_delete` BEFORE DELETE ON `transactions`
 FOR EACH ROW BEGIN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Transactions ledger is strictly append-only: DELETE is forbidden';
+END;;
+DELIMITER ;
+
+-- =========================================================================
+-- 物理强制触发器：强制保证 admin_audit_logs 管理员审计日志
+-- 绝对只追加 (Append-Only): UPDATE 与 DELETE 均被内核拦截
+-- =========================================================================
+DROP TRIGGER IF EXISTS `trg_admin_audit_logs_no_update`;
+DROP TRIGGER IF EXISTS `trg_admin_audit_logs_no_delete`;
+
+DELIMITER ;;
+CREATE TRIGGER `trg_admin_audit_logs_no_update` BEFORE UPDATE ON `admin_audit_logs`
+FOR EACH ROW BEGIN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Admin audit log is strictly append-only: UPDATE is forbidden';
+END;;
+
+CREATE TRIGGER `trg_admin_audit_logs_no_delete` BEFORE DELETE ON `admin_audit_logs`
+FOR EACH ROW BEGIN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Admin audit log is strictly append-only: DELETE is forbidden';
 END;;
 DELIMITER ;

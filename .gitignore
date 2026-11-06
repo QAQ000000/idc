@@ -23,3 +23,6 @@ Thumbs.db
 # Build outputs
 /public/build/
 /public/dist/
+
+# Security scanner local state
+/.mimosa/

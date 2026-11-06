@@ -56,17 +56,7 @@ stateDiagram-v2
 
 ## 4. 关键数据结构规范
 
-### 4.1 工单主表扩展 (`tickets`)
-```sql
-ALTER TABLE `tickets`
-ADD COLUMN `assigned_admin_id` BIGINT UNSIGNED NULL COMMENT '当前承办管理员ID',
-ADD COLUMN `closed_at` TIMESTAMP NULL COMMENT '结单时间',
-ADD INDEX `idx_assigned_status` (`assigned_admin_id`, `status`);
-```
-
-### 4.2 工单回复流表扩展 (`ticket_replies`)
-```sql
-ALTER TABLE `ticket_replies`
-ADD COLUMN `type` ENUM('reply', 'internal_note', 'transfer_log') NOT NULL DEFAULT 'reply' COMMENT '消息类型',
-ADD COLUMN `transfer_to_admin_id` BIGINT UNSIGNED NULL COMMENT '转派目标管理员ID (type=transfer_log时有效)';
-```
+> [!NOTE]
+> **DDL 单一事实来源**：`tickets` 与 `ticket_replies` 的完整字段定义以 `database/schema.sql` 为唯一权威（字典释义见 [DATABASE.md](DATABASE.md) §1.18 / §1.19），本规范不再内嵌 DDL 副本，避免双源漂移。
+> - 工单主表：`assigned_admin_id`（承办管理员）、`closed_at`（结单时间）与 `idx_assigned_status` 索引均已内建于建表脚本；
+> - 回复流表：`type`（`reply` / `internal_note` / `transfer_log`）与 `transfer_to_admin_id` 已内建，流转语义见本文 §2、§3；回复人身份由 `user_id`（客户）或 `admin_id`（管理员）承载。

@@ -59,28 +59,11 @@ interface NotificationChannelInterface
 
 ---
 
-## 4. 防重投递表结构 (MySQL DDL)
+## 4. 防重投递表 (`notification_deliveries`)
 
-在数据库中追加 `notification_deliveries` 审计与防重表：
-
-```sql
-CREATE TABLE IF NOT EXISTS `notification_deliveries` (
-    `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    `fingerprint` VARCHAR(100) NOT NULL COMMENT '业务消息唯一指纹',
-    `channel` VARCHAR(30) NOT NULL COMMENT '渠道标识 (如 mail, sms, telegram)',
-    `user_id` BIGINT UNSIGNED NOT NULL COMMENT '接收用户 ID',
-    `target` VARCHAR(100) NOT NULL COMMENT '投递目标 (邮箱/手机号/ChatID)',
-    `status` ENUM('pending', 'sending', 'success', 'failed', 'pending_manual_check') NOT NULL DEFAULT 'pending',
-    `error_message` VARCHAR(255) NULL COMMENT '失败报错信息',
-    `sent_at` TIMESTAMP NULL COMMENT '实际送达时间',
-    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    -- ⚡ 铁律唯一索引：相同指纹在同一个渠道下绝对只允许存在一条记录
-    UNIQUE KEY `uk_fingerprint_channel` (`fingerprint`, `channel`),
-    INDEX `idx_user_created` (`user_id`, `created_at`),
-    INDEX `idx_status_updated` (`status`, `updated_at`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='通知投递与幂等审计表';
-```
+> [!NOTE]
+> **DDL 单一事实来源**：`notification_deliveries` 完整字段定义以 `database/schema.sql` 为唯一权威（字典释义见 [DATABASE.md](DATABASE.md) §1.16），本规范不再内嵌 DDL 副本，避免双源漂移。
+> 核心约束为铁律唯一索引 `UNIQUE KEY uk_fingerprint_channel (fingerprint, channel)`：相同业务指纹在同一个渠道下绝对只允许存在一条记录，数据库层物理防重。
 
 ---
 
@@ -134,22 +117,9 @@ WHERE (status = 'pending' AND created_at < DATE_SUB(NOW(), INTERVAL 10 MINUTE))
      - 若当前登录态有效，直接展现实例控制台；
      - 若当前已退出或登录态失效，**立即重定向至登录页**，严禁使用推送凭据免密提权！
 
-### 6.2 Web Push 设备订阅表结构 (`web_push_subscriptions`)
-```sql
-CREATE TABLE IF NOT EXISTS `web_push_subscriptions` (
-    `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    `user_id` BIGINT UNSIGNED NOT NULL COMMENT '归属用户',
-    `endpoint` TEXT NOT NULL COMMENT '浏览器推送网关 Endpoint URL',
-    `endpoint_hash` CHAR(64) NOT NULL COMMENT 'Endpoint SHA256 哈希 (用于唯一索引)',
-    `p256dh_key` VARCHAR(255) NOT NULL COMMENT '客户端公钥 P256DH',
-    `auth_token` VARCHAR(255) NOT NULL COMMENT '客户端鉴权密钥 Auth Secret',
-    `browser` VARCHAR(30) NULL COMMENT '浏览器类型: chrome | edge | safari | firefox',
-    `device_name` VARCHAR(50) NULL COMMENT '设备别名 (如 Mac Chrome, iPhone Safari)',
-    `status` ENUM('active', 'revoked') NOT NULL DEFAULT 'active' COMMENT '订阅状态',
-    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    UNIQUE KEY `uk_endpoint_hash` (`endpoint_hash`),
-    INDEX `idx_user_status` (`user_id`, `status`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='WebPush浏览器订阅表';
-```
+### 6.2 Web Push 设备订阅表 (`web_push_subscriptions`)
+
+> [!NOTE]
+> **DDL 单一事实来源**：`web_push_subscriptions` 完整字段定义以 `database/schema.sql` 为唯一权威（字典释义见 [DATABASE.md](DATABASE.md) §1.17），本规范不再内嵌 DDL 副本，避免双源漂移。
+> 关键设计：`endpoint_hash`（SHA256）承担唯一索引防重复订阅；`auth_token` 为推送鉴权密钥，AES-256-GCM 加密存储，严禁明文落库与日志。
 

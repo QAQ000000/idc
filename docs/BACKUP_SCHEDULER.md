@@ -43,26 +43,7 @@
 
 ## 4. 数据库表结构规范
 
-### 4.1 快照与备份计划任务表 (`instance_snapshot_schedules`)
-```sql
-CREATE TABLE IF NOT EXISTS `instance_snapshot_schedules` (
-    `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    `instance_id` BIGINT UNSIGNED NOT NULL COMMENT '所属云实例ID',
-    `user_id` BIGINT UNSIGNED NOT NULL COMMENT '所属用户ID',
-    `type` ENUM('snapshot', 'backup') NOT NULL DEFAULT 'snapshot' COMMENT '操作类型: snapshot快照 / backup备份',
-    `frequency` ENUM('daily', 'interval_days') NOT NULL DEFAULT 'daily' COMMENT '执行频率',
-    `cron_time` TIME NOT NULL DEFAULT '03:00:00' COMMENT '执行时间点 (时:分:秒)',
-    `interval_days` INT NOT NULL DEFAULT 1 COMMENT '间隔天数 (1为每天, 3为每3天)',
-    `retention_count` INT NOT NULL DEFAULT 3 COMMENT '保留最新份数 (必须 <= 商品最大配额)',
-    `allow_risky_single_slot_purge` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '配额仅1份时是否允许先删后建高风险轮转(默认0安全暂停并告警)',
-    `last_risky_purge_at` TIMESTAMP NULL COMMENT '最近一次单槽位高风险轮转时间',
-    `status` TINYINT(1) NOT NULL DEFAULT 1 COMMENT '1启用, 0暂停',
-    `last_run_at` TIMESTAMP NULL COMMENT '最近一次触发执行时间',
-    `next_run_at` TIMESTAMP NOT NULL COMMENT '下一次触发执行时间 (调度轮询使用)',
-    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (`instance_id`) REFERENCES `instances` (`id`) ON DELETE CASCADE,
-    FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
-    INDEX `idx_scheduler_poll` (`status`, `next_run_at`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='快照与备份自主计划任务表';
-```
+> [!NOTE]
+> **DDL 单一事实来源**：本模块两张表的完整字段定义以 `database/schema.sql` 为唯一权威（字典释义见 [DATABASE.md](DATABASE.md)），本规范不再内嵌 DDL 副本，避免双源漂移：
+> - `instance_snapshot_schedules`（DATABASE.md §1.8）：计划任务规则与调度轮询字段（`next_run_at`、`last_risky_purge_at`、`allow_risky_single_slot_purge` 等）；
+> - `instance_snapshots`（DATABASE.md §1.9）：快照/备份归属凭证台账。每次创建成功后必须将上游返回的 `remote_snapshot_id` 与本计划 `schedule_id` 关联落库；Outbox 清理任务幂等键 `snapshot_delete:{remote_snapshot_id}` 即以该唯一键为依据，滚动清理候选严格按 `schedule_id` 查询（详见 [LIFECYCLE_PRICING.md](LIFECYCLE_PRICING.md) §5.2/§5.3）。

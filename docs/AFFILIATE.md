@@ -92,22 +92,7 @@ flowchart TD
 
 ## 3. 数据库表结构规范
 
-### 3.1 提现申请主表 (`commission_withdrawals`)
-```sql
-CREATE TABLE IF NOT EXISTS `commission_withdrawals` (
-    `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    `user_id` BIGINT UNSIGNED NOT NULL COMMENT '申请提现的用户ID',
-    `amount` DECIMAL(10,2) NOT NULL COMMENT '提现金额',
-    `destination` ENUM('balance', 'external') NOT NULL COMMENT '提现目标: balance=转入站内可用余额, external=站外转账',
-    `channel_info` TEXT NULL COMMENT '站外提现信息 (用户自由备注: 如 支付宝账号 / 真实姓名 / 手机号)',
-    `status` ENUM('pending', 'approved', 'rejected') NOT NULL DEFAULT 'pending' COMMENT '审批状态',
-    `admin_id` BIGINT UNSIGNED NULL COMMENT '经办/审核管理员',
-    `admin_remark` VARCHAR(255) NULL COMMENT '转账流水号或驳回原因',
-    `processed_at` TIMESTAMP NULL COMMENT '处理/打款时间',
-    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
-    INDEX `idx_status_created` (`status`, `created_at`),
-    INDEX `idx_user_status` (`user_id`, `status`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='推广返佣提现申请表';
-```
+> [!NOTE]
+> **DDL 单一事实来源**：`commission_withdrawals` 完整字段定义以 `database/schema.sql` 为唯一权威（字典释义见 [DATABASE.md](DATABASE.md) §1.15），本规范不再内嵌 DDL 副本，避免双源漂移。关键字段提示：
+> - 站外提现收款：`channel_type`（alipay / bank / manual）、`account_name`、`account_no`（AES-256-GCM 加密存储）、`channel_info`（自由备注）；
+> - 审批流转：`admin_id`、`admin_remark`、`processed_at`。

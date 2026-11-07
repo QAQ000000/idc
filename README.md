@@ -86,6 +86,16 @@ REDIS_SERVER=/absolute/path/to/redis-server python3 scripts/test_integration.py
 
 ---
 
+## 管理后台：异常任务与人工核验
+
+沿用同一前端，打开 `/admin/login`，任务入口 `/admin/tasks`。启用的管理员可以筛选、分页查看异常任务及账单/实例/上游上下文和审计；只有启用的 `super_admin` 能提交原有人工核验动作，操作要求证据和页面所读执行令牌，越权、重放或过期状态会被拒绝。客户与管理员账号/Token 分离。
+
+首次账号由环境操作者执行 `php artisan admin:create < /安全路径/admin.json`，JSON 字段为 `username,email,password,role`，role 为 super_admin/finance/support/operator，密码 12–72 字节。仅创建新账号、不重置既有账号、无默认密码或公开注册；通过私有 stdin 提交，不在命令行参数或 Git 中放密码。配置已有 second factor 的账号本批拒绝登录，后续单独接入验证流程。管理员登录复用 login 验证码及每 IP 每分钟 10 次密码校验限流，需现有 Redis。
+
+本批无新增表或迁移，沿用当前环境/APP_KEY。页面“永久取消并退到钱包”仅是既有、需显式核验的未交付新购动作，不是渠道退款，不适用于续费；退款继续管理员手动办理。没有变更真实旧单与客户款项。详细接口和 UI 边界见 [API](docs/API.md#admin-operations)、[前端契约](docs/FRONTEND.md#admin-pages)。
+
+隔离网页验收：`REDIS_SERVER=/path/to/redis-server python3 -B scripts/test_integration.py --browser`。该脚本创建独立测试库/服务，测试账号 `browser-admin` / `BrowserAdmin!2026`、只读 `browser-support` / `BrowserSupport!2026` 仅在该隔离库有效，包含两条人工核验样本。不得将测试 fixture 导入业务库；退出时按提示回车清理。
+
 ## 架构文档导航
 
 - [协同开发指南与工程宪法](AGENTS.md)

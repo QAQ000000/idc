@@ -2,7 +2,7 @@
 
 本文档定义了 JianYun 系统客户端门户（Client Portal）与管理控制台（Admin Console）的全部 RESTful API 契约。
 
-> 本字典同时包含规划接口；实际交付状态以 [ROADMAP.md](ROADMAP.md) 与 README 的当前实现说明为准。下述快照、变配确认和人工裁决接口尚未实现，不得据此认定已通过运行验收。
+> 本字典同时包含规划接口；实际交付状态以 [ROADMAP.md](ROADMAP.md) 与 README 的当前实现说明为准。下述快照、变配确认及分散式人工裁决规划路径尚未实现，规划条目不代表运行验收。已交付的统一 resolve 与管理员查询接口及验证范围见文末。
 
 **框架适配基准**：目标后端为 PHP 8.4 + Laravel 13，前端为单一 Vue 3/Element Plus REST API 应用；当前 MVP 已完成框架接入。框架接入保持本字典的路径、载荷、统一响应、金额字符串及身份/归属权限规则，不能因采用框架默认行为擅自改变认证或错误语义。兼容与回归要求见 [TECH_STACK.md](TECH_STACK.md)。
 
@@ -327,3 +327,28 @@ CDN 交付可没有 IP，不以缺 IP 判定失败。不包含 M4 电源、重�
 上述选配示例省略其余字段，仅说明 ID 结构；必须以 `/config` 返回的全部字段为准。配置 ID/值规范化后计算 checkout_hash，键顺序及整数/字符串表达不产生新意图。选配订单必须携带确认令牌，下单前的首期价、续费价、Schema 或本地加价变化返回 409；原成功请求重放在预检与令牌检查前返回。新购账单响应增加 recurring_price、config_options 与可读 configuration，实例详情/列表增加 configuration；不公开上游成本或原始 Schema。30 分钟账单付款期限仍有效。旧固定商品可不传令牌，传入则校验。完整行为见 [配置销售契约](M2_CONFIG_SALES.md)。
 
 后续真实验收修正：calculate 响应增加 `password_policy`，含整数 min_length/max_length（UTF-8 字节），可选 character_sets 与 generation_length。字符集名 upper/lower/digit/special 对应 ASCII 大写、小写、数字及 `~@#$&*(){}[]|`，须包含每个指定集合且只使用其并集；前端可按默认长度安全生成。魔方为 12–20 字节并跟随当前 Schema 的生成字符集；未声明策略的驱动保留 12–72 字节。checkout 在入库/扣款前按实时预检策略校验；不能绕过 UI 提交超限密码。报价确认绑定策略，变化需重新确认；成功同键重放仍先返回原单。历史已提交任务的调查不受新校验阻断。
+
+
+<a id="admin-operations"></a>
+
+## 运营后台第一批（2026-11-08）
+
+范围为独立管理员登录、异常任务查询与已有人工裁决的网页入口，不新增自动退款或通用重试 API。
+
+| 方法/路径（/api/v1） | 权限与输入/结果 |
+|---|---|
+| POST /admin/auth/login | `{username,password,captcha_payload}`；复用 login 验证码策略，按可信客户端 IP 由 Redis 限制每分钟 10 次密码校验；返回 `{token,admin:{id,username,email,role,status}}`。不存在账号与错误密码均 401，禁用账号 403；已有二次认证配置的账号因本批未实现二次认证登录而拒绝 403，绝不绕过。 |
+| GET /admin/auth/me | 有效 admin Token；每次读取 admins 当前角色与状态，不信任前端角色。 |
+| GET /admin/tasks | 所有启用管理员可读；`page` 默认 1、最大 100000，`per_page` 默认 20、最大 100。可筛选 `status=attention/manual/pending/running/investigating/failed/success/all`、`action=create/renew` 及精确 task_id/invoice_id/instance_id。返回 `{items,total,page,per_page}`，按任务 ID 倒序。默认 attention 包括未按永久取消/退款/续费取消结案的 failed、investigating、租约为空/过期的 running；已结案记录仍可按 failed/all 查阅；manual 仅 failed+人工核验前缀。不存在匹配项返回空页。 |
+| GET /admin/tasks/{id} | 所有启用管理员可读；返回 task、instance、invoice、user、receipts、allowed_actions、blocked_by_other_operation、audit。audit_page 默认 1，每页 20，最大页 100000。无任务 404。 |
+| POST /admin/tasks/{id}/resolve | 仍是唯一已实现裁决入口；仅启用 super_admin，沿用 `action,evidence,expected_execution_token` 与既有确认要求。成功 `{resolved:true}`；无材料/错误参数 400、普通管理员 403、过期令牌/状态/实例业务门禁 409。客户 Token 一律 401。 |
+
+客户与管理员 Token 的 sub_type 分离，管理员 Token 不能调用客户身份 API，客户 Token 不能调用后台。所有启用角色（super_admin/finance/support/operator）可查看本批任务上下文；只有 super_admin 可裁决，没有新增 RBAC 实体。令牌仍为原 2 小时格式，修改角色或禁用账号即时生效。
+
+查询仅投影定位所需字段：账单收款状态/金额、客户编号与邮箱、实例账期/状态、商品与上游名称、操作/资源编号、异常码、分页人工审计。不会回传原始 payload、价格/配置快照、网关报文、连接地址、密文或密码；任意历史错误文本替换为 DETAILS_REDACTED，审计 context 仅投影 evidence、previous_execution_token、remote_instance_id、payment_record_id、amount。核验材料不得填写密钥。上游原始业务错误仍需查受控运维证据。
+
+allowed_actions 是当前一致性快照下的候选操作，不能当作授权令牌：运行/调查/成功/永久取消无操作，普通管理员无操作，有其他 blocker 或退款冻结无操作。failed+人工核验、已付且归属吻合时，新购候选 fulfill/retry/cancel_compensate，续费候选 investigate/fulfill/retry；新购补偿另查唯一收款凭证与佣金等门禁。写服务仍以锁定读校验全部条件；页面打开后发生变化会拒绝，不自动使用新 token 重发。
+
+`evidence` 为去除首尾空白后的 10–1000 UTF-8 字节。retry/cancel_compensate 必须提交 `confirmed_no_execution_or_pending_request=true` 并证明未履约、未扣上游款、无延迟请求。fulfill 必填真实 remote_instance_id，可选有效 ip_address；续费必须保留原资源。cancel_compensate 是管理员显式触发的既有**未交付新购取消并退到站内钱包**，不是渠道原路退款，续费不支持。详情不表示上游已扣款，人工退款登记仍未实现。
+
+**契约变更记录**：为持续运营复用原 AdminAuthMiddleware、27 表和 TaskResolutionService，增加登录/只读投影/单 Vue 页面，将此前仅 CLI/受控 HTTP 可用的动作接入网页；未新增实体、迁移、驱动调用、自动退款或分散式裁决路径，原 resolve 载荷兼容。证据收紧为空白拒绝，畸形 IP 从运行错误收敛为 400。验证由 tests/admin.php、私有 PHP-FPM 与隔离浏览器提供，记录见路线图。

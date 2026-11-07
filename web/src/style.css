@@ -135,3 +135,16 @@ h2 {
     font-size: 24px;
   }
 }
+.task-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0 16px;
+}
+.task-pagination { margin-top: 20px; overflow-x: auto; }
+.task-detail { min-height: 120px; margin-top: 20px; }
+.task-detail > .el-card { margin-bottom: 20px; }
+.task-detail .el-descriptions__content { overflow-wrap: anywhere; }
+.audit-evidence { white-space: pre-wrap; overflow-wrap: anywhere; }
+.task-resolution-dialog { max-width: calc(100vw - 32px); }
+.task-confirm { height: auto; align-items: flex-start; white-space: normal; }
+.task-confirm .el-checkbox__label { white-space: normal; line-height: 1.6; }

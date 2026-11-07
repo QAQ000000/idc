@@ -233,7 +233,7 @@ flowchart TD
 
 未知结果每分钟只读调查，一小时仍未知或 NON_QUERYABLE 转 `failed + MANUAL_AUDIT_REQUIRED:`，记 critical 事件（只含 task_id）；必须配合日志监控和 `outbox:inspect` 人工值守。证明未执行的退避为 5/15/30 分钟，达到重试上限转人工。Provider 禁用、查询失败与最终一致性查无不释放占用。
 
-人工入口：`POST /api/v1/admin/tasks/{id}/resolve`，或 `php artisan outbox:resolve TASK_ID ADMIN_ID < resolution.json`。当前取代规划中的分散 force-retry/manual-fulfill 路径，未实现独立后台 UI。均要求有效 super_admin、`expected_execution_token`、10–1000 字符 evidence；action 为 retry/fulfill/cancel_compensate，以及续费专用 investigate（见后文）。retry/cancel_compensate 还需显式 `confirmed_no_execution_or_pending_request=true`，核验材料必须证明没有资产、扣款及后续可执行请求；不能只提交“没查到”。fulfill 需真实 remote_instance_id，可空 ip_address。
+人工入口：`POST /api/v1/admin/tasks/{id}/resolve`，或 `php artisan outbox:resolve TASK_ID ADMIN_ID < resolution.json`。当前取代规划中的分散 force-retry/manual-fulfill 路径；同一 Vue 应用已接入 /admin/tasks 列表与详情，权限、分页与安全投影见 [API](API.md#admin-operations)。均要求有效 super_admin、`expected_execution_token`、10–1000 UTF-8 字节 evidence（去首尾空白）；action 为 retry/fulfill/cancel_compensate，以及续费专用 investigate（见后文）。retry/cancel_compensate 还需显式 `confirmed_no_execution_or_pending_request=true`，核验材料必须证明没有资产、扣款及后续可执行请求；不能只提交“没查到”。fulfill 需真实 remote_instance_id，可空 ip_address。
 
 永久取消只适用待交付、已支付新购、唯一正常消费收款凭证且无历史佣金/在途退款的订单。它同事务递增令牌并永久终止该任务及其他 pending，实例本地 terminated、账单 refunded、恢复预留库存、真实原额入钱包、冲累计消费并追加管理员审计。收款凭证标注 refund_status=success、refund_method=to_balance，防止后续再次原路退款。没有远端资产时不派 terminate。已有佣金拒绝处理并要求专项冲正，不能略过资金保证。重复或旧 token 裁决拒绝，无第二次补偿。
 
@@ -255,3 +255,12 @@ renew 的人工 retry/fulfill 使用现有 resolve 入口和审计，fulfill 必
 
 
 **运行部署（2026-11-08）**：现有 M2 验收环境已接入独立 systemd Worker 与每分钟 schedule:run timer，异常日志和调度子命令输出进入 journal，任务列表仍是持久待办事实。22 项独立运行检查覆盖守护重启、租约门禁、原任务只读恢复、日志及待办保留；正式环境另行部署，不改变未知结果/不自动退款策略或业务占用。配置、故障演练及时间验证边界见 [运行部署规程](DEPLOYMENT_RUNTIME.md)。
+
+
+### 网页人工核验入口边界（2026-11-08）
+
+管理员查询复用 tasks 与 admin_audit_logs，不增加任务副本或处置状态表。所有启用管理员可读，只有数据库当前启用 super_admin 可写。候选动作与裁决服务共享状态规则；只读投影另外排除其他未决任务、退款冻结及不合条件的钱包补偿，最终仍由原 resolve 的实例优先锁顺序、当前读、证据、旧 token 和同事务审计裁决。
+
+页面不直接修改任务或调驱动；提交时不强制覆盖当前状态，不为 UI 放宽 Worker 令牌/租约门禁。旧弹窗及重复请求 409，失败操作不产生成功审计。续费调查保留原资源与上游操作编号、款项和已顺延本地权益，绝不套用新购取消。既有显式 cancel_compensate 仍只针对已证实永久未交付新购，且只退钱包；人工渠道退款继续按独立财务证据处理，不增加自动退款。
+
+变更原因是补齐运营入口，影响 TaskInspectionService、TaskController、管理员认证及单 Vue 页面；resolve 载荷兼容，未新增 schema/驱动能力。证据最短长度按有效非空白字节校验，非法 IP 返回 400。安全与并发验证见 tests/admin.php；没有操作真实待核验旧单。

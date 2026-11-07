@@ -127,6 +127,7 @@ def main():
             run_checks(php, 'tests/m2.php', env, r'M2 checks: \d+')
             run_checks(php, 'tests/renewal.php', env, r'Renewal checks: \d+')
             run_checks(php, 'tests/configurable.php', env, r'\d+ configurable checks passed\.')
+            run_checks(php, 'tests/admin.php', env, r'Admin checks: \d+')
             subprocess.run([php, 'artisan', 'migrate', '--force'], cwd=ROOT, env=env, check=True)
             subprocess.run([php, 'tests/browser_fixture.php'], cwd=ROOT, env=env, check=True)
             fpm_socket = directory / 'fpm.sock'

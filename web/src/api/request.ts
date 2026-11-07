@@ -8,9 +8,10 @@ export class ApiError extends Error {
 }
 export async function api<T>(
   path: string,
-  options: { method?: string; body?: unknown } = {},
+  options: { method?: string; body?: unknown; scope?: "admin" } = {},
 ): Promise<T> {
-  const token = sessionStorage.getItem("jianyun_token");
+  const key = options.scope === "admin" ? "jianyun_admin_token" : "jianyun_token";
+  const token = sessionStorage.getItem(key);
   let response: Response;
   try {
     response = await fetch("/api/v1" + path, {
@@ -31,8 +32,8 @@ export async function api<T>(
   })) as { code: number; msg: string; data: T };
   if (!response.ok || result.code !== 0) {
     if (response.status === 401) {
-      sessionStorage.removeItem("jianyun_token");
-      window.dispatchEvent(new Event("jianyun:unauthorized"));
+      sessionStorage.removeItem(key);
+      window.dispatchEvent(new Event(options.scope === "admin" ? "jianyun:admin-unauthorized" : "jianyun:unauthorized"));
     }
     throw new ApiError(result.msg || "请求失败", response.status);
   }

@@ -10,7 +10,8 @@ final class TaskResolutionService
     public function resolve(int $adminId, int $taskId, array $input): void
     {
         $action = Request::text($input, 'action', 1, 30);
-        $evidence = Request::text($input, 'evidence', 10, 1000);
+        $evidence = trim(Request::text($input, 'evidence', 10, 1000));
+        if (strlen($evidence) < 10) { throw new ApiException('Evidence must contain at least 10 bytes'); }
         $token = Request::id($input['expected_execution_token'] ?? null);
         if (!in_array($action, ['retry', 'fulfill', 'cancel_compensate', 'investigate'], true)) { throw new ApiException('Unsupported resolution'); }
         if (in_array($action, ['retry','cancel_compensate'], true)
@@ -23,17 +24,15 @@ final class TaskResolutionService
             $s = $db->prepare('SELECT * FROM instances WHERE id = ? FOR UPDATE'); $s->execute([$iid]); $instance = $s->fetch();
             TaskGate::assertClear($db, (int)$iid, $taskId);
             $s = $db->prepare('SELECT * FROM tasks WHERE id = ? FOR UPDATE'); $s->execute([$taskId]); $t = $s->fetch();
-            if ($t['status'] !== 'failed' || !str_starts_with($t['last_error'] ?? '', 'MANUAL_AUDIT_REQUIRED:')
-                || (int)$t['execution_token'] !== $token || !in_array($t['action'],['create','renew'],true)
-                || ($t['action']==='create' && ($instance['status'] !== 'pending' || $instance['remote_instance_id'] !== null))
-                || ($t['action']==='renew' && (!in_array($instance['status'],['active','suspended'],true) || !$instance['remote_instance_id']))) {
-                throw new ApiException('Task no longer eligible for this resolution', 409, 409);
+            if (!$t || !$instance || (int)$t['execution_token'] !== $token) {
+                throw new ApiException('Task execution token is no longer valid', 409, 409);
             }
             $s = $db->prepare("SELECT * FROM invoices WHERE id = ? AND instance_id = ? AND user_id = ? AND type = ? FOR UPDATE");
             $s->execute([$t['invoice_id'], $iid, $instance['user_id'], $t['action']==='renew'?'renew':'new']); $inv = $s->fetch();
             if (!$inv || $inv['status'] !== 'paid') { throw new ApiException('Resolution requires a paid purchase', 409, 409); }
             $s = $db->prepare("SELECT id FROM admins WHERE id = ? AND role = 'super_admin' AND status = 'active' FOR UPDATE"); $s->execute([$adminId]);
             if (!$s->fetch()) { throw new ApiException('Active super_admin required', 403, 403); }
+            if (!in_array($action, self::candidateActions($t, $instance, $inv, 'super_admin'), true)) { throw new ApiException('Action unavailable for this task', 409, 409); }
             $context = ['evidence' => $evidence, 'previous_execution_token' => $token];
             if ($action === 'investigate') {
                 if ($t['action'] !== 'renew') { throw new ApiException('Read-only renewal investigation required', 409, 409); }
@@ -72,6 +71,7 @@ final class TaskResolutionService
             } elseif ($action === 'fulfill') {
                 $remote = Request::text($input, 'remote_instance_id', 1, 100);
                 $ip = $input['ip_address'] ?? null;
+                if ($ip !== null && (!is_string($ip) || !filter_var($ip, FILTER_VALIDATE_IP))) { throw new ApiException('Invalid IP address'); }
                 if($t['action']==='renew') {
                     if($remote!==$instance['remote_instance_id']){throw new ApiException('Renewal must retain its original resource',409,409);}
                     RenewalService::complete($db,$t);
@@ -87,4 +87,18 @@ final class TaskResolutionService
                 ->execute([$adminId, 'task_' . $action, 'task', $taskId, json_encode($context, JSON_THROW_ON_ERROR), \App\Core\Security::getClientIp()]);
         });
     }
+    /** State-based candidates, shared with the read projection; resolve rechecks all locks and financial gates. */
+    public static function candidateActions(array $task, array $instance, ?array $invoice, string $role): array
+    {
+        if ($role !== 'super_admin' || $task['status'] !== 'failed'
+            || !str_starts_with($task['last_error'] ?? '', 'MANUAL_AUDIT_REQUIRED:')
+            || !in_array($task['action'], ['create','renew'], true) || !$invoice || $invoice['status'] !== 'paid'
+            || (int)$invoice['instance_id'] !== (int)$instance['id'] || (int)$invoice['user_id'] !== (int)$instance['user_id']
+            || $invoice['type'] !== ($task['action']==='renew' ? 'renew' : 'new')) { return []; }
+        if ($task['action']==='create') {
+            return $instance['status']==='pending' && $instance['remote_instance_id']===null ? ['fulfill','retry','cancel_compensate'] : [];
+        }
+        return in_array($instance['status'],['active','suspended'],true) && $instance['remote_instance_id'] ? ['investigate','fulfill','retry'] : [];
+    }
+
 }

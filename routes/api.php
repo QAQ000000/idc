@@ -24,4 +24,10 @@ Route::middleware('client')->group(function (): void {
     Route::post('instances/{id}/renew', [\App\Http\Controllers\InstanceController::class, 'renew']);
     Route::patch('instances/{id}/auto-renew', [\App\Http\Controllers\InstanceController::class, 'automatic']);
 });
-Route::post('admin/tasks/{id}/resolve', [\App\Http\Controllers\TaskController::class, 'resolve']);
+Route::post('admin/auth/login', [\App\Http\Controllers\AdminAuthController::class, 'login'])->middleware('captcha:login');
+Route::middleware('admin')->group(function (): void {
+    Route::get('admin/auth/me', [\App\Http\Controllers\AdminAuthController::class, 'me']);
+    Route::get('admin/tasks', [\App\Http\Controllers\TaskController::class, 'index']);
+    Route::get('admin/tasks/{id}', [\App\Http\Controllers\TaskController::class, 'show']);
+    Route::post('admin/tasks/{id}/resolve', [\App\Http\Controllers\TaskController::class, 'resolve']);
+});

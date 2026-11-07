@@ -82,7 +82,7 @@
 - **当前实现状态**：已有 MVP 已接入 PHP 8.4/Laravel 13，领域 SQL 使用框架同连接事务，保留 Token 与密文兼容。实施边界见 [技术栈定案](docs/TECH_STACK.md)。
 - **数据库**：MySQL 8.0+（严格启用事务与外键/唯一键，金额使用 DECIMAL(10,2)）。
 - **缓存与调度**：Redis 当前用于验证码，规划用于快照缓存和 Worker 唤醒；任务事实、业务占用与执行租约保留在 MySQL，不能用 Redis 锁到期解除业务门禁。
-- **前端（M0 已实现）**：单应用 **Vue 3 + Vite + TypeScript + Element Plus**，保留 Vue Router、Pinia 与 REST API；已实现公开商品、注册登录、下单及账单查看/支付/取消、实例列表/详情/交付状态页面；优先使用标准组件和成熟布局，Tailwind 非首版必需。当前实现范围与依赖见 [README](README.md#当前实现与本地启动)，未勾选能力见 [路线图](docs/ROADMAP.md)。
+- **前端（M0 已实现）**：单应用 **Vue 3 + Vite + TypeScript + Element Plus**，保留 Vue Router、Pinia 与 REST API；已实现公开商品、注册登录、下单及账单查看/支付/取消、实例列表/详情/交付状态页面；优先使用标准组件和成熟布局，Tailwind 非首版必需。当前实现范围与依赖见 [README](README.md#当前实现与本地启动)，未勾选能力见 [路线图](docs/ROADMAP.md)。后台第一批复用同一 Vue 的 /admin/login 与 /admin/tasks，所有启用管理员可读，仅 super_admin 通过原 resolve 服务裁决；禁止页面或新接口绕过证据、旧执行令牌、任务/资金门禁与同事务审计。
 
 ---
 

@@ -12,7 +12,7 @@ def size(length):
     return bytes([length]) if length < 128 else struct.pack('!I', length | 0x80000000)
 
 
-def request(socket_path, root, method, path, body=None):
+def request(socket_path, root, method, path, body=None, token=None):
     content = json.dumps(body).encode() if body is not None else b''
     params = {
         'SCRIPT_FILENAME': str(root / 'public/index.php'), 'SCRIPT_NAME': '/index.php',
@@ -20,6 +20,8 @@ def request(socket_path, root, method, path, body=None):
         'SERVER_PROTOCOL': 'HTTP/1.1', 'SERVER_NAME': 'localhost', 'SERVER_PORT': '80',
         'REMOTE_ADDR': '127.0.0.1', 'CONTENT_TYPE': 'application/json', 'CONTENT_LENGTH': str(len(content)),
     }
+    if token:
+        params['HTTP_AUTHORIZATION'] = 'Bearer ' + token
     encoded = b''.join(size(len(k)) + size(len(v)) + k.encode() + v.encode() for k, v in params.items())
     output = b''
     with socket.socket(socket.AF_UNIX) as connection:
@@ -55,4 +57,20 @@ def verify(socket_path, root):
     })[0] == 200
     status, response = request(socket_path, root, 'GET', '/api/v1/auth/me')
     assert status == 401 and response['data'] is None
-    print('PASS: isolated PHP-FPM health, login, and subsequent anonymous identity isolation')
+    status, response = request(socket_path, root, 'POST', '/api/v1/admin/auth/login', {
+        'username': 'browser-admin', 'password': 'BrowserAdmin!2026',
+    })
+    assert status == 200
+    admin_token = response['data']['token']
+    assert request(socket_path, root, 'GET', '/api/v1/admin/tasks', token=admin_token)[0] == 200
+    assert request(socket_path, root, 'GET', '/api/v1/admin/tasks')[0] == 401
+    assert request(socket_path, root, 'GET', '/api/v1/auth/me', token=admin_token)[0] == 401
+    status, response = request(socket_path, root, 'POST', '/api/v1/auth/login', {
+        'email': 'browser@example.test', 'password': 'BrowserFixture!2026',
+    })
+    assert status == 200
+    client_token = response['data']['token']
+    assert request(socket_path, root, 'GET', '/api/v1/auth/me', token=client_token)[0] == 200
+    assert request(socket_path, root, 'GET', '/api/v1/admin/tasks', token=client_token)[0] == 401
+    assert request(socket_path, root, 'GET', '/api/v1/admin/auth/me')[0] == 401
+    print('PASS: isolated PHP-FPM client/admin authentication, anonymous and cross-scope identity isolation')

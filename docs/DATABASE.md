@@ -13,6 +13,8 @@
 
 **退款字段交付边界（2026-11-08）**：退款由管理员手动办理，现有 `refund_*` 字段及退款用途说明不代表已实现自动退款、自动网关调用或人工登记接口。本次仅调整交付范围，27 表、DDL、触发器与历史数据均不变；退款证据、防重记账和审计要求见 [人工退款策略](PAYMENTS_LEDGER.md#manual-refund-policy)。
 
+**运营后台第一批（2026-11-08）**：复用 admins、tasks、instances、invoices、payment_records 与 admin_audit_logs，27 表与 DDL 无变化，不需要迁移。admins.role 当前用于所有启用管理员只读、仅 super_admin 裁决；列表/详情不读取凭据或原始任务载荷，处理记录来自原审计表，不增加同步副本。登录仅签发 admin 作用域 Token，既有二次认证配置不能被绕过；接口边界见 [API](API.md#admin-operations)。
+
 **旧站数据库备份契约**：外置旧站插件必须按指定简云发布版本的完整 `database/schema.sql`（含初始化设置、外键、唯一键及保护触发器）生成 `schema.sql` 与目标表数据 `data.sql`，并附目标版本、schema 校验和及对账清单。SQL 恢复仅面向独立空库，不携带旧库查询或依赖新旧数据库同机，不默认覆盖或合并已有业务库；不为迁移增加物理表。本节 DDL 摘录不能作为完整恢复脚本。目标版本不匹配时重新导出并演练，细则见 [MIGRATION_RUNBOOK.md](MIGRATION_RUNBOOK.md)。
 
 ---

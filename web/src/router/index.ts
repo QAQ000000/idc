@@ -24,6 +24,16 @@ const router = createRouter({
       meta: { client: true },
     },
     {
+      path: "/instances",
+      component: () => import("../views/InstancesView.vue"),
+      meta: { client: true },
+    },
+    {
+      path: "/instances/:id",
+      component: () => import("../views/InstanceView.vue"),
+      meta: { client: true },
+    },
+    {
       path: "/:pathMatch(.*)*",
       component: () => import("../views/NotFoundView.vue"),
     },

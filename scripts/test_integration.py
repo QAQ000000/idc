@@ -97,6 +97,20 @@ def main():
             result = subprocess.run([php, "tests/integration.php"], cwd=ROOT, env=env)
             if result.returncode:
                 raise RuntimeError("Integration checks failed")
+            upstream_port = free_port()
+            env['UPSTREAM_TEST_URL'] = f'http://127.0.0.1:{upstream_port}'
+            with (directory / 'upstream.log').open('w') as log:
+                processes.append(subprocess.Popen(['python3', 'tests/upstream_fixture.py', str(upstream_port)], cwd=ROOT, env=env, stdout=log, stderr=log, start_new_session=True))
+            deadline = time.monotonic() + 10
+            while True:
+                try:
+                    urllib.request.urlopen(env['UPSTREAM_TEST_URL'] + '/__state', timeout=1).close()
+                    break
+                except OSError:
+                    if time.monotonic() > deadline:
+                        raise RuntimeError('Upstream test fixture not ready')
+                    time.sleep(0.1)
+            subprocess.run([php, 'tests/m2.php'], cwd=ROOT, env=env, check=True)
             subprocess.run([php, 'artisan', 'migrate', '--force'], cwd=ROOT, env=env, check=True)
             subprocess.run([php, 'tests/browser_fixture.php'], cwd=ROOT, env=env, check=True)
             fpm_socket = directory / 'fpm.sock'

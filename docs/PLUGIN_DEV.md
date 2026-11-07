@@ -97,55 +97,35 @@ namespace App\Plugins\Providers;
 
 interface UpstreamDriverInterface
 {
-    /**
-     * 1. 声明驱动支持的能力集 (按需声明，解决虚拟主机/Sub2API等假装VPS问题)
-     * 返回支持的能力常量列表，如: [Feature::CREATE, Feature::RENEW, Feature::POWER]
-     * Feature::SNAPSHOT / Feature::BACKUP 还必须实现下述可选 SnapshotDriverInterface
-     */
-    public function getSupportedFeatures(): array;
-
-    /**
-     * 1.1 声明驱动的反查权威度级别
-     * 返回值: 'AUTHORITATIVE_REALTIME' | 'EVENTUAL_CONSISTENCY' | 'NON_QUERYABLE'
-     */
-    public function getQueryAuthority(): string;
-
-    /**
-     * 2. 获取商品规格定义 (SWR 缓存使用)
-     */
+    public function getDriverId(): string;
+    public function getQueryAuthority(): string; // AUTHORITATIVE_REALTIME | EVENTUAL_CONSISTENCY | NON_QUERYABLE
     public function getFormSchema(int $remotePid, array $credentials): array;
-
-    /**
-     * 3. 下单前原子算价与预检 (Pre-flight Check)
-     */
-    public function preflightPrice(int $remotePid, array $selectedConfig, array $credentials): PreflightResult;
-
-    /**
-     * 4. 核心生命周期动作 (必须支持幂等执行，返回结构化状态)
-     */
+    public function preflightPrice(int $remotePid, string $billingCycle, array $selectedConfig, array $credentials): PreflightResult;
     public function create(array $orderData, array $credentials): DriverExecutionResult;
-    public function renew(string $remoteInstanceId, string $targetDueDate, array $credentials): DriverExecutionResult;
-    public function suspend(string $remoteInstanceId, string $reason, array $credentials): DriverExecutionResult;
-    public function unsuspend(string $remoteInstanceId, array $credentials): DriverExecutionResult;
-    public function terminate(string $remoteInstanceId, array $credentials): DriverExecutionResult;
-    public function resize(string $remoteInstanceId, array $targetConfig, array $credentials): DriverExecutionResult;
-
-    /**
-     * 5. 状态反查与幂等对账 (用于超时后结果未知恢复，严禁盲目重试)
-     */
-    public function queryOrder(string $idempotencyKey, array $credentials): DriverExecutionResult;
-    public function syncStatus(string $remoteInstanceId, array $credentials): InstanceStatusSnapshot;
-
-    /**
-     * 6. 可选运维能力 (若不支持，返回 DriverExecutionResult::unsupported())
-     */
-    public function power(string $remoteInstanceId, string $action, array $credentials): DriverExecutionResult;
-    public function getVnc(string $remoteInstanceId, array $credentials): DriverExecutionResult;
-    public function reinstall(string $remoteInstanceId, string $osId, string $password, array $credentials): DriverExecutionResult;
+    public function queryOrder(array $orderData, array $credentials): DriverExecutionResult;
 }
 ```
 
+M2 已实现以上最小接口。续费、电源、变配、重装与快照仍为后续能力，不强迫首条 CDN 驱动编写空实现。变更原因及兼容边界见 [M2_CONTRACT_CHANGE.md](M2_CONTRACT_CHANGE.md)。
+
+| DTO | 当前字段与语义 |
+|---|---|
+| `PreflightResult` | `amount` 十进制字符串、`config` 已验证配置、`currency`（首链仅 CNY）、`context` 驱动必需且不含秘密的履约参数（随订单冻结）。预检在数据库事务外完成，锁内比对商品指纹及报价，不接受客户端价格。 |
+| `DriverExecutionResult` | `status` 为 `succeeded/pending/unknown/not_executed/rejected`；可含 `remoteInstanceId`、`ipAddress`、`operationId`、固定脱敏 `code`；可选真实 `username/password` 仅经受控交付写入，密码立即 AES 加密，不存任务或日志。 |
+
+`not_executed` 必须证明没有资产、扣款和可延迟执行请求，才可退避重试；`rejected` 是确认未执行且需人工处理的拒绝。超时、非 JSON、异常与最终一致性查无均为 unknown。成功必须真实可用并返回远端 ID，CDN 不要求 IP。`orderData` 包含服务端快照的远端 PID、账期、上游金额、配置、订单命名空间、原任务键、冻结的 driver_context，以及已知 operation_id；密码仅执行时解密。调查不能再次调用 create 或支付。
+
+Provider 行固定表示一个上游账户/资源命名空间，不允许原地换站点或账号。注册器在 require 前核验清单/入口物理路径，拒绝符号链接越界；核心只能依赖接口与注册器。
+
+### 魔方财务首链范围
+
+`plugins/providers/zjmf` 使用 `/zjmf_api_login`、`/cart/get_product_config`、`/cart/get_total`、带独立 `cart_data` 的 `/cart/settle`、`/invoice_page`、`/apply_credit`。不清空或修改共享购物车，不默认上游支持请求键幂等。付款前校验远端账单实付与小计均等于冻结金额；结果未知不再支付。
+
+按部署生成的 `order_namespace` 与原任务键生成固定 8 位数字/大小写字母的资源名称（含三类字符，不带前缀或连字符），规则写入 `driver_context.hostname_rule=alnum8` 随订单冻结；已提交的旧订单保留原命名规则用于调查，不因升级改名或重购。未知资源 ID 时，调查 `/host/list` 必须严格匹配冻结名称、PID、账期与首付金额，再用账户范围 `/cart/hostinfo` 核对候选 ID；已由结算/支付响应或上述调查取得的稳定资源 ID，以 ID、PID、账期与首付金额核验，允许上游改名，但不接受接口返回另一个 ID。仅 Active 回填。查无/多匹配均保留调查；一小时仍未知转人工。当前首链只允许无配置/无自定义字段的固定月/年商品；配置变化即暂停销售，不冒称通用 Schema 渲染已完成。上游待付款订单也可能迟后执行，不能因为本地没有 Active 资产就直接退款。
+
 ### 1.1 可选快照与备份能力 (`SnapshotDriverInterface`)
+
+以下为尚未实现的 M3 扩展设计；当前运行接口不包含这些能力，落地时需复审能力声明与接口装配。
 
 快照能力通过独立接口扩展，不向所有上游驱动强加空实现。仅支持虚拟主机、额度兑换或人工交付的驱动无需实现本接口；支持快照或备份的驱动应按实际能力声明 `Feature::SNAPSHOT`、`Feature::BACKUP`。注册器必须同时校验能力声明与 `instanceof SnapshotDriverInterface`，声明与实现不符时拒绝加载；服务端也必须校验请求的 `type` 在驱动能力集中，不能只隐藏前端按钮。
 
@@ -182,41 +162,11 @@ interface SnapshotDriverInterface
 
 ### 1.2 人工交付驱动的等待状态
 
-`ManualAdminDriver` 不应伪装为已交付，也不能返回普通可重试错误让 Worker 无限领取。待人工开通时，将任务置为 `failed` 且 `last_error` 带 `MANUAL_AUDIT_REQUIRED:` 标记，按 [TASKS_OUTBOX.md](TASKS_OUTBOX.md) 保持独立于租约时效的实例人工门禁。人工完成后通过 `POST /api/v1/admin/tasks/{id}/manual-fulfill` 裁决：必须由 `super_admin` 提交核验工单号、真实远端 ID、核验备注与 `expected_execution_token`，锁实例/任务并 CAS 递增令牌，在同一事务内提交任务成功、实例激活与审计。该入口不伪造 Worker 租约，也不借用要求有效 Worker 租约的 `completeCreate()` 调用路径。
+`ManualAdminDriver` 不应伪装为已交付，也不能返回普通可重试错误让 Worker 无限领取。待人工开通时，将任务置为 `failed` 且 `last_error` 带 `MANUAL_AUDIT_REQUIRED:` 标记，按 [TASKS_OUTBOX.md](TASKS_OUTBOX.md) 保持独立于租约时效的实例人工门禁。人工完成后通过 `POST /api/v1/admin/tasks/{id}/resolve`、`action=fulfill` 裁决：必须由 `super_admin` 提交核验工单号、真实远端 ID、核验备注与 `expected_execution_token`，锁实例/任务并 CAS 递增令牌，在同一事务内提交任务成功、实例激活与审计。该入口不伪造 Worker 租约，也不借用要求有效 Worker 租约的 `completeCreate()` 调用路径。
 
-### 2. 编写实战范例（以魔方代理为例）
-```php
-namespace Plugins\providers\zjmf;
+### 2. 当前实装参考
 
-use App\Plugins\Providers\UpstreamDriverInterface;
-
-class ZjmfDriver implements UpstreamDriverInterface
-{
-    public function create(array $orderData, array $credentials): DriverExecutionResult
-    {
-        $apiUrl = $credentials['api_url'] . '/cart/checkout';
-        $payload = [
-            'pid' => $orderData['remote_pid'],
-            'configoptions' => $orderData['config_options'], // 原样透传用户选择的配置
-            'hostname' => $orderData['hostname'],
-            'password' => $orderData['password']
-        ];
-
-        $response = $this->httpPost($apiUrl, $payload, $credentials['api_token']);
-        if ($response['status'] !== 200) {
-            throw new \RuntimeException("上游开通失败: " . ($response['msg'] ?? '未知错误'));
-        }
-
-        return new DriverExecutionResult(
-            success: true,
-            remoteInstanceId: (string)$response['data']['host_id'],
-            ipAddress: $response['data']['ip'] ?? '',
-            rawPayload: $response['data']
-        );
-    }
-    // ...其余方法实现
-}
-```
+完整可执行参考在 `plugins/providers/zjmf/ZjmfDriver.php`；驱动不写业务表，Worker 同事务提交交付与任务终态。旧 `/cart/checkout` 示例已删除，避免把未核实的接口当作真实魔方协议。
 
 ---
 
@@ -224,40 +174,23 @@ class ZjmfDriver implements UpstreamDriverInterface
 
 ## 四、 支付网关插件开发规范 (`PaymentGatewayInterface`)
 
-本节是 `App\Plugins\Payments\PaymentGatewayInterface` **接口签名与支付 DTO 的唯一文档来源**；支付领域的收款分流、事务 CAS 与退款副作用分别遵循 [PAYMENTS.md](PAYMENTS.md) 和 [PAYMENTS_LEDGER.md](PAYMENTS_LEDGER.md) §3，其他文档只引用本节，不复制接口定义。下列接口与 DTO 为待实现契约，不代表已安装三方支付能力。
-
-支付插件用于对接三方支付渠道，必须包含**网关元信息、发起收银台、回调验签、原路退款与状态反查**能力：
+本节是支付接口签名与 DTO 的唯一文档来源。M2 已实现收单与易支付；原路退款与反查仍为 M4 设计，未启用。资金分流依照 [PAYMENTS.md](PAYMENTS.md) 与 [PAYMENTS_LEDGER.md](PAYMENTS_LEDGER.md)。
 
 ```php
 namespace App\Plugins\Payments;
-
 interface PaymentGatewayInterface
 {
-    public function getGatewayId(): string;
-    public function getName(): string;
-    public function getConfigSchema(): array;
-
-    /**
-     * 发起支付请求 (返回客户端需要的 URL 或二维码)
-     */
-    public function purchase(Invoice $invoice, array $config): PaymentPurchaseResult;
-
-    /**
-     * 异步回调通知验签与解析
-     */
-    public function handleNotify(array $requestParams, array $config): PaymentNotifyResult;
-
-    /**
-     * 原路退款接口 (支持向第三方网关发起原路退回)
-     */
-    public function refundPayment(PaymentRefundRequest $request, array $config): PaymentRefundResult;
-
-    /**
-     * 退款状态异步反查接口 (用于超时或调查协议单向核验)
-     */
-    public function queryRefund(string $refundTradeNo, array $config): PaymentRefundResult;
+    public function getDriverId(): string;
+    public function checkout(array $payment, array $config): array;
+    public function verify(array $notification, array $config): PaymentNotification;
 }
 ```
+
+`checkout` 返回 `{method: POST, action, fields}` 浏览器表单，不包含商户密钥。`PaymentNotification` 包含 `merchantOrder/gatewayTrade/amount/currency`；只有验签且达到成功终态才可返回，签名正确但待付款不得进入收单事务。
+
+易支付 checkout 显式发送支付类型（配置 type，默认 alipay；兼容本机网关强制要求 type 的实现）。按 ASCII 键排序排除 sign/sign_type 和空值，原始 `k=v` 连接后追加密钥做 MD5，通知兼容 GET/POST，且要求 PID 一致、`TRADE_SUCCESS`；收单成功才返回小写 `success`。浏览器 return_url 只供展示。回调不存任意原始请求，只存服务端用途及 merchant_order，防止回调覆盖退款上下文或泄漏敏感字段。
+
+以下退款接口/DTO 是后续扩展设计，当前支付接口不包含它们；原路退款启用时需独立评审并添加可选退款能力，不能把钱包补偿声称为原路退款。
 
 ### 退款请求与响应契约：
 ```php
@@ -287,20 +220,9 @@ class PaymentRefundResult
 
 `PaymentRefundResult.refundStatus='pending'` 表示仍在处理或结果未知；网络超时、响应丢失和非权威“未查到”均保留 pending，通过同退款号单向查询或人工核验，不能自动重发退款。`failed` 仅用于权威明确拒绝/未执行且以后不会执行的结论，不能由 `success=false` 直接推导。领域层最终仍须以“凭证 ID + 稳定退款号 + pending”执行终态 CAS；仅影响 1 行时才能在同一事务执行对应用途副作用，插件结果不直接等于账单退款终态。
 
-### 回调验签返回值契约：
-```php
-class PaymentNotifyResult
-{
-    public function __construct(
-        public bool $success,             // 签名校验是否通过
-        public ?int $invoiceId = null,    // 解析出的本系统账单 ID
-        public ?string $gatewayTradeNo = null, // 第三方支付网关交易流水号
-        public ?string $amount = null,    // 实际收款十进制字符串 (如 '30.00'，严禁使用 float)
-        public ?string $currency = 'CNY', // 币种
-        public string $response = 'SUCCESS' // 验签成功后响应给网关的报文
-    ) {}
-}
-```
+### 收单返回值
+
+运行中的 `PaymentNotification` 以本地支付尝试流水归属，不接受网关指定用户或直接指定账单。领域层按 `(channel,gateway_trade_no)` 判重，已结算凭证的用途、金额和归属不可被重放覆盖。同一尝试的另一真实交易另建独立收款凭证并转钱包。
 
 ---
 

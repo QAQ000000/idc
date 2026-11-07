@@ -10,13 +10,13 @@ final class LedgerService
     /** 必须由调用方置于支付/充值事务中，余额更新与流水始终一起提交。 */
     public function wallet(PDO $db, int $userId, int $invoiceId, string $amount, string $type, string $key): void
     {
-        if (!$db->inTransaction() || !in_array($type, ['pay_invoice', 'recharge'], true)) {
+        if (!$db->inTransaction() || !in_array($type, ['pay_invoice', 'recharge', 'late_payment_credit', 'refund_to_balance'], true)) {
             throw new \LogicException('Ledger requires a transaction and a supported operation');
         }
         $stmt = $db->prepare('SELECT balance, status FROM users WHERE id = ? FOR UPDATE');
         $stmt->execute([$userId]);
         $user = $stmt->fetch();
-        if (!$user || $user['status'] !== 'active') {
+        if (!$user || ($user['status'] !== 'active' && !in_array($type, ['late_payment_credit', 'refund_to_balance'], true))) {
             throw new ApiException('Account unavailable', 403, 403);
         }
         $after = Money::add($user['balance'], $amount);

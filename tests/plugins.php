@@ -113,4 +113,32 @@ foreach ($files as $file) {
     }
 }
 pluginCheck(true, 'business services, middlewares and HTTP entry depend on plugin contracts only');
+
+
+pluginCheck(\App\Plugins\Providers\ProviderRegistry::installed()->get('zjmf')->getQueryAuthority() === 'EVENTUAL_CONSISTENCY', 'provider manifest resolves without core concrete dependency');
+pluginCheck(\App\Plugins\Providers\ProviderRegistry::installed()->get('manual')->create([], [])->code === 'NON_QUERYABLE', 'manual driver never pretends external delivery succeeded');
+$gateway = \App\Plugins\Payments\PaymentRegistry::installed()->get('epay');
+pluginCheck($gateway->getDriverId() === 'epay', 'payment manifest resolves its interface');
+$root = sys_get_temp_dir() . '/jianyun-loader-' . bin2hex(random_bytes(8));
+mkdir($root . '/providers/escape', 0700, true);
+try {
+    file_put_contents($root . '/OutsideDriver.php', '<?php $GLOBALS["generic_plugin_escape"] = true;');
+    file_put_contents($root . '/providers/escape/manifest.json', json_encode(['id'=>'escape','type'=>'provider','entry'=>'OutsideDriver.php']));
+    symlink($root . '/OutsideDriver.php', $root . '/providers/escape/OutsideDriver.php');
+    pluginRejects(static fn() => \App\Plugins\PluginLoader::load($root . '/providers', 'provider', \App\Plugins\Providers\UpstreamDriverInterface::class), 'generic plugin loader rejects entry symlink before execution');
+    pluginCheck(!isset($GLOBALS['generic_plugin_escape']), 'rejected provider entry has no side effects');
+    symlink($root . '/providers', $root . '/linked');
+    pluginRejects(static fn() => \App\Plugins\PluginLoader::load($root . '/linked', 'provider', \App\Plugins\Providers\UpstreamDriverInterface::class), 'generic plugin root cannot be a symlink');
+    unlink($root . '/linked');
+    unlink($root . '/providers/escape/OutsideDriver.php');
+    symlink($root . '/OutsideDriver.php', $root . '/providers/escape/manifest-link.json');
+    unlink($root . '/providers/escape/manifest.json');
+    rename($root . '/providers/escape/manifest-link.json', $root . '/providers/escape/manifest.json');
+    pluginRejects(static fn() => \App\Plugins\PluginLoader::load($root . '/providers', 'provider', \App\Plugins\Providers\UpstreamDriverInterface::class), 'generic plugin manifest cannot escape physical directory');
+} finally {
+    foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST) as $entry) {
+        if ($entry->isDir() && !$entry->isLink()) { rmdir($entry->getPathname()); } else { unlink($entry->getPathname()); }
+    }
+    rmdir($root);
+}
 echo "{$checks} plugin checks passed.\n";

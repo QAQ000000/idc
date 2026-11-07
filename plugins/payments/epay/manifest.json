@@ -1,0 +1,1 @@
+{"id":"epay","name":"易支付","version":"1.0.0","type":"payment","entry":"EpayDriver.php"}

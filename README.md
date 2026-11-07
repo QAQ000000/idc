@@ -22,7 +22,7 @@ M0 已接入 Laravel 13/PHP 8.4，并建立唯一 `web/` 前端工程。现有�
 
 ## 当前实现与本地启动
 
-当前 HTTP、CLI 和测试统一通过 Laravel 启动。已实现图片验证码、注册登录、固定套餐人工交付商品、下单预创建实例、余额付款、资金流水与 Outbox 同事务入库，以及公开商品、登录注册、下单和账单页面。真实上游驱动、第三方支付、Worker、自动续费、返佣和实例查看 API 尚未实现；付款后的实例和任务保持 `pending`，不会实际开机。
+当前 HTTP、CLI 和测试统一通过 Laravel 启动。已实现图片验证码、注册登录、固定套餐人工交付商品、下单预创建实例、余额付款、资金流水与 Outbox 同事务入库，以及公开商品、登录注册、下单和账单页面。M2 已增加可靠新购 Worker、魔方财务固定商品驱动、易支付收单、实例列表/详情及未交付永久取消的钱包补偿。自动续费、返佣、原路退款及通用动态配置渲染仍未实现。真实支付和真实上游验收状态见下文，不以模拟测试代替真实资金链路。
 
 旧站数据迁移仍采用外置旧站插件导出目标 SQL、通用 MySQL 工具恢复独立空库，不集成旧库适配或迁移页面，详见 [割接规程](docs/MIGRATION_RUNBOOK.md)。
 
@@ -80,7 +80,7 @@ REDIS_SERVER=/absolute/path/to/redis-server python3 scripts/test_integration.py
 
 要求 Python 3.9+、Docker、PHP 和本地 `redis-server`；脚本使用 `mysql:8.0.35`（可通过 `MYSQL_TEST_IMAGE` 覆盖为兼容的 MySQL 8 镜像），自动创建独立容器、随机端口 Redis 和多进程 PHP HTTP 服务，执行真实接口/数据库检查后清理资源。测试显式指定临时环境目录与配置缓存路径，不加载部署 `.env`，不连接现有业务库。还会启动独立私有 PHP-FPM 池验证配置缓存前后的健康、登录与匿名请求隔离，测试结束销毁该池；找不到 FPM 时设置 `PHP_FPM=/absolute/path/to/php-fpm`。
 
-覆盖并发下单请求去重、同键不同参数拒绝、有限库存占用上限、非法密码、框架嵌套事务和旧 MVP 升级数据保留，以及并发付款只扣一次、最后库存并发预留、Outbox 写入失败整笔回滚、越权阻断、验证码场景隔离与单次消费、过期报价和账本只追加约束；并验证同上游不同商品的锁隔离、可信代理 IPv4/IPv6 与伪造链、交付起租的月末/闰年运算、失效令牌/租约保护、插件替换与失效拒绝、快照跨实例/类型编号隔离及旧库迁移。IP 解析可独立运行 `php tests/unit.php`；插件解析与核心依赖边界可独立运行 `php tests/plugins.php`。Worker、退款、通知和割接协议的故障矩阵尚待对应功能实现后演练，这些静态契约修正不等于运行验收完成。
+覆盖并发下单请求去重、同键不同参数拒绝、有限库存占用上限、非法密码、框架嵌套事务和旧 MVP 升级数据保留，以及并发付款只扣一次、最后库存并发预留、Outbox 写入失败整笔回滚、越权阻断、验证码场景隔离与单次消费、过期报价和账本只追加约束；并验证同上游不同商品的锁隔离、可信代理 IPv4/IPv6 与伪造链、交付起租的月末/闰年运算、失效令牌/租约保护、插件替换与失效拒绝、快照跨实例/类型编号隔离及旧库迁移。IP 解析可独立运行 `php tests/unit.php`；插件解析与核心依赖边界可独立运行 `php tests/plugins.php`。M2 另外通过真实 HTTP 协议夹具覆盖响应丢失与 SIGKILL Worker 恢复、幂等收单与未交付补偿；原路退款、通知及割接故障矩阵仍未验收。
 
 ---
 
@@ -137,3 +137,25 @@ REDIS_SERVER=/absolute/path/to/redis-server python3 scripts/test_integration.py
 ├── scripts/                   # 运维、schema 文档同步与隔离测试工具
 └── config/                    # 系统配置
 ```
+
+## M2 配置与运行
+
+先完成数据库升级，再通过本地受保护 JSON 的标准输入安装一个全新的上游账户/商品/支付渠道：`php artisan connections:install < /safe/local/connections.json`。不要在命令参数、Git 或日志写入密钥。示例（仅占位）：
+
+```json
+{
+  "provider": {"driver":"zjmf","name":"上游节点","endpoint":"https://upstream.example","credentials":{"username":"account@example.test","password":"API_SECRET"}},
+  "product": {"remote_pid":391,"name":"CDN体验","type":"cdn","monthly_price":"0.01"},
+  "payment": {"driver":"epay","endpoint":"https://pay.example","pid":"MERCHANT_PID","type":"alipay","notify_url":"https://shop.example/api/v1/payments/epay/notify","return_url":"https://shop.example","credentials":{"key":"MERCHANT_SECRET"}}
+}
+```
+
+该命令只预检，不购买；新建 Provider 固定资源命名空间，凭据 AES 加密，重复安装已有支付设置会回滚，不原地换上游账号。当前只支持无配置/自定义字段的固定 CNY 商品，月价必须与上游预检一致，未启用加价引擎。回调 URL 必须能被网关服务器访问，return_url 必须能被付款用户浏览器访问；密钥配置与应用 APP_KEY 由部署侧备份。
+
+用独立受管理进程运行 `php artisan outbox:work`，`--once` 处理一次候选。需要值守并监控 critical 日志，用 `php artisan outbox:inspect` 查看任务和 token。人工材料通过 stdin 交给 `php artisan outbox:resolve TASK_ID ADMIN_ID`，具体要求见 [Outbox](docs/TASKS_OUTBOX.md#m2-运行与永久取消)。新增 Worker 不自动安装系统服务或 cron。
+
+前端“易支付付款”每次发起独立尝试并提交标准 POST 收银台表单，旧尝试即使迟到付款也能幂等归属，避免重复提交同一商户订单被网关拒绝；付款返回后刷新账单和实例；“我的实例”展示待付、开通、调查、人工核验、交付、取消与补偿状态。CDN 允许没有 IP。密码只在归属校验后的凭据接口返回，不进实例列表或任务日志。
+
+当前验收分开记录：隔离环境通过 15 项单元、22 项插件、119 项原集成和 45 项 M2 检查，另通过配置缓存前后的私有 PHP-FPM 身份隔离；前端 lint、类型检查、构建及实例页面桌面/390px 浏览器交互通过。SakuraIDC 商品 391 月付 0.01 CNY、无配置字段。易支付成功凭证 `H202611072309326429` / ¥0.01 已验签，账单与 Outbox 原子结算，上游资源 `host:4250` 曾为 Pending，实时复核发现上游已改名并变为 Active；Worker 按已记录的账号范围稳定资源 ID 核对商品、账期及首付金额后自动恢复，任务 success、实例 active。起租为 `2026-11-07 15:33:12 UTC`，到期为 `2026-12-07 15:33:12 UTC`；所有者详情与凭据接口已实测，凭据值不入文档。
+
+**首条固定套餐真实支付与交付闭环已完成**。后续订单的远端名称为稳定生成的 8 位数字/大小写字母，并随订单快照冻结。原订单保留旧身份，没有重复购买；无远端 ID 的调查仍严格按冻结名称匹配。本轮未伪造回调或用演示余额替代渠道付款；付款结论依据网关验签成功凭证，未进行银行侧独立对账。通用配置表单、其他驱动、原路退款及完整生命周期不在此首链验收范围。

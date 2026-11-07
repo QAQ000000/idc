@@ -88,49 +88,44 @@ async function submit() {
       :closable="false"
       role="alert"
     />
-    <el-card v-if="product"
-      >
-<h2>{{ product.name }}</h2>
-      <el-form label-position="top" @submit.prevent="submit"
-        >
-<el-form-item label="付款周期"
-          >
-<el-select v-model="cycle" aria-label="付款周期" :disabled="busy"
-            >
-<el-option
+    <el-card v-if="product">
+      <h2>{{ product.name }}</h2>
+      <el-form label-position="top" @submit.prevent="submit">
+        <el-form-item label="付款周期">
+          <el-select v-model="cycle" aria-label="付款周期" :disabled="busy">
+            <el-option
               v-for="(_, name) in product.prices"
               :key="name"
               :label="name === 'monthly' ? '月付' : '年付'"
-              :value="name" />
-</el-select>
+              :value="name"
+            />
+          </el-select>
 </el-form-item
-        ><el-form-item label="主机名"
-          >
-<el-input
+        ><el-form-item label="实例名称">
+          <el-input
             v-model="hostname"
-            aria-label="主机名"
+            aria-label="实例名称"
             required
             maxlength="63"
-            :disabled="busy" />
+            :disabled="busy"
+          />
 </el-form-item
-        ><el-form-item label="主机密码"
-          >
-<el-input
+        ><el-form-item label="初始密码">
+          <el-input
             v-model="password"
-            aria-label="主机密码"
+            aria-label="初始密码"
             type="password"
             show-password
             autocomplete="new-password"
             required
             minlength="12"
             maxlength="72"
-            :disabled="busy" />
+            :disabled="busy"
+          />
 </el-form-item
-        ><el-checkbox v-model="useBalance" :disabled="busy"
-          >
-立即使用余额付款
-</el-checkbox
-        >
+        ><el-checkbox v-model="useBalance" :disabled="busy">
+          立即使用余额付款
+        </el-checkbox>
         <p>
           应付金额：<strong>¥{{ total || "—" }}</strong>
         </p>
@@ -142,13 +137,10 @@ async function submit() {
           native-type="submit"
           :loading="busy"
           :disabled="!total"
-          >
-提交订单
-</el-button
         >
-</el-form
-      >
-</el-card
-    >
+          提交订单
+        </el-button>
+      </el-form>
+    </el-card>
   </section>
 </template>

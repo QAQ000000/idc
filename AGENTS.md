@@ -78,13 +78,13 @@
 - **当前实现状态**：已有 MVP 已接入 PHP 8.4/Laravel 13，领域 SQL 使用框架同连接事务，保留 Token 与密文兼容。实施边界见 [技术栈定案](docs/TECH_STACK.md)。
 - **数据库**：MySQL 8.0+（严格启用事务与外键/唯一键，金额使用 DECIMAL(10,2)）。
 - **缓存与调度**：Redis 当前用于验证码，规划用于快照缓存和 Worker 唤醒；任务事实、业务占用与执行租约保留在 MySQL，不能用 Redis 锁到期解除业务门禁。
-- **前端（M0 已实现）**：单应用 **Vue 3 + Vite + TypeScript + Element Plus**，保留 Vue Router、Pinia 与 REST API；已实现公开商品、注册登录、下单及账单查看/支付/取消页面；优先使用标准组件和成熟布局，Tailwind 非首版必需。当前实现范围与依赖见 [README](README.md#当前实现与本地启动)，未勾选能力见 [路线图](docs/ROADMAP.md)。
+- **前端（M0 已实现）**：单应用 **Vue 3 + Vite + TypeScript + Element Plus**，保留 Vue Router、Pinia 与 REST API；已实现公开商品、注册登录、下单及账单查看/支付/取消、实例列表/详情/交付状态页面；优先使用标准组件和成熟布局，Tailwind 非首版必需。当前实现范围与依赖见 [README](README.md#当前实现与本地启动)，未勾选能力见 [路线图](docs/ROADMAP.md)。
 
 ---
 
 ## 四、 统一 Provider（上游驱动）开发规范
 
-所有上游系统对接必须遵守 `App\Plugins\Providers\UpstreamDriverInterface`，完整接口与 DTO 只在 [插件开发手册](docs/PLUGIN_DEV.md) 维护；当前 Provider 接口与真实驱动尚待实现，文档定义不代表已有运行能力。
+所有上游系统对接必须遵守 `App\Plugins\Providers\UpstreamDriverInterface`，完整接口与 DTO 只在 [插件开发手册](docs/PLUGIN_DEV.md) 维护；M2 已实现最小新购接口、魔方财务固定商品驱动、易支付收单和可靠 Worker；真实资金及上游交付验收须以路线图证据为准，不把协议夹具当作真实开通。
 
 核心业务层只依赖 `app/Plugins/` 中的契约与注册器，通过注册器加载 `plugins/` 下的具体实现。禁止核心直接引用具体插件、插件互相引用、通过改核心适配单个驱动，或绕过领域服务直接跨域写表。**发现物理隔离被打破，必须作为高优先级架构问题立即报告，不得以局部功能可用为由放行。**
 

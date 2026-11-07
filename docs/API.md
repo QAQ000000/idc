@@ -291,3 +291,16 @@
 现有 API 已由 Laravel 路由提供；现阶段仅 README 所列接口可用，本文其他接口仍为目标契约。checkout 新增可选 checkout_key（16–64 位 ASCII 字母/数字/_/-，区分大小写），按 (user_id, checkout_key) 唯一；重放同键同载荷返回原订单（包括已取消订单），同键不同业务参数返回 409。重试不重新定价、扣款、占库存或投递任务；新购买需新键。旧客户端省略键保持原行为，无法获得跨下单去重。摘要包含商品、账期、主机名、密码、配置与 use_balance，服务端以 HMAC 存储，不泄漏原密码。有限库存未付占用每用户最多 3 笔，达到上限返回 409；取消、付款或实际过期回收后释放。图片验证码及原 Token/AES-GCM 格式保留，注册 NUL 密码返回 400。`auth/me` 增加只读 role=client 供首方路由使用；后端仍按 Token 作用域与归属授权。未知路径保持 404；已知路径使用不支持的方法改为标准 HTTP 405（原生路由此前返回 404），两者均保持统一 JSON 响应，已加入兼容回归。
 
 变更原因：框架适配时消除重复下单扣款、恶意未付占用与非法密码异常；影响 Auth/Billing、invoices 的两列与唯一键、前端提交和 schema 升级。验证包括并发重放、参数冲突、用户隔离、失败回滚和旧 MVP 原地升级；不新增支付网关或真实上游能力。
+
+## M2 当前新增接口
+
+| 方法/路径（均在 /api/v1 下） | 权限及行为 |
+|---|---|
+| POST /invoices/{id}/pay | 账单所有者；gateway=balance 原接口，gateway=epay 返回 checkout 表单描述，不代表已付款。 |
+| GET/POST /payments/epay/notify | 无登录，驱动验签、PID 和成功终态校验；成功且入库后纯文本 success，失败 fail。 |
+| GET /instances?page=1 | 当前用户自己的实例，每页 50 条；不返回密码或内部任务错误。 |
+| GET /instances/{id} | 当前所有者；交付状态为 awaiting_payment/provisioning/investigating/needs_review/delivered/cancelled/compensated，返回原账单入口。 |
+| GET /instances/{id}/credentials | 当前所有者且 active；返回远端 username/password，仅独立点击加载，所有响应 no-store。 |
+| POST /admin/tasks/{id}/resolve | admin Token 且数据库中启用的 super_admin；动作/材料/旧 token 规则见 Outbox 契约。 |
+
+CDN 交付可没有 IP，不以缺 IP 判定失败。不包含 M4 电源、续费、重装等未实现接口。详情与凭据对非所有者均返回 404。

@@ -124,7 +124,7 @@ CREATE TABLE IF NOT EXISTS `instances` (
     `user_id` BIGINT UNSIGNED NOT NULL COMMENT '归属用户',
     `product_id` INT UNSIGNED NOT NULL COMMENT '关联商品',
     `provider_id` INT UNSIGNED NOT NULL COMMENT '关联提供方',
-    `remote_instance_id` VARCHAR(100) NULL COMMENT '远端实例 ID (如魔方的 hostid / PVE vmid)',
+    `remote_instance_id` VARCHAR(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL COMMENT '远端实例 ID (如魔方的 hostid / PVE vmid)',
     `name` VARCHAR(100) NULL COMMENT '实例自定义名称/主机名',
     `ip_address` VARCHAR(100) NULL COMMENT '主 IP 地址',
     `encrypted_password` VARCHAR(255) NULL COMMENT '实例当前 Root/面板密码 (AES-256-GCM 密文)',
@@ -145,7 +145,7 @@ CREATE TABLE IF NOT EXISTS `instances` (
     FOREIGN KEY (`provider_id`) REFERENCES `providers` (`id`) ON DELETE RESTRICT,
     INDEX `idx_user_status` (`user_id`, `status`),
     INDEX `idx_due_date` (`status`, `due_date`),
-    INDEX `idx_provider_remote` (`provider_id`, `remote_instance_id`)
+    UNIQUE KEY `uk_provider_remote` (`provider_id`, `remote_instance_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='已购云资源实例';
 
 CREATE TABLE IF NOT EXISTS `instance_snapshot_schedules` (

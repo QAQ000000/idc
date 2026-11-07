@@ -31,7 +31,17 @@ final class BillingService
         $requestHash = $checkoutKey === null ? null : Security::requestFingerprint(json_encode([
             $productId, $cycle, $hostname, $password, $options, $input['use_balance'] ?? false,
         ], JSON_THROW_ON_ERROR));
-        return Database::transaction(function (PDO $db) use ($userId, $productId, $cycle, $hostname, $password, $options, $input, $checkoutKey, $requestHash): array {
+        // A keyed replay must not depend on today's upstream availability or price.
+        if ($checkoutKey !== null) {
+            $s = Database::getInstance()->prepare('SELECT id, checkout_hash FROM invoices WHERE user_id = ? AND checkout_key = ?');
+            $s->execute([$userId, $checkoutKey]);
+            if ($existing = $s->fetch()) {
+                if (!hash_equals($existing['checkout_hash'], $requestHash)) { throw new ApiException('Checkout key already used with different parameters', 409, 409); }
+                return $this->invoice($userId, (int)$existing['id']);
+            }
+        }
+        $preflight = (new CatalogService())->preflight($productId, $cycle, $options);
+        return Database::transaction(function (PDO $db) use ($userId, $productId, $cycle, $hostname, $password, $options, $input, $checkoutKey, $requestHash, $preflight): array {
             // 串行化同用户的新购。此处只锁用户及本次新行，不锁已有实例/账单。
             // 已有付款仍遵循实例→账单→钱包；重放只读已有订单，避免反向持锁。
             $stmt = $db->prepare('SELECT status FROM users WHERE id = ? FOR UPDATE');
@@ -48,9 +58,9 @@ final class BillingService
                     return $this->invoice($userId, (int)$existing['id']);
                 }
             }
-            $quote = (new CatalogService())->quote($db, $productId, $cycle, $options, true);
+            $quote = (new CatalogService())->quote($db, $productId, $cycle, $options, true, $preflight);
             $product = $quote['product'];
-            $snapshot = json_encode(['product_id' => $productId, 'billing_cycle' => $cycle, 'config_options' => $quote['config_options'], 'total' => $quote['total'], 'stock_reserved' => (int)$product['stock'] > 0], JSON_THROW_ON_ERROR);
+            $snapshot = json_encode(['product_id' => $productId, 'remote_pid' => (int)$product['remote_pid'], 'provider_driver' => $product['driver'], 'is_auto_setup' => (bool)$product['is_auto_setup'], 'order_namespace' => json_decode($product['config_cache'], true)['order_namespace'] ?? '', 'upstream_total' => $preflight['amount'] ?? null, 'driver_context' => $preflight['context'] ?? [], 'billing_cycle' => $cycle, 'config_options' => $quote['config_options'], 'total' => $quote['total'], 'stock_reserved' => (int)$product['stock'] > 0], JSON_THROW_ON_ERROR);
             if ((int)$product['stock'] > 0 && !($input['use_balance'] ?? false)) {
                 $stmt = $db->prepare("SELECT COUNT(*) FROM invoices WHERE user_id = ? AND type = 'new' AND status = 'unpaid' AND JSON_EXTRACT(price_snapshot, '$.stock_reserved') = true");
                 $stmt->execute([$userId]);
@@ -112,6 +122,7 @@ final class BillingService
                 $invoice['paid_at'] = $locked['paid_at'];
                 return $invoice;
             }
+            TaskGate::assertClear($db, (int)$invoice['instance_id']);
             if (!$instance || (int)$instance['user_id'] !== $userId || $instance['status'] !== 'pending' || $locked['status'] !== 'unpaid') {
                 throw new ApiException('Invoice cannot be paid', 409, 409);
             }
@@ -126,7 +137,7 @@ final class BillingService
             }
             (new LedgerService())->wallet($db, $userId, $id, bcsub('0', $amount, 2), 'pay_invoice', "pay_invoice:inv_{$id}");
             $db->prepare('UPDATE users SET total_spent = total_spent + ? WHERE id = ?')->execute([$amount, $userId]);
-            $db->prepare("INSERT INTO payment_records (invoice_id, user_id, channel, trade_no, amount, status, paid_at) VALUES (?, ?, 'balance', ?, ?, 'success', UTC_TIMESTAMP())")
+            $db->prepare("INSERT INTO payment_records (invoice_id, user_id, channel, trade_no, amount, status, paid_at, payload) VALUES (?, ?, 'balance', ?, ?, 'success', UTC_TIMESTAMP(), '{\"settlement_purpose\":\"cloud_consumption\"}')")
                 ->execute([$id, $userId, "balance:inv_{$id}", $amount]);
             $db->prepare("INSERT INTO tasks (instance_id, invoice_id, idempotency_key, action, payload) VALUES (?, ?, ?, 'create', ?)")
                 ->execute([$instance['id'], $id, "instance_create:inv_{$id}", $locked['price_snapshot']]);

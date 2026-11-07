@@ -70,3 +70,19 @@ export interface Captcha {
   challenge_id?: string;
   img_base64?: string;
 }
+
+export interface Instance {
+  id: number;
+  name: string;
+  product_name: string;
+  type: string;
+  status: string;
+  delivery_status: string;
+  remote_instance_id: string | null;
+  ip_address: string | null;
+  billing_cycle: string;
+  recurring_price: string;
+  start_date: string | null;
+  due_date: string | null;
+  invoice_id: number | null;
+}

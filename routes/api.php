@@ -14,3 +14,11 @@ Route::middleware('client')->group(function (): void {
     Route::post('invoices/{id}/pay', [ApiController::class, 'pay']);
     Route::post('invoices/{id}/cancel', [ApiController::class, 'cancel']);
 });
+
+Route::match(['get', 'post'], 'payments/{channel}/notify', [\App\Http\Controllers\PaymentController::class, 'notify']);
+Route::middleware('client')->group(function (): void {
+    Route::get('instances', [\App\Http\Controllers\InstanceController::class, 'index']);
+    Route::get('instances/{id}', [\App\Http\Controllers\InstanceController::class, 'show']);
+    Route::get('instances/{id}/credentials', [\App\Http\Controllers\InstanceController::class, 'credentials']);
+});
+Route::post('admin/tasks/{id}/resolve', [\App\Http\Controllers\TaskController::class, 'resolve']);

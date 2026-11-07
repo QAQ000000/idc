@@ -99,3 +99,11 @@ Database::transaction(static function (PDO $db) use ($flow, $notice): void {
 - 底层统一由 `SecurityService` 托管，基于主密钥 `APP_KEY` 使用 `AES-256-GCM` 算法加密；
 - 数据库中只存储带初始向量（IV）与认证标签（TAG）的密文字符串；
 - 任何调试日志、错误回显中，严禁明文打印包含 `credentials` 或 `password` 的字段。
+
+## M2 当前收单边界
+
+已实现 balance 与 epay 新购付款。易支付通知支持 GET/POST `/api/v1/payments/epay/notify`；渠道表单由已登录账单所有者 `POST /api/v1/invoices/{id}/pay {gateway: epay}` 取得。页面返回不结算，签名正确但非 TRADE_SUCCESS 不结算。
+
+外部直付不改变钱包，payment_records 是实收凭证，账单、累计消费与 create Outbox 同事务落库；transactions 只记真实钱包/佣金变化。重复回调不重复履约。迟到、取消后付款、金额不符与额外真实付款，在归属、币种可确认时按独立凭证幂等入钱包，不改原账单/实例/消费累计；不支持的币种和无法归属的通知返回 fail 留待网关重试/人工对账，绝不猜测归属。
+
+未交付永久取消的钱包补偿见 [TASKS_OUTBOX.md](TASKS_OUTBOX.md#m2-运行与永久取消)，这是退到钱包，原路退款仍延期。未知上游结果必须先核验，不允许为退款直接解除实例占用。

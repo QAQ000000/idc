@@ -192,7 +192,7 @@ CREATE TABLE IF NOT EXISTS `instances` (
     `user_id` BIGINT UNSIGNED NOT NULL COMMENT '归属用户',
     `product_id` INT UNSIGNED NOT NULL COMMENT '关联商品',
     `provider_id` INT UNSIGNED NOT NULL COMMENT '关联提供方',
-    `remote_instance_id` VARCHAR(100) NULL COMMENT '远端实例 ID (如魔方的 hostid / PVE vmid)',
+    `remote_instance_id` VARCHAR(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL COMMENT '远端实例 ID (如魔方的 hostid / PVE vmid)',
     `name` VARCHAR(100) NULL COMMENT '实例自定义名称/主机名',
     `ip_address` VARCHAR(100) NULL COMMENT '主 IP 地址',
     `encrypted_password` VARCHAR(255) NULL COMMENT '实例当前 Root/面板密码 (AES-256-GCM 密文)',
@@ -213,9 +213,12 @@ CREATE TABLE IF NOT EXISTS `instances` (
     FOREIGN KEY (`provider_id`) REFERENCES `providers` (`id`) ON DELETE RESTRICT,
     INDEX `idx_user_status` (`user_id`, `status`),
     INDEX `idx_due_date` (`status`, `due_date`),
-    INDEX `idx_provider_remote` (`provider_id`, `remote_instance_id`)
+    UNIQUE KEY `uk_provider_remote` (`provider_id`, `remote_instance_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='已购云资源实例';
 ```
+
+M2 远端资源按 `(provider_id, remote_instance_id)` 区分大小写唯一，pending 允许 NULL。Provider 固定表示账户与资源命名空间，禁止原地更换账号/节点。增量迁移发现重复绑定立即拒绝升级，须先核对真实资产归属，不自动择一。
+
 > [!NOTE]
 > **Task-as-Lock 互斥设计**：`tasks` 是实例任务执行占用的单一事实来源。`running`、`investigating` 以及 `failed AND last_error LIKE 'MANUAL_AUDIT_REQUIRED:%'` 都阻断同实例其他动作，**不因租约过期解除业务阻断**。`lease_until` 仅决定 Worker 执行权、接管及回写资格；所有领取、接管和人工裁决先锁 `instances` 行，再锁任务。业务准入还须检查正常云消费主账单的 `refund_pending` 及已退款待销毁冻结；这些是退款领域状态，不复制为另一份任务锁。迟到/多收钱包款退款不修改父账单，不触发父实例冻结。详见 [TASKS_OUTBOX.md](TASKS_OUTBOX.md) §2.1/§2.4/§3。
 

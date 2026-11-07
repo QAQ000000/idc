@@ -389,6 +389,6 @@ foreach ($pipes as $pipe) { stream_get_contents($pipe); fclose($pipe); }
 check(proc_close($process) === 0, 'standard Laravel migrator upgrades the reviewed native MVP');
 check(scalar('SELECT balance FROM users WHERE id = ?', [$uid]) === $preservedBalance && scalar('SELECT COUNT(*) FROM tasks') === $preservedTasks, 'schema upgrade preserves wallet and pending task facts');
 check((int)scalar("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'invoices' AND column_name IN ('checkout_key','checkout_hash')") === 2, 'upgrade installs checkout idempotency columns');
-check((int)scalar('SELECT COUNT(*) FROM migrations') === 2, 'framework records exactly two schema versions');
+check((int)scalar('SELECT COUNT(*) FROM migrations') === 3, 'framework records exactly three schema versions');
 
 echo "{$checks} checks passed.\n";

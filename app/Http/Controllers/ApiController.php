@@ -28,6 +28,7 @@ final class ApiController
         $body = Request::body();
         $options = $body['config_options'] ?? [];
         if (!is_array($options)) { throw new ApiException('Invalid config_options'); }
+        $catalog->preflight(Request::id($id), Request::text($body, 'billing_cycle', 1, 20), $options);
         $quote = $catalog->quote(Database::getInstance(), Request::id($id), Request::text($body, 'billing_cycle', 1, 20), $options);
         unset($quote['product']);
         return ApiResponse::success($quote);
@@ -36,7 +37,8 @@ final class ApiController
     public function invoice(string $id, BillingService $billing): JsonResponse { return ApiResponse::success($billing->invoice((int)AuthMiddleware::user()['id'], Request::id($id))); }
     public function pay(string $id, BillingService $billing): JsonResponse
     {
-        if (Request::text(Request::body(), 'gateway', 1, 50) !== 'balance') { throw new ApiException('Only balance payment is enabled'); }
+        $gateway = Request::text(Request::body(), 'gateway', 1, 50);
+        if ($gateway !== 'balance') { return ApiResponse::success(app(\App\Services\PaymentService::class)->checkout((int)AuthMiddleware::user()['id'], Request::id($id), $gateway)); }
         return ApiResponse::success($billing->pay((int)AuthMiddleware::user()['id'], Request::id($id)));
     }
     public function cancel(string $id, BillingService $billing): JsonResponse { return ApiResponse::success($billing->cancel((int)AuthMiddleware::user()['id'], Request::id($id))); }

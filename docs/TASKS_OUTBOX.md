@@ -30,7 +30,7 @@
    - **网关回调场景（`POST /api/v1/payments/notify/{gateway}`）**：CAS 校验并标记 `invoices.status='paid'` 时，读取 `invoices.instance_id` 向 `tasks` 插入 `action='create'` 交付任务；
    - 业务幂等键统一采用 `instance_create:inv_{invoice_id}`。
 3. **交付完成原子激活**：
-   Worker 异步调用上游开通接口成功后，调用 `InstanceActivationService::completeCreate()`，在第 2.2 节的 Fencing Token 原子事务内，将 `instances.status` 由 `pending` 推进至 `active`，并写入真实的 `remote_instance_id` 与 `ip_address`。同时以本地交付成功入库的 UTC 时间写入 `start_date`，通过 `DATE_ADD(start_date, INTERVAL 1 MONTH/1 YEAR)` 生成首期 `due_date`，按目标月末截断，避免 PHP 自然月溢出；未付时间及交付排队不消耗租期。完成方法只接受已支付新购、有效执行令牌及未过期的所属 Worker 租约，激活失败时任务终态一并回滚。此方法尚无自动 Worker 调用入口。
+   Worker 异步调用上游开通接口成功后，调用 `InstanceActivationService::completeCreate()`，在第 2.2 节的 Fencing Token 原子事务内，将 `instances.status` 由 `pending` 推进至 `active`，并写入真实的 `remote_instance_id` 与 `ip_address`。同时以本地交付成功入库的 UTC 时间写入 `start_date`，通过 `DATE_ADD(start_date, INTERVAL 1 MONTH/1 YEAR)` 生成首期 `due_date`，按目标月末截断，避免 PHP 自然月溢出；未付时间及交付排队不消耗租期。完成方法只接受已支付新购、有效执行令牌及未过期的所属 Worker 租约，激活失败时任务终态一并回滚。M2 已由 OutboxWorker 调用；CLI 为 `php artisan outbox:work`，单次处理加 `--once`。
 4. **超时未付安全清理**：
    未支付账单超时自动取消（`unpaid -> cancelled`，同步置 `cycle_marker = NULL`）时，定时清理任务同步将关联的 `status='pending'` 实例软终止置为 `terminated`（严禁物理 `DELETE`，遵守外键 `ON DELETE RESTRICT`），并释放锁定的优惠券 `user_coupons.status = 'unused'`。
 
@@ -226,3 +226,18 @@ flowchart TD
 | **SC-T09** | 人工回填与旧 Worker 结果同时到达 | 双方竞争同实例行锁 | 人工裁决递增令牌且同事务完成激活与审计；旧 Worker 因状态/Worker/令牌/租约任一条件不符被拒绝，不重复起租 |
 | **SC-T10** | 接管自己的过期任务时，同实例还存在另一条人工核验任务 | 排除当前 task_id 后仍有 blocker | 接管回滚并告警冲突；不能因排除了自身而跳过其他未决任务 |
 | **SC-T11** | 云消费退款审核期间，既有 pending 快照/变配/续费被扫描；或退款成功后销毁尚 pending | 主账单为 refund_pending，或已退款且实例处于该退款的待销毁冻结 | 普通任务不得入队/领取；拒绝安全解除后重新检查资格；成功同事务令旧 pending 失效并只允许本退款 terminate，迟到钱包款退款不触发父实例冻结 |
+
+## M2 运行与永久取消
+
+当前 Worker 只执行 create；五分钟租约，网络调用总时长受驱动请求超时限制，空闲 500ms 扫描，每次最多看 100 候选，实例锁使用 SKIP LOCKED。长耗时生命周期/公平调度仍延期。心跳同样要求有效旧租约与 token，不能复活失效执行权。结果回写失败保留原状态，由过期接管调查；严禁重新投 pending。
+
+未知结果每分钟只读调查，一小时仍未知或 NON_QUERYABLE 转 `failed + MANUAL_AUDIT_REQUIRED:`，记 critical 事件（只含 task_id）；必须配合日志监控和 `outbox:inspect` 人工值守。证明未执行的退避为 5/15/30 分钟，达到重试上限转人工。Provider 禁用、查询失败与最终一致性查无不释放占用。
+
+人工入口：`POST /api/v1/admin/tasks/{id}/resolve`，或 `php artisan outbox:resolve TASK_ID ADMIN_ID < resolution.json`。当前取代规划中的分散 force-retry/manual-fulfill 路径，未实现独立后台 UI。均要求有效 super_admin、`expected_execution_token`、10–1000 字符 evidence；action 为 retry/fulfill/cancel_compensate。retry/cancel_compensate 还需显式 `confirmed_no_execution_or_pending_request=true`，核验材料必须证明没有资产、扣款及后续可执行请求；不能只提交“没查到”。fulfill 需真实 remote_instance_id，可空 ip_address。
+
+永久取消只适用待交付、已支付新购、唯一正常消费收款凭证且无历史佣金/在途退款的订单。它同事务递增令牌并永久终止该任务及其他 pending，实例本地 terminated、账单 refunded、恢复预留库存、真实原额入钱包、冲累计消费并追加管理员审计。收款凭证标注 refund_status=success、refund_method=to_balance，防止后续再次原路退款。没有远端资产时不派 terminate。已有佣金拒绝处理并要求专项冲正，不能略过资金保证。重复或旧 token 裁决拒绝，无第二次补偿。
+
+旧任务缺少明确自动开通快照时转人工，不猜测能否自动交付。远端资源绑定由数据库唯一约束防止同 Provider 内重复归属，违反约束则交付/任务终态一起回滚，保留调查材料。
+
+
+魔方首链主机名兼容：新订单将驱动预检返回的 `driver_context.hostname_rule=alnum8` 随 price_snapshot 固化，按原始订单键稳定生成 8 位、含数字及大小写字母的远端名。已提交且没有此规则标识的旧任务继续使用原身份调查；不能为适应新规则重算旧任务身份后盲目创建。已取得账号范围稳定远端 ID 的任务，按 ID、PID、账期和首付金额调查，不因上游改名失去身份；必须核对响应 ID 正好等于已记录 ID。没有已知 ID 且名称不再匹配时保留人工核验门禁，不猜测绑定。

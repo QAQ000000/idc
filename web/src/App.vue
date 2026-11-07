@@ -16,18 +16,16 @@ function logout() {
       <RouterLink class="brand" to="/">简云 <span>云产品</span></RouterLink>
       <nav aria-label="主导航">
         <RouterLink to="/">选购产品</RouterLink
-        ><template v-if="account.user"
-          >
-<span
+        ><template v-if="account.user">
+          <RouterLink to="/instances">我的实例</RouterLink
+          ><span
             >{{ account.user.email }} · 余额 ¥{{ account.user.balance }}</span
           ><el-button @click="logout">退出登录</el-button>
 </template
-        ><template v-else
-          >
-<RouterLink to="/login">登录</RouterLink
+        ><template v-else>
+          <RouterLink to="/login">登录</RouterLink
           ><RouterLink to="/register">注册</RouterLink>
-</template
-        >
+        </template>
       </nav>
     </el-header>
     <el-main><RouterView :key="$route.fullPath" /></el-main>

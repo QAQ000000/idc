@@ -26,6 +26,8 @@ M0 已接入 Laravel 13/PHP 8.4，并建立唯一 `web/` 前端工程。现有�
 
 旧站数据迁移仍采用外置旧站插件导出目标 SQL、通用 MySQL 工具恢复独立空库，不集成旧库适配或迁移页面，详见 [割接规程](docs/MIGRATION_RUNBOOK.md)。
 
+退款由管理员手动办理，本期不开发自动退款、自动补偿或网关退款调用/反查，也不将其作为上线前置。保留实际退款凭证与经办记录；旧账单 3 的 ¥16.00 仍未结清。已有支付资金保护与人工裁决能力保留，详见 [人工退款策略](docs/PAYMENTS_LEDGER.md#manual-refund-policy)。
+
 运行要求：PHP **8.4.x**，`pdo_mysql`、`bcmath`、`openssl`、`gd`、`curl`、`mbstring`、`redis` 及 Laravel 所需扩展，MySQL 8.0+、Redis 5+；前端 Node.js 22.12+。依赖精确版本由 `composer.lock` 与 `web/package-lock.json` 锁定。
 
 1. `composer install`。服务器 Composer 需支持 PHP 8.4 和当前 Composer 插件/API，不使用旧版 Composer 2.0。

@@ -189,7 +189,7 @@ interface SnapshotDriverInterface
 
 ## 四、 支付网关插件开发规范 (`PaymentGatewayInterface`)
 
-本节是支付接口签名与 DTO 的唯一文档来源。M2 已实现收单与易支付；原路退款与反查仍为 M4 设计，未启用。资金分流依照 [PAYMENTS.md](PAYMENTS.md) 与 [PAYMENTS_LEDGER.md](PAYMENTS_LEDGER.md)。
+本节是支付接口签名与 DTO 的唯一文档来源。M2 已实现收单与易支付；用户已确认退款由管理员手动办理，本期不增加自动网关退款或反查能力。原退款 DTO/状态机保留为未来另行授权的参考，见 [人工退款策略](PAYMENTS_LEDGER.md#manual-refund-policy)。资金分流依照 [PAYMENTS.md](PAYMENTS.md) 与 [PAYMENTS_LEDGER.md](PAYMENTS_LEDGER.md)。
 
 ```php
 namespace App\Plugins\Payments;
@@ -205,7 +205,7 @@ interface PaymentGatewayInterface
 
 易支付 checkout 显式发送支付类型（配置 type，默认 alipay；兼容本机网关强制要求 type 的实现）。按 ASCII 键排序排除 sign/sign_type 和空值，原始 `k=v` 连接后追加密钥做 MD5，通知兼容 GET/POST，且要求 PID 一致、`TRADE_SUCCESS`；收单成功才返回小写 `success`。浏览器 return_url 只供展示。回调不存任意原始请求，只存服务端用途及 merchant_order，防止回调覆盖退款上下文或泄漏敏感字段。
 
-以下退款接口/DTO 是后续扩展设计，当前支付接口不包含它们；原路退款启用时需独立评审并添加可选退款能力，不能把钱包补偿声称为原路退款。
+以下退款接口/DTO 仅为未来参考，不属于当前交付待办，当前支付接口不包含它们；将来若另行授权自动退款，须独立评审可选退款能力，不能把钱包补偿声称为原路退款。
 
 ### 退款请求与响应契约：
 ```php
@@ -286,7 +286,7 @@ class TelegramChannel implements NotificationChannelInterface
 ## 六、 插件加载与测试原则
 
 1. **零核心侵入与受控基础设施**：插件可以依赖 `App\Plugins\*` 契约，并通过核心公开接口使用授权范围内的服务及基础设施（如本地验证码使用 `App\Core\RedisStore` 存取自身挑战）。不得直接引用其他具体插件；不得跨领域直接写表或绕过 `LedgerService` 修改账户/资金账本；不得修改 `app/` 核心文件来适配某个插件。该约定只明确依赖边界，不表示尚未实现的驱动或扩展能力已经可用；
-2. **异常穿透与调查协议**：网络中断或超时必须保留“结果未知”语义，**严禁盲目重试以防重复扣款、开通或发送**。上游生命周期任务按 [TASKS_OUTBOX.md](TASKS_OUTBOX.md) 转 `investigating`；支付退款按本节及 [PAYMENTS_LEDGER.md](PAYMENTS_LEDGER.md) 保持凭证 `refund_status='pending'` 并反查，不能套用实例任务状态或直接补钱；通知发送按 [NOTIFICATIONS.md](NOTIFICATIONS.md) 转 `pending_manual_check`。明确业务拒绝按各领域契约处理，禁止将同一异常强行映射为所有模块共同的失败终态。
+2. **异常穿透与调查协议**：网络中断或超时必须保留“结果未知”语义，**严禁盲目重试以防重复扣款、开通或发送**。上游生命周期任务按 [TASKS_OUTBOX.md](TASKS_OUTBOX.md) 转 `investigating`；退款当前由管理员手动处理，未来另行授权网关退款能力后，才按本节及 [PAYMENTS_LEDGER.md](PAYMENTS_LEDGER.md) 保持凭证 `refund_status='pending'` 并反查，不能套用实例任务状态或直接补钱；通知发送按 [NOTIFICATIONS.md](NOTIFICATIONS.md) 转 `pending_manual_check`。明确业务拒绝按各领域契约处理，禁止将同一异常强行映射为所有模块共同的失败终态。
 
 
 ### 可选配置表单能力

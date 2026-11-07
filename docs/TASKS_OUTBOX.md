@@ -248,6 +248,8 @@ flowchart TD
 
 renew 的人工 retry/fulfill 使用现有 resolve 入口和审计，fulfill 必须保留原资源 ID，调用续费完成处理器；不能调用新购起租方法。cancel_compensate 仅适用新购，不能拿它销毁原续费实例。完整边界及兼容证据见 [M2_RENEWAL_CONTRACT.md](M2_RENEWAL_CONTRACT.md)。
 
+**人工退款边界（2026-11-08）**：退款由管理员手动办理，本期不建设自动退款/补偿或网关退款任务。已有 `cancel_compensate` 仍是管理员显式裁决入口，不由 Worker 自动触发。手动退钱本身不解除 Task-as-Lock；资源与待执行请求仍按各自证据核验。本轮没有执行退款或任务裁决，见 [人工退款策略](PAYMENTS_LEDGER.md#manual-refund-policy)。
+
 
 **续费异常通知策略**：首次执行未确认续费成功在事务提交后记录含账单/实例/任务编号的 warning，只读调查不逐分钟重复 warning，进入人工门禁升级 critical；已提交的 tasks 是待办事实，日志不能证明管理员已读，须配合 outbox:inspect（增加 action 字段）巡检。已扣款续费不自动退款、不撤回本地权益、不派销毁；由管理员处理。人工 action=investigate 仅对已付 renew 的 failed+MANUAL_AUDIT_REQUIRED 开启新只读观察窗口，保留原上游单号、冻结参数和重试计数，递增 token 并写审计；queryRenewal 不再次付款/续费。完整证据与通知边界见 [续费契约](M2_RENEWAL_CONTRACT.md#续费异常通知与人工核验2026-11-08)。
 

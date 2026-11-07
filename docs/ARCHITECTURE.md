@@ -12,6 +12,8 @@
 
 **事务与运行边界**：财务服务使用同一数据库连接提交账单 CAS、钱包/账本及 `tasks`，不以框架普通队列、`afterCommit` 或自动重试替代 Outbox。Worker 独立运行并管理逐任务状态；Redis 仅用于缓存和唤醒，不能取代 MySQL 业务占用。框架迁移保留插件隔离及现有 API、身份和密文兼容要求。
 
+**当前退款边界**：用户已确认退款由管理员手动办理，本期不建设自动退款、自动补偿或网关退款调用/反查。下文完整退款状态机为未来另行授权的参考，已有资金防重、人工裁决及未知任务占用规则保留，详见 [人工退款策略](PAYMENTS_LEDGER.md#manual-refund-policy)。
+
 **旧站迁移交付边界**：旧系统适配器以独立插件部署在旧站，生成指定简云版本的 SQL 数据库备份及映射/对账材料，由运维通过通用 MySQL 工具恢复到独立空库。简云运行架构不包含迁移页面、旧站专用 API、专用导入命令或旧库连接；该工具不属于简云 `plugins/` 驱动层。旧回调持久接收及桥接同样是外置过渡设施，仍通过已核准的通用支付契约结算，完整边界与开放门禁见 [MIGRATION_RUNBOOK.md](MIGRATION_RUNBOOK.md)。
 
 ```text
@@ -86,7 +88,7 @@ sequenceDiagram
 
 **任务安全边界**：`tasks` 是任务执行占用的唯一事实来源。`running` / `investigating` 以及 `failed + MANUAL_AUDIT_REQUIRED` 都阻断同实例其他动作，不能用 `lease_until` 到期来解除阻断。所有领取、接管与人工裁决先锁实例再锁任务；Worker 的租约只控制执行权与回写资格。无法反查的未知结果必须保留人工核验标记并告警，通用重试拒绝此类任务；`super_admin` 通过独立、受审计的强制重发或人工回填命令裁决，不绕过普通 Worker 完成方法的租约门禁。详见 [TASKS_OUTBOX.md](TASKS_OUTBOX.md) §2–§3。
 
-**退款业务边界**：云消费退款认领先检查实例未决任务；认领后的正常消费主账单 `refund_pending` 同时阻断新动作与已有 `pending` 任务领取，退款不通过第二份任务锁承载。明确拒绝按原状态安全恢复后再检查任务资格；结果未知持续冻结。成功终态 CAS、主账单转 `refunded`、旧 pending 任务失效与唯一销毁任务投递同事务完成，销毁前继续保留退款关停冻结。接管或回写若发现不匹配退款归属则转人工核对。迟到/多收钱包款退款不改父账单或实例，不触发此冻结。详见 [PAYMENTS_LEDGER.md](PAYMENTS_LEDGER.md) §3 与 [TASKS_OUTBOX.md](TASKS_OUTBOX.md) §2.4。
+**退款业务边界（未来退款登记/编排的安全约束）**：云消费退款认领先检查实例未决任务；认领后的正常消费主账单 `refund_pending` 同时阻断新动作与已有 `pending` 任务领取，退款不通过第二份任务锁承载。明确拒绝按原状态安全恢复后再检查任务资格；结果未知持续冻结。成功终态 CAS、主账单转 `refunded`、旧 pending 任务失效与唯一销毁任务投递同事务完成，销毁前继续保留退款关停冻结。接管或回写若发现不匹配退款归属则转人工核对。迟到/多收钱包款退款不改父账单或实例，不触发此冻结。详见 [PAYMENTS_LEDGER.md](PAYMENTS_LEDGER.md) §3 与 [TASKS_OUTBOX.md](TASKS_OUTBOX.md) §2.4。
 
 **快照与备份链路**：手动请求和调度器同事务写入本地 `creating` 台账与 `snapshot_create` / `backup_create` Outbox，唯一任务键冲突整笔回滚；Worker 确认结果后回填同一台账。删除任务按本地台账 ID 使用统一幂等键 `snapshot_delete:{instance_snapshots.id}`，执行前核验 Provider、实例、类型与远端 ID。快照标识只在 `(instance_id, type, remote_snapshot_id)` 范围唯一；创建、删除均使用上述未知结果调查协议，轮转必须等待前序结果确认。详见 [LIFECYCLE_PRICING.md](LIFECYCLE_PRICING.md) §5。
 

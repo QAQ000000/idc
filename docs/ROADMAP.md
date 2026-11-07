@@ -50,7 +50,7 @@ Milestone 5: 返佣防套利、营销发券、通知中心与生产割接 (Growt
 ## 阶段二：驱动插件体系、魔方代理与三方支付网关 (Drivers & Payments)
 > **目标**：打通与真实上游魔方（SakuraIDC / 创峰等）的 API 代理及第三方支付网关（支付宝当面付 / 易支付），实现配置透传、异步回调收单与自动开通。
 
-- [x] **任务 2.1**：定义统一 `App\Plugins\Providers\UpstreamDriverInterface` 与 `App\Plugins\Payments\PaymentGatewayInterface` M2 最小新购/收单契约；后续运维/原路退款接口仍待扩展。
+- [x] **任务 2.1**：定义统一 `App\Plugins\Providers\UpstreamDriverInterface` 与 `App\Plugins\Payments\PaymentGatewayInterface` M2 最小新购/收单契约；后续运维接口仍待扩展；原路退款自动化不在当前交付范围。
 - [x] **任务 2.2**（固定无配置商品的新购/调查驱动及真实首链已验收，独立枚举配置已扩展，商品 14 单配置实付/回填及基础规格已核验，边界见文末）：实现 `ZjmfProxyDriver`（对接智简魔方开放 API）：
   - `getFormSchema`：拉取魔方配置项并缓存为 JSON 快照。
   - `preflightPrice`：下单前向魔方预检校验价格与库存。
@@ -93,7 +93,10 @@ Milestone 5: 返佣防套利、营销发券、通知中心与生产割接 (Growt
 ---
 
 ## 阶段四：实例运维控制台、变配改价与客服工单 (Ops, Billing & Tickets)
-> **目标**：完善客户日常高频操作、后台运维改价补差神器、原路退款状态机与自建客服工单协同。
+
+**退款策略定案（2026-11-08）**：退款由管理员手动办理，自动退款、自动补偿及网关退款调用/反查移出当前交付范围，不作为上线前置。既有收款防重、迟到/多收款入钱包、SC-L02 和人工 `cancel_compensate` 保留；原退款状态机为未来另行授权的参考，详见 [人工退款策略](PAYMENTS_LEDGER.md#manual-refund-policy)。人工退款登记入口未实现，旧账单 3 的 ¥16.00 仍未结清，未知履约门禁继续保留。
+
+> **目标**：完善客户日常高频操作、后台运维改价补差与自建客服工单协同；退款由管理员人工处理，不开发自动退款、自动补偿或自动网关退款。
 
 - [ ] **任务 4.1**：客户控制台实例管理功能：
   - 电源操作：开机、关机、重启。
@@ -102,9 +105,8 @@ Milestone 5: 返佣防套利、营销发券、通知中心与生产割接 (Growt
 - [ ] **任务 4.2**：弹性云动态升降级引擎：
   - 升级按剩余天数折算差价（先乘后除 `scale=6` + `bc_round`），付完款调上游变配。
   - 降级按“0 元不退款”通过 Outbox 异步执行，自动下调下次续费价，并同事务作废在途未付续费单。
-- [ ] **任务 4.3**：后台管理员改价弹窗与原路退款闭环：
+- [ ] **任务 4.3**：后台管理员改价弹窗：
   - 支持手动输入新的续费价格（更新 `override_price` 并作废在途未付续费单），自动折算当期差价并支持从余额扣除。
-  - 按 `PAYMENTS_LEDGER.md` 的退款用途实现状态机：`cloud_consumption` 不预扣钱包，仅在正常云消费退订成功时冲消费/佣金并派发 `terminate`；`wallet_recharge` 处理对应凭证、实际钱包预扣及自身独立充值主账单的冻结/退款终态，拒绝时按上下文恢复该充值账单；`late_wallet_credit` 只处理对应凭证与实际钱包预扣，父账单始终只读。两类钱包款退款均不改实例/消费/佣金、不派销毁任务。网关结果未知单向反查；拒绝时只有存在实际预扣及流水证明才按原额执行 `refund_rollback`，无预扣的云消费拒绝仅恢复本次实际改变的状态，不能凭空补钱。
 - [ ] **任务 4.4**：后台“以该客户身份登录（Login as Client）”运维接口与自建客服工单体系（`tickets` & `ticket_replies` 内部私有便签、跨部门转派）。
 - [ ] **验收标准**：全流程测试变配补差计算精度无误；后台手工改价后在途旧续费单自动失效且下期按新价格出账；模拟登录读写风控与工单内部便签隔离生效。
 
@@ -114,7 +116,7 @@ Milestone 5: 返佣防套利、营销发券、通知中心与生产割接 (Growt
 > **目标**：防羊毛党闭环，完善多渠道通知与 SEO/下载中心，通过外部导出包恢复并核验正式站客户与存活实例（历史快照 3,363 位客户，正式导出时复核）。
 
 - [ ] **任务 5.1**：实现推广返利冻结与三轨分户账本结算状态机（排除 `recharge` 账单，15 天冻结期、`frozen_commission` $\rightarrow$ `available_commission` 双分录流转、双通道提现）。
-- [ ] **任务 5.2**：实现正常云消费（`cloud_consumption`）退款成功终态 CAS 同事务级联冲正；迟到/多收钱包款与独立充值退款不得冲原佣金（见 [PAYMENTS_LEDGER.md](PAYMENTS_LEDGER.md) §3）：
+- [ ] **任务 5.2**：实现管理员手动退款确认后的返佣冲正与防重对账，不包含自动退钱或网关退款状态机。仅正常云消费（`cloud_consumption`）凭真实退款证据登记成功终态时，使用 CAS 同事务冲正一次；迟到/多收钱包款与独立充值退款不得冲原佣金（见 [人工退款策略](PAYMENTS_LEDGER.md#manual-refund-policy)）：
   - 冻结期内退款：立即作废佣金并冲减 `frozen_commission`。
   - 已结算退款：触发 Clawback 冲减 `available_commission`（允许扣为负数阻断提现）。
 - [ ] **任务 5.3**：实现实名认证法定生日解析、三大营销发券命令（`SendRegisterGifts` / `SendBirthdayGifts` / `SendWinBackCoupons`）、单渠道指纹幂等通知中心（含 Web Push 隔离）及 SEO 文章/安全下载中心（`X-Accel-Redirect`）。
@@ -134,7 +136,7 @@ Milestone 5: 返佣防套利、营销发券、通知中心与生产割接 (Growt
 | M1 内核 | `ARCHITECTURE.md`、`DATABASE.md`、`API.md`、`CAPTCHA.md`、`PAYMENTS_LEDGER.md` | 账单、账本与 Outbox 同事务；开发模拟交付不能充当真实上游验收 |
 | M2 驱动与真实收单 | `PLUGIN_DEV.md`、`PAYMENTS.md`、`TASKS_OUTBOX.md`、`FRONTEND.md` | 任务 2.5 安全 Worker 先于真实交付启用；存量 Provider 能力清单先于迁移承诺 |
 | M3 可靠调度 | `TASKS_OUTBOX.md`、`LIFECYCLE_PRICING.md`、`BACKUP_SCHEDULER.md` | 复用 M2 Worker；快照可选接口、台账与 Outbox 全链路验收 |
-| M4 运维与退款 | `API.md`、`LIFECYCLE_PRICING.md`、`PAYMENTS_LEDGER.md`、`TICKETS.md` | 复用任务门禁、账本与审计，禁止旁路厂商调用 |
+| M4 运维与人工资金处理 | `API.md`、`LIFECYCLE_PRICING.md`、`PAYMENTS_LEDGER.md`、`TICKETS.md` | 复用任务门禁、账本与审计，禁止旁路厂商调用 |
 | M5 增长与割接 | `AFFILIATE.md`、`MARKETING_ENGINE.md`、`NOTIFICATIONS.md`、`SEO.md`、`MIGRATION_RUNBOOK.md` | 佣金冲正、通知防重、旧回调桥接、存量能力/人工接管逐项通过后方可生产割接 |
 
 新增或修正设计契约仍属于待实现工作，以上未勾选任务不得因文档补齐而改为已完成。
@@ -144,7 +146,7 @@ Milestone 5: 返佣防套利、营销发券、通知中心与生产割接 (Growt
 
 M0 保留同物理连接事务、CAS、资金/归属保护与插件隔离，完成现有 API 和单前端；验证包含隔离业务回归、旧 MVP 增量升级、私有 PHP-FPM 及配置缓存、前端静态检查和实际交互。正式环境的调度、生产 Web 配置与业务库迁移仍需按 README 单独接入；M2 验收环境的 systemd 守护/timer 已完成独立运行验收。
 
-M2 已实现支付验签与成功状态分离、首个 Provider 的账期/请求标识/未知结果语义、确认永不交付订单的审计取消及钱包补偿，以及远端资源归属唯一约束；真实选配单配置样本已有交付及基础规格证据，后续高级配置、原路退款与完整生命周期仍按上方未勾选项推进。
+M2 已实现支付验签与成功状态分离、首个 Provider 的账期/请求标识/未知结果语义、确认永不交付订单的审计取消及钱包补偿，以及远端资源归属唯一约束；真实选配单配置样本已有交付及基础规格证据，后续高级配置与完整生命周期仍按上方未勾选项推进；原路退款自动化移出当前交付范围，退款由管理员人工处理。
 
 
 ### M2 配置销售增量（2026-11-08）

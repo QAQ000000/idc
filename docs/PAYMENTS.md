@@ -8,7 +8,7 @@
 
 所有支付插件放置在 `plugins/payments/` 目录下，实现 `App\Plugins\Payments\PaymentGatewayInterface`。
 
-**接口签名与支付 DTO 的唯一文档来源是 [PLUGIN_DEV.md · 支付网关插件开发规范](PLUGIN_DEV.md#payment-gateway-interface)**；本文不再维护接口定义副本。插件负责收银台、验签、退款请求与状态查询，账单 CAS、钱包变更、返佣和 Outbox 由支付领域服务按照本文及 [PAYMENTS_LEDGER.md](PAYMENTS_LEDGER.md) §3 编排，插件不得自行推进业务状态。
+**接口签名与支付 DTO 的唯一文档来源是 [PLUGIN_DEV.md · 支付网关插件开发规范](PLUGIN_DEV.md#payment-gateway-interface)**；本文不再维护接口定义副本。当前插件负责收银台与验签，账单 CAS、钱包变更、返佣和 Outbox 由支付领域服务编排，插件不得自行推进业务状态。退款由管理员手动办理，本期不增加自动网关退款调用/反查；原退款编排设计仅作未来另行授权的参考，见 [人工退款策略](PAYMENTS_LEDGER.md#manual-refund-policy)。
 
 ---
 
@@ -106,6 +106,6 @@ Database::transaction(static function (PDO $db) use ($flow, $notice): void {
 
 外部直付不改变钱包，payment_records 是实收凭证，账单、累计消费与 create Outbox 同事务落库；transactions 只记真实钱包/佣金变化。重复回调不重复履约。迟到、取消后付款、金额不符与额外真实付款，在归属、币种可确认时按独立凭证幂等入钱包，不改原账单/实例/消费累计；不支持的币种和无法归属的通知返回 fail 留待网关重试/人工对账，绝不猜测归属。
 
-未交付永久取消的钱包补偿见 [TASKS_OUTBOX.md](TASKS_OUTBOX.md#m2-运行与永久取消)，这是退到钱包，原路退款仍延期。未知上游结果必须先核验，不允许为退款直接解除实例占用。
+未交付永久取消的钱包补偿见 [TASKS_OUTBOX.md](TASKS_OUTBOX.md#m2-运行与永久取消)，这是管理员显式触发的退到钱包，不能视为原路退款。原路退款由管理员手动办理，不列入当前自动化交付。未知上游结果必须先核验，不允许为退款直接解除实例占用。
 
 固定套餐续费沿用同一验签与实收幂等入口。正常支付原子顺延本地原到期日并投 renew；不可逆/主动销毁时，真实实收按 SC-L02 一次 refund_to_balance、账单转 refunded 及清周期标记。其他 blocker/退款冻结/非财务暂停导致不能正常履约时，实收只入钱包且保留未付续费单，余额/自动代扣则不扣钱。重复回调不再顺延；具体接口与当前限制见 [续费契约](M2_RENEWAL_CONTRACT.md)。

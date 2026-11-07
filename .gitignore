@@ -10,6 +10,8 @@
 # Logs & Temporary storage
 /storage/logs/
 /storage/cache/
+/storage/downloads/*
+!/storage/downloads/.gitkeep
 *.log
 
 # System & IDE files

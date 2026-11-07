@@ -472,6 +472,27 @@ CREATE TABLE IF NOT EXISTS `admin_audit_logs` (
     INDEX `idx_target` (`target_type`, `target_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='管理员高危操作审计日志 (仅追加, UPDATE/DELETE被触发器物理拦截)';
 
+CREATE TABLE IF NOT EXISTS `downloads` (
+    `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    `category` VARCHAR(50) NOT NULL DEFAULT '常用工具' COMMENT '分类名称 (如: 远程连接 / 常用工具 / 专属驱动)',
+    `title` VARCHAR(150) NOT NULL COMMENT '资源名称',
+    `description` VARCHAR(500) NULL COMMENT '资源简介或提取码说明 (严禁存放真实生产明文密码)',
+    `source_type` ENUM('upload', 'external') NOT NULL DEFAULT 'upload' COMMENT '来源类型: upload=后台上传文件, external=外部网盘/直链',
+    `file_path` VARCHAR(255) NOT NULL COMMENT '本地存储相对路径(如 downloads/202611/putty.exe) 或 外部完整URL',
+    `file_name` VARCHAR(150) NULL COMMENT '原始文件名 (用于下载时 Content-Disposition 响应头)',
+    `file_size` BIGINT UNSIGNED NULL COMMENT '文件字节大小 (后台上传时自动计算)',
+    `file_sha256` CHAR(64) NULL COMMENT '文件 SHA256 校验值 (上传时自动生成，供客户校验防篡改)',
+    `access_level` ENUM('public', 'login_required', 'active_instance', 'product_bound') NOT NULL DEFAULT 'public' COMMENT '下载权限: 公开 | 需登录 | 需有在跑实例 | 需已购指定商品',
+    `bound_product_id` INT UNSIGNED NULL COMMENT '当 access_level=product_bound 时绑定的商品ID',
+    `downloads_count` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '累计下载次数 (原子累加)',
+    `order_num` INT NOT NULL DEFAULT 0 COMMENT '排序权重 (越大越靠前)',
+    `status` TINYINT(1) NOT NULL DEFAULT 1 COMMENT '1启用, 0隐藏',
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (`bound_product_id`) REFERENCES `products` (`id`) ON DELETE SET NULL,
+    INDEX `idx_status_cat_order` (`status`, `category`, `order_num` DESC)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='资源与工具下载中心表';
+
 -- =========================================================================
 -- 物理强制触发器：强制保证 transactions 资金流水账本
 -- 1. balance_after = balance_before + amount (兼容 MySQL 5.7 与 8.0 的内核级平衡检查)

@@ -70,6 +70,20 @@
 }
 ```
 
+### 5. 软件与常用工具下载中心
+- **列表接口**：`GET /api/v1/downloads?category={category}`
+  - **响应**：返回资源列表（按 `order_num DESC, id DESC` 排序），包含标题、简介、文件大小、SHA256 校验和及权限要求。
+- **资源下载/重定向**：`GET /api/v1/downloads/{id}/file`
+  - **权限核验**：按 `access_level` 严格鉴权：
+    - `public`: 允许免登录直接下载；
+    - `login_required`: 需携带有效客户 JWT Token；
+    - `active_instance`: 校验当前用户拥有至少一台 `active` 状态的云实例；
+    - `product_bound`: 校验当前用户拥有指定 `bound_product_id` 商品的有效实例。
+  - **原子计数**：执行 `UPDATE downloads SET downloads_count = downloads_count + 1 WHERE id = ?`；
+  - **分发响应**：
+    - `source_type = 'external'`: 返回 HTTP 302 重定向至外部网盘/直链；
+    - `source_type = 'upload'`: 返回 Nginx 内部重定向头 `X-Accel-Redirect: /protected_downloads/...` 并设置 `Content-Disposition: attachment; filename="{file_name}"`，零 PHP 内存损耗高速下发。
+
 ---
 
 ## 三、 商品与购买流程 (Catalog & Order)
@@ -206,6 +220,29 @@
 ### 3. 任务队列监控与【一键重试】
 - **请求**：`GET /api/v1/admin/tasks?status=failed`
 - **重发**：`POST /api/v1/admin/tasks/{id}/retry`（一键重新触发上游开通/变配）。
+
+### 4. 资源下载管理与安全上传
+- **文件上传**：`POST /api/v1/admin/downloads/upload`
+  - **请求体**：`multipart/form-data`（字段: `file`）；
+  - **安全策略**：严格限制扩展名白名单（`.zip`, `.tar.gz`, `.7z`, `.exe`, `.msi`, `.dmg`, `.apk`, `.iso`, `.pdf`），文件持久化至隔离存储目录 `storage/downloads/{YYYYMM}/{uuid}.{ext}`，返回 `{ "file_path": "...", "file_name": "...", "file_size": 1048576, "file_sha256": "..." }`；
+- **新建/更新资源**：`POST /api/v1/admin/downloads`
+  - **载荷**：
+    ```json
+    {
+      "category": "专属驱动",
+      "title": "Windows VirtIO 优化网卡驱动包",
+      "description": "适用于 KVM 架构 Windows 实例，提升万兆网卡吞吐",
+      "source_type": "upload",
+      "file_path": "downloads/202611/c9f28d...virtio.iso",
+      "file_name": "virtio-win-0.1.240.iso",
+      "file_size": 612450304,
+      "file_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "access_level": "product_bound",
+      "bound_product_id": 153,
+      "order_num": 10,
+      "status": 1
+    }
+    ```
 
 ---
 

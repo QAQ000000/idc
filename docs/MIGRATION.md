@@ -91,8 +91,28 @@ LEFT JOIN idc2.shd_news n ON m.id = n.relid
 LEFT JOIN idc2.shd_news_type t ON m.parent_id = t.id;
 ```
 
-### 4. `shd_downloads` $\rightarrow$ `config/downloads.json` (10 个文件/外链)
-为了消灭无状态死数据表，常用工具下载直接固化迁移至前端/配置目录 `config/downloads.json` 静态维护，不再在 MySQL 中建表维护。
+### 4. `shd_downloads` $\rightarrow$ `downloads` (10 个文件/外链导入)
+支持后台动态上传维护与外链安全分发，将旧库 `shd_downloads` 真实外部网盘地址（剔除旧站 `sakuraidc.cc` 动态跳转）规范迁入 `downloads` 表：
+```sql
+INSERT INTO jianyun.downloads (
+    id, category, title, description, source_type, file_path, access_level, downloads_count, status, created_at
+)
+SELECT 
+    d.id,
+    CASE 
+        WHEN d.title LIKE '%JuiceSSH%' OR d.title LIKE '%ConnectBot%' OR d.title LIKE '%远程桌面%' THEN '远程连接'
+        ELSE '网站源码'
+    END,
+    TRIM(d.title),
+    TRIM(d.description),
+    'external',
+    TRIM(d.location),
+    IF(d.clientsonly = 1, 'login_required', 'public'),
+    d.downloads,
+    IF(d.hidden = 1, 0, 1),
+    IF(d.create_time > 0, FROM_UNIXTIME(d.create_time), NOW())
+FROM idc2.shd_downloads d;
+```
 
 ---
 

@@ -1,6 +1,6 @@
 # JianYun (简云) · 数据库设计字典 (Database Schema)
 
-本系统全面丢弃旧魔方 178 张表的臃肿设计，收敛为高内聚、模块化的生产数据架构（全系统共 25 张物理表：8 张核心业务表 + 17 张支撑/配置/审计表）。全表基于 **MySQL 8.0+ / 5.7+ InnoDB** 引擎，字符集为 `utf8mb4_unicode_ci`，金额统一使用 `DECIMAL(10,2)`。
+本系统全面丢弃旧魔方 178 张表的臃肿设计，收敛为高内聚、模块化的生产数据架构（全系统共 26 张物理表：8 张核心业务表 + 18 张支撑/配置/审计/下载表）。全表基于 **MySQL 8.0+ / 5.7+ InnoDB** 引擎，字符集为 `utf8mb4_unicode_ci`，金额统一使用 `DECIMAL(10,2)`。
 
 > [!IMPORTANT]
 > **全库时间列统一使用 `DATETIME`（不使用 TIMESTAMP）**：`TIMESTAMP` 存在 2038-01-19 的硬上限，会直接导致年付/多年付实例的到期日写入失败。时区语义由应用层统一约定（按 UTC 存取、展示层转换），数据库层不做隐式时区换算。
@@ -9,7 +9,7 @@
 
 ---
 
-## 1. 全库表 DDL（8 张核心业务表 + 17 张支撑业务表）
+## 1. 全库表 DDL（8 张核心业务表 + 18 张支撑业务表）
 
 ### 1.1 `admins`（系统管理与运维员工档案）
 ```sql
@@ -626,6 +626,35 @@ CREATE TABLE `admin_audit_logs` (
 
 ---
 
-### 1.26 静态下载配置 (`config/downloads.json`)
+### 1.26 `downloads`（资源与工具下载中心表）
+```sql
+CREATE TABLE `downloads` (
+    `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    `category` VARCHAR(50) NOT NULL DEFAULT '常用工具' COMMENT '分类名称 (如: 远程连接 / 常用工具 / 专属驱动)',
+    `title` VARCHAR(150) NOT NULL COMMENT '资源名称',
+    `description` VARCHAR(500) NULL COMMENT '资源简介或提取码说明 (严禁存放真实生产明文密码)',
+    `source_type` ENUM('upload', 'external') NOT NULL DEFAULT 'upload' COMMENT '来源类型: upload=后台上传文件, external=外部网盘/直链',
+    `file_path` VARCHAR(255) NOT NULL COMMENT '本地存储相对路径(如 downloads/202611/putty.exe) 或 外部完整URL',
+    `file_name` VARCHAR(150) NULL COMMENT '原始文件名 (用于下载时 Content-Disposition 响应头)',
+    `file_size` BIGINT UNSIGNED NULL COMMENT '文件字节大小 (后台上传时自动计算)',
+    `file_sha256` CHAR(64) NULL COMMENT '文件 SHA256 校验值 (上传时自动生成，供客户校验防篡改)',
+    `access_level` ENUM('public', 'login_required', 'active_instance', 'product_bound') NOT NULL DEFAULT 'public' COMMENT '下载权限: 公开 | 需登录 | 需有在跑实例 | 需已购指定商品',
+    `bound_product_id` INT UNSIGNED NULL COMMENT '当 access_level=product_bound 时绑定的商品ID',
+    `downloads_count` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '累计下载次数 (原子累加)',
+    `order_num` INT NOT NULL DEFAULT 0 COMMENT '排序权重 (越大越靠前)',
+    `status` TINYINT(1) NOT NULL DEFAULT 1 COMMENT '1启用, 0隐藏',
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (`bound_product_id`) REFERENCES `products` (`id`) ON DELETE SET NULL,
+    INDEX `idx_status_cat_order` (`status`, `category`, `order_num` DESC)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='资源与工具下载中心表';
+```
 > [!NOTE]
-> 为避免过度设计与僵尸数据表，常用工具与客户端驱动下载彻底从数据库中解耦，采用静态配置文件 `config/downloads.json` 进行统一维护，具备零 SQL 查询损耗与极简维护优势。
+> **下载权限控制与高安全分发规范**：
+> 1. **存储目录代码隔离**：后台上传文件必须存放于非 Web 根目录的 `storage/downloads/{YYYYMM}/{uuid}.{ext}`，严禁直接上传至 `public/`，杜绝文件伪装 RCE 与爬虫扫库。
+> 2. **下载权限控制 (`access_level`)**：
+>    - `public`：访客免登录公开下载；
+>    - `login_required`：必须携带有效客户 Token 下载；
+>    - `active_instance`：名下必须拥有至少一台状态为 `active` 的实例；
+>    - `product_bound`：名下必须拥有 `bound_product_id` 指定商品的有效在跑实例（专属镜像、专属驱动分发场景）。
+> 3. **Nginx `X-Accel-Redirect` 高性能分发**：对于本地 `upload` 文件，PHP 在完成鉴权与 `downloads_count = downloads_count + 1` 原子行锁累加后，返回 `X-Accel-Redirect` 响应头交由 Nginx 内核直接流式传输，零 PHP 内存损耗；外部 `external` 资源则直接执行 `302` 重定向。

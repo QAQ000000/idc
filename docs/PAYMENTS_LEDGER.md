@@ -165,7 +165,8 @@ COMMIT;
 
 #### 场景 3.1.B：已交付云资源退订/故障销毁退款 (Cloud Instance Decommissioning Refund)
 - **资金现状**：款项已在开通时交付为云资源，用户钱包余额中**不存在**此笔款项。**严禁从用户 `users.balance` 扣钱**！
-- **原子事务规范**：必须在同一事务中完成“锁账单凭证 + CAS认领 + Outbox下发销毁任务 + 推广佣金追回/取消 + 优惠券回滚”：
+- **原子认领与风控时序（严禁未退先毁）**：
+  必须在同一事务中完成“锁账单凭证 + CAS认领 + 实例临时挂起”，**严禁在退款未决阶段提前下发 `terminate` 任务**，防止退款被驳回或网关退款失败时云资源已被误毁：
 ```sql
 START TRANSACTION;
 
@@ -183,48 +184,66 @@ WHERE `id` = :payment_record_id
   AND `status` = 'success' 
   AND `refund_status` = 'none';
 
--- 3. 账单状态推进至退款中
+-- 3. 账单状态推进至退款审核中
 UPDATE `invoices` SET `status` = 'refund_pending' WHERE `id` = :invoice_id;
 
--- 4. 发件箱投递实例销毁排他任务 (Outbox Task-as-Lock)
-INSERT INTO `tasks` (
-    `instance_id`, `invoice_id`, `idempotency_key`, `action`, `status`, `payload`
-) VALUES (
-    :instance_id, :invoice_id, CONCAT('terminate:refund_inv_', :invoice_id), 'terminate', 'pending',
-    JSON_OBJECT('refund_amount', :refund_amount, 'reason', :reason)
-);
-
--- 5. 级联处理推广返佣 (基于 uk_invoice_affiliate 唯一索引)
--- 若佣金在冻结期 (status='pending')：直接置为 cancelled，并扣减推荐人的 frozen_commission
--- 若佣金已入账 (status='available')：置为 clawbacked，并从推荐人 available_commission 扣除 (或产生待收欠款记录)
-
--- 6. 若使用了单次优惠券，回滚优惠券使用标记 (user_coupons.status = 'unused')
-UPDATE `user_coupons` 
-SET `status` = 'unused', `used_at` = NULL, `order_invoice_id` = NULL 
-WHERE `order_invoice_id` = :invoice_id;
+-- 4. 实例临时安全挂起 (锁定防并发使用，但绝不下发物理销毁任务)
+UPDATE `instances` 
+SET `status` = 'suspended', 
+    `suspend_type` = 'manual', 
+    `suspend_reason` = '退款审核中临时冻结' 
+WHERE `id` = :instance_id AND `status` = 'active';
 
 COMMIT;
 ```
-> [!NOTE]
-> 事务提交后，若退款方式为**原路退回**，则调用网关 `refundPayment()`；若客户选择**退回站内余额**（场景 SC-L02），则直接调用 `LedgerService` 插入 `type='refund_to_balance'` 的增额流水并将资金充入用户钱包。
+> [!IMPORTANT]
+> **已付订单退款不退券（MARKETING_ENGINE §5.1 铁律）**：已支付订单无论因何种原因申请退款，使用的优惠券状态**保持为 `used`**，严禁回滚为 `unused`，彻底封死领券购买再退款套刷优惠券的漏洞。优惠券回滚仅允许在“未支付账单超时取消（`unpaid -> cancelled`）”中执行。
 
-### 3.2 外部网关调用与失败补偿协议 (`refund_rollback`)
-1. **调用时机**：上述数据库事务提交成功后，方可调用支付插件发起 `refundPayment()`；
-2. **场景 A：网关返回成功**：
+> [!NOTE]
+> 事务提交后，若退款方式为**原路退回**，则调用网关 `refundPayment()`；若客户选择**退回站内余额**（场景 SC-L02），则在管理员审批通过后直接调用 `LedgerService` 插入 `type='refund_to_balance'` 的增额流水并将资金充入用户钱包。
+
+### 3.2 外部网关调用、终态裁决与失败补偿协议 (`refund_rollback`)
+1. **调用时机**：上述认领事务提交成功后，方可调用支付插件发起 `refundPayment()`；
+2. **场景 A：网关返回成功（或管理员正式批准退款）**：
+   退款实质成功，在同一事务内完成终态标记、下发物理销毁与佣金级联扣回：
    ```sql
    START TRANSACTION;
+   -- 1. 推进凭证与账单终态
    UPDATE `payment_records` SET `refund_status` = 'success', `refunded_at` = NOW() WHERE `id` = :id AND `refund_status` = 'pending';
    UPDATE `invoices` SET `status` = 'refunded' WHERE `id` = :invoice_id;
+
+   -- 2. 正式向发件箱投递实例销毁任务 (退款已定，此时方可物理销毁)
+   INSERT INTO `tasks` (
+       `instance_id`, `invoice_id`, `idempotency_key`, `action`, `status`, `payload`
+   ) VALUES (
+       :instance_id, :invoice_id, CONCAT('terminate:refund_inv_', :invoice_id), 'terminate', 'pending',
+       JSON_OBJECT('refund_amount', :refund_amount, 'reason', :reason)
+   );
+
+   -- 3. 级联处理推广返佣 (基于 uk_invoice_affiliate 唯一索引)
+   -- 若佣金在冻结期 (status='pending')：直接置为 cancelled，扣减推荐人的 frozen_commission
+   -- 若佣金已入账 (status='available')：置为 clawbacked，从推荐人 available_commission 扣除
    COMMIT;
    ```
 3. **场景 B：网关网络超时 / 结果未知**：
    - `payment_records.refund_status` **继续保持 `pending`**；
    - 绝不重复调用发起退款！由退款对账定时任务调用 `queryRefund(refund_trade_no)` 进行单向查询确认。
-4. **场景 C：网关明确拒绝退款（如账户注销/渠道超期不可退）**：
-   - 系统执行**单事务补偿回滚**，将此前预扣的款项返还至用户钱包：
+4. **场景 C：网关明确拒绝退款（或管理员后台驳回退款申请）**：
+   - 事务执行**状态恢复与补偿回滚**，机器恢复运行，用户权益不丢失：
    ```sql
    START TRANSACTION;
+   -- 1. 退款状态置为 failed，账单恢复 paid 状态
    UPDATE `payment_records` SET `refund_status` = 'failed' WHERE `id` = :id AND `refund_status` = 'pending';
+   UPDATE `invoices` SET `status` = 'paid' WHERE `id` = :invoice_id;
+
+   -- 2. 若实例曾因退款审核被临时冻结，安全解挂恢复活跃状态
+   UPDATE `instances` 
+   SET `status` = 'active', 
+       `suspend_type` = 'billing', 
+       `suspend_reason` = NULL 
+   WHERE `id` = :instance_id AND `suspend_reason` = '退款审核中临时冻结';
+
+   -- 3. 若属于场景 3.1.A (此前预扣了钱包余额)，将预扣款全额补偿返还至用户钱包
    UPDATE `users` SET `balance` = `balance` + :refund_amount WHERE `id` = :user_id;
    INSERT INTO `transactions` (
        `user_id`, `account_type`, `type`, `amount`,
@@ -233,7 +252,6 @@ COMMIT;
        :user_id, 'wallet', 'refund_rollback', :refund_amount,
        :before, :after, :rollback_idempotency_key, '原路退款网关拒绝补偿返还'
    );
-   UPDATE `invoices` SET `status` = 'paid' WHERE `id` = :invoice_id;
    COMMIT;
    ```
 

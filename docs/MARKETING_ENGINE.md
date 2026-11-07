@@ -131,10 +131,23 @@ COMMIT;
 
 ## 5. 风控安全与核心防刷底线
 
-1. **退款风控（反薅羊毛）**：
-   - 若用户使用了生日券或召回券购买产品，后因故发起全额退款：
+1. **退款风控（反薅羊毛）与未付取消回滚机制**：
+   - **已支付订单退订/退款**：
      - 账单退款逻辑只退回其实际通过支付宝/余额扣减的现金金额，卡券优惠额度直接作废清零，不予退还；
-     - 该张券状态变更为 `used`，不再回滚为 `unused`。
+     - 该张券状态**保持为 `used`**，不再回滚为 `unused`，彻底杜绝套刷与倒买倒卖。
+   - **未支付账单超时自动取消（`unpaid -> cancelled`）**：
+     - 用户未获得任何云服务，亦未发生现金退款，系统安全回滚锁定的卡券：
+     ```sql
+     -- 1. 回滚用户卡券资产状态
+     UPDATE `user_coupons` 
+     SET `status` = 'unused', `used_at` = NULL, `order_invoice_id` = NULL 
+     WHERE `order_invoice_id` = :invoice_id AND `status` = 'used';
+     
+     -- 2. 原子递减模板已使用次数 (若此前递增过)
+     UPDATE `coupons` 
+     SET `used_times` = `used_times` - 1 
+     WHERE `id` = :coupon_id AND `used_times` > 0;
+     ```
 2. **订单结算底线约束（CAS 保底）**：
    - 统一账单结算计算器强制设定底线：
      $$\text{FinalAmount} = \max(0.01, \text{RawPrice} - \text{Discount})$$

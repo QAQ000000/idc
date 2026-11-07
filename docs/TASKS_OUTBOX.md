@@ -18,15 +18,21 @@
 ## 2. 协议二：Task-as-Lock 与 Fencing Token 原子回写协议
 
 ### 2.0 实例预创建与外键生命周期契约 (Instance Pre-creation on Checkout)
-`tasks` 表通过严格的外键约束 `FOREIGN KEY (instance_id) REFERENCES instances(id) ON DELETE RESTRICT` 保护实例数据完整性。新购订单支付完成触发开通交付时，系统**严禁**在任务中写入伪造或未持久化的实例 ID，必须遵循以下单事务前置落库规范：
-1. **预创建待交付实例记录**：在支付回调或代扣事务中，系统首先在 `instances` 表插入一条初始状态为 `pending` 的实例：
-   - `encrypted_password` 存储加密后的初始 Root/面板密码（经 `Security::encrypt($password)` AES-256-GCM 密文存储，严禁明文）；
-   - `user_id`, `product_id`, `provider_id`, `config_snapshot`, `billing_cycle`, `recurring_price` 均在此阶段完整固化；
-   - `remote_instance_id` 初始留空为 `NULL`，由 Worker 异步交付成功后回填；
-2. **同事务下发发件箱任务**：获取到持久化生成的 `instances.id` 后，在同一个数据库事务内向 `tasks` 表插入 `action='create'` 的交付任务：
-   - 任务的外键 `instance_id` 和 `invoice_id` 均严格有效；
-   - 业务幂等键统一采用 `instance_create:inv_{invoice_id}` 或 `create:inst_{instance_id}`；
-3. **交付完成原子激活**：Worker 异步调用上游开通接口成功后，在第 2.2 节的 Fencing Token 原子事务内，将 `instances.status` 由 `pending` 推进至 `active`，并写入真实的 `remote_instance_id` 与 `ip_address`。
+`tasks` 表通过严格的外键约束 `FOREIGN KEY (instance_id) REFERENCES instances(id) ON DELETE RESTRICT` 保护实例数据完整性。新购订单触发开通交付时，系统**严禁**在任务中写入伪造或未持久化的实例 ID，必须遵循以下前置落库与异步交付规范：
+
+1. **下单阶段即时预创建（`POST /api/v1/orders/checkout`）**：
+   - 用户提交订单时即提供了 `hostname` 与初始 Root/面板 `password`；
+   - 系统在下单事务中，**立即预创建 `status='pending'` 的 `instances` 记录**，将密码经 `Security::encrypt($password)` AES-256-GCM 信封加密存入 `instances.encrypted_password`（彻底解决 10 分钟后三方支付异步回调丢失明文密码的致命缺陷）；
+   - 同时将生成的 `instances.id` 回填绑定至 `invoices.instance_id`，确保账单与实例强关联；
+   - `remote_instance_id` 初始留空为 `NULL`，等待开通成功回写。
+2. **付款成功投递发件箱任务**：
+   - **余额直付场景**：扣除余额并标记账单 `paid` 的同一事务内，直接向 `tasks` 表插入 `action='create'` 发件箱任务（`instance_id = invoices.instance_id`）；
+   - **网关回调场景（`POST /api/v1/payments/notify/{gateway}`）**：CAS 校验并标记 `invoices.status='paid'` 时，读取 `invoices.instance_id` 向 `tasks` 插入 `action='create'` 交付任务；
+   - 业务幂等键统一采用 `instance_create:inv_{invoice_id}`。
+3. **交付完成原子激活**：
+   Worker 异步调用上游开通接口成功后，在第 2.2 节的 Fencing Token 原子事务内，将 `instances.status` 由 `pending` 推进至 `active`，并写入真实的 `remote_instance_id` 与 `ip_address`。
+4. **超时未付安全清理**：
+   未支付账单超时自动取消（`unpaid -> cancelled`）时，定时清理任务同步将关联的 `status='pending'` 实例置为 `terminated`（或安全物理删除该未生效占位行），并释放锁定的优惠券 `user_coupons.status = 'unused'`。
 
 ### 2.1 Task-as-Lock 任务即排他锁
 系统严格遵循 **Task-as-Lock** 原则：`tasks` 表自身即是实例分布式排他租约的唯一事实来源：

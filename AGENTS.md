@@ -71,7 +71,7 @@
 ## 三、 技术栈与架构基准
 
 - **后端**：PHP 8.2+ (现代框架 / 纯净模块化架构) 或 TypeScript (Node.js)，以清晰的 Domain/Service/Driver 分层设计。
-- **数据库**：MySQL 8.0+ / 5.7+（严格启用事务与外键/唯一键，金额使用 DECIMAL(10,2)）。
+- **数据库**：MySQL 8.0+（严格启用事务与外键/唯一键，金额使用 DECIMAL(10,2)）。
 - **缓存与队列**：Redis（用于快照缓存、分布式锁、Worker 队列调度）。
 - **前端**：Vue 3 + Vite + TypeScript + 现代组件库（TDesign / Element Plus / Shadcn-vue）。
 

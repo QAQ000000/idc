@@ -115,12 +115,16 @@
 }
 ```
 - **生命周期流转**：
-  1. 系统原子预检库存并锁定当前价格快照，插入 `invoices` 记录；
-  2. 若用户使用余额全额支付或收银台付款成功，系统在单一事务中：
-     - 预创建 `status='pending'` 的 `instances` 记录，密码经 AES-256-GCM 信封加密存入 `instances.encrypted_password`；
-     - 将生成的 `instances.id` 关联至 `invoices.instance_id`；
-     - 向 `tasks` 表下发 `action='create'` 发件箱任务（外键 `instance_id` 物理有效）；
-  3. 后台 Worker 异步执行开通，完成后带 Fencing Token 原子更新 `instances.status = 'active'` 并回填远端 ID 与 IP。
+  1. **下单事务（`checkout`）**：
+     - 系统原子预检库存并锁定当前价格快照；
+     - **即时预创建 `status='pending'` 的 `instances` 记录**，将用户填写的 `password` 经 AES-256-GCM 信封加密存入 `instances.encrypted_password`，`hostname` 存入 `instances.name`（彻底解决后续异步支付回调明文密码丢失问题）；
+     - 插入 `invoices` 记录（关联 `instance_id = new_instance_id`, 初始 `status='unpaid'`）；
+     - 若提交了有效优惠券，核销锁定卡券（`user_coupons.status = 'used'`）；
+  2. **支付履约分流**：
+     - **钱包余额全额支付**：若用户勾选使用余额且余额充足，在下单同一事务内完成扣款、标记 `invoices.status='paid'` 并直接下发 `tasks (action='create', instance_id=new_instance_id)`；
+     - **三方网关异步收单**：返回未支付账单；待三方网关异步回调到达（`POST /api/v1/payments/notify/{gateway}`）时，CAS 标记 `invoices.status='paid'`，直接读取 `invoices.instance_id` 下发 `tasks (action='create')`；
+  3. **交付完成激活**：后台 Worker 异步调用上游开通成功，带 Fencing Token 原子更新 `instances.status = 'active'` 并回填远端 ID 与 IP；
+  4. **超时未付取消清理**：未支付账单超时自动取消（`unpaid -> cancelled`）时，定时清理任务同步将关联的 `status='pending'` 实例置为 `terminated`，并释放锁定的卡券资产（`user_coupons.status = 'unused'`）。
 - **响应**：返回生成的账单 `{ "invoice_id": 81092, "instance_id": 10024, "total": 45.00, "status": "unpaid" }`。
 
 ---

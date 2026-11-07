@@ -51,24 +51,26 @@ class AuthMiddleware
         self::$isImpersonated = !empty($payload['is_impersonated']);
         self::$operatorAdminId = $payload['operator_admin_id'] ?? null;
 
-        // 模拟登录（Impersonation）写操作与敏感凭据拦截
+        // 模拟登录（Impersonation）风控：敏感读拦截 + 写操作严格白名单
         if (self::$isImpersonated) {
-            $uri = $_SERVER['REQUEST_URI'] ?? '';
+            $uri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
             $method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
-            $blockedPatterns = [
-                '/password',
-                '/email',
-                '/phone',
-                '/withdraw',
-                '/verification',
-                '/realname',
-                '/security',
-            ];
 
-            foreach ($blockedPatterns as $pattern) {
-                if (stripos($uri, $pattern) !== false && $method !== 'GET') {
+            // 1. 即使 GET 也严禁直接访问未脱敏实名详情或安全凭据接口
+            $blockedReadPatterns = ['/verification/raw', '/security/tokens', '/realname/raw'];
+            foreach ($blockedReadPatterns as $pattern) {
+                if (stripos($uri, $pattern) !== false) {
+                    Response::error('Forbidden in impersonation mode: sensitive identity credentials access blocked', 403, 403);
+                    return false;
+                }
+            }
+
+            // 2. 写操作采用白名单制：仅允许排障必需的实例电源操作与工单回复
+            if ($method !== 'GET' && $method !== 'OPTIONS' && $method !== 'HEAD') {
+                $allowedWriteRegex = '#^/api/v1/(instances/\d+/power|tickets(/\d+/replies)?)$#i';
+                if (!preg_match($allowedWriteRegex, $uri)) {
                     Response::error(
-                        'Forbidden: Impersonated sessions are strictly prohibited from modifying security credentials or requesting withdrawals',
+                        'Forbidden: Impersonated sessions are read-only except for instance power actions and ticket replies',
                         403,
                         403
                     );

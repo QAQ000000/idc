@@ -1,21 +1,21 @@
 # JianYun (简云) · 数据库设计字典 (Database Schema)
 
-本系统全面丢弃旧魔方 178 张表的臃肿设计，收敛为高内聚、模块化的生产数据架构（全系统共 26 张物理表：8 张核心业务表 + 18 张支撑/配置/审计/下载表）。全表基于 **MySQL 8.0+ InnoDB** 引擎，字符集为 `utf8mb4_unicode_ci`，金额统一使用 `DECIMAL(10,2)`。
+本系统全面丢弃旧魔方 178 张表的臃肿设计，收敛为高内聚、模块化的生产数据架构（全系统共 27 张物理表：8 张核心业务表 + 18 张支撑/配置/审计/下载表 + 1 张框架版本登记表）。全表基于 **MySQL 8.0+ InnoDB** 引擎，字符集为 `utf8mb4_unicode_ci`，金额统一使用 `DECIMAL(10,2)`。
 
 > [!IMPORTANT]
 > **全库时间列统一使用 `DATETIME`（不使用 TIMESTAMP）**：`TIMESTAMP` 存在 2038-01-19 的硬上限，会直接导致年付/多年付实例的到期日写入失败。时区语义由应用层统一约定（按 UTC 存取、展示层转换），数据库层不做隐式时区换算。
 >
-> **DDL 单一事实来源**：建表与变更以 [database/schema.sql](../database/schema.sql) 为唯一权威。本字典保留字段释义与领域约束；下方 26 段 `CREATE TABLE` 是从该文件同步生成的摘录，禁止独立修改。摘录不包含初始化设置与触发器，**不是完整初始化脚本**；资金账本与管理审计的五个保护触发器均以 schema 文件为准。
+> **DDL 单一事实来源**：建表与变更以 [database/schema.sql](../database/schema.sql) 为唯一权威。本字典保留字段释义与领域约束；下方 27 段 `CREATE TABLE` 是从该文件同步生成的摘录，禁止独立修改。摘录不包含初始化设置与触发器，**不是完整初始化脚本**；资金账本与管理审计的五个保护触发器均以 schema 文件为准。
 
 修改 schema 后运行 `python3 scripts/sync_schema_docs.py --write` 同步摘录；运行 `python3 scripts/sync_schema_docs.py --check` 检查完整 DDL（含 SQL 注释）、表名及重复/缺失表。省略参数同样只检查，不写文件。同步器仅替换各表 SQL 语句，保留正文说明；这些命令不连接数据库，也不执行迁移。
 
-**Laravel 13 适配边界**：已确认 PHP 8.4/Laravel 13 技术基准，当前尚未实现框架迁移；本次不变更 26 表 DDL。框架连接内的 SQL/查询构造器必须保持资金与 Outbox 同连接事务。默认用户、会话、缓存、队列及迁移版本登记表逐项审查，确需新增物理表时先同步领域边界和本字典/权威 schema，不能自动安装第二套模型。完整约束见 [TECH_STACK.md](TECH_STACK.md)。
+**Laravel 13 适配边界**：M0 已使用框架同连接事务和标准迁移运行器；新增 `migrations` 仅承载升级版本元数据，审查记录见 [TECH_STACK.md §7](TECH_STACK.md#7-m0-实施中的-schema-边界审查)。不安装默认 users/sessions/cache/jobs 表。`invoices.checkout_key/checkout_hash` 是原账单实体的幂等属性；可空兼容旧数据，摘要为 HMAC，唯一键按用户隔离。schema.sql 是空库完整结构，版本 PHP 迁移是已有库增量升级记录，禁止双份手写完整模型。
 
 **旧站数据库备份契约**：外置旧站插件必须按指定简云发布版本的完整 `database/schema.sql`（含初始化设置、外键、唯一键及保护触发器）生成 `schema.sql` 与目标表数据 `data.sql`，并附目标版本、schema 校验和及对账清单。SQL 恢复仅面向独立空库，不携带旧库查询或依赖新旧数据库同机，不默认覆盖或合并已有业务库；不为迁移增加物理表。本节 DDL 摘录不能作为完整恢复脚本。目标版本不匹配时重新导出并演练，细则见 [MIGRATION_RUNBOOK.md](MIGRATION_RUNBOOK.md)。
 
 ---
 
-## 1. 全库表 DDL（8 张核心业务表 + 18 张支撑业务表）
+## 1. 全库表 DDL（8 张核心业务表 + 18 张支撑业务表 + 1 张框架版本登记表）
 
 <a id="table-admins"></a>
 
@@ -292,6 +292,8 @@ CREATE TABLE IF NOT EXISTS `invoices` (
     `cycle_marker` VARCHAR(50) NULL COMMENT '防重标记 (如 instance_id:2026-12-01)',
     `price_snapshot` JSON NULL COMMENT '下单时锁定的规格配置明细、周期、基准价与折扣快照',
     `quote_expired_at` DATETIME NULL COMMENT '报价锁定期截止时间 (超时需重新核价)',
+    `checkout_key` VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL COMMENT '用户范围下单请求键，旧客户端可空',
+    `checkout_hash` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL COMMENT '规范请求的 HMAC 摘要，不存密码明文',
     `payment_method` VARCHAR(50) NULL COMMENT '最终支付通道',
     `paid_at` DATETIME NULL COMMENT '付款时间',
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -299,6 +301,7 @@ CREATE TABLE IF NOT EXISTS `invoices` (
     FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
     FOREIGN KEY (`instance_id`) REFERENCES `instances` (`id`) ON DELETE SET NULL,
     UNIQUE KEY `uk_cycle_instance` (`cycle_marker`),
+    UNIQUE KEY `uk_user_checkout` (`user_id`, `checkout_key`),
     INDEX `idx_status_due` (`status`, `created_at`),
     INDEX `idx_user_status_created` (`user_id`, `status`, `created_at`),
     INDEX `idx_instance_type` (`instance_id`, `type`, `status`)
@@ -715,3 +718,17 @@ CREATE TABLE IF NOT EXISTS `downloads` (
 >    - `active_instance`：名下必须拥有至少一台状态为 `active` 的实例；
 >    - `product_bound`：名下必须拥有 `bound_product_id` 指定商品的有效在跑实例（专属镜像、专属驱动分发场景）。
 > 3. **Nginx `X-Accel-Redirect` 高性能分发**：对于本地 `upload` 文件，PHP 在完成鉴权与 `downloads_count = downloads_count + 1` 原子行锁累加后，返回 `X-Accel-Redirect` 响应头交由 Nginx 内核直接流式传输，零 PHP 内存损耗；外部 `external` 资源则直接执行 `302` 重定向。
+
+<a id="table-migrations"></a>
+
+### 1.27 `migrations`（Laravel 基础设施版本登记）
+
+仅供标准迁移运行器记录文件名及批次。新增此表经过 TECH_STACK §7 边界审查，不增加业务实体；会话、缓存和 Laravel 普通队列表不安装。
+
+```sql
+CREATE TABLE IF NOT EXISTS `migrations` (
+    `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    `migration` VARCHAR(255) NOT NULL,
+    `batch` INT NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='框架 schema 迁移版本登记表';
+```

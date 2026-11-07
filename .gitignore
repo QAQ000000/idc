@@ -5,7 +5,7 @@
 
 # Dependencies
 /vendor/
-/node_modules/
+**/node_modules/
 
 # Logs & Temporary storage
 /storage/logs/
@@ -29,3 +29,15 @@ Thumbs.db
 
 # Security scanner local state
 /.mimosa/
+
+/bootstrap/cache/*
+!/bootstrap/cache/.gitkeep
+/storage/framework/*
+!/storage/framework/.gitkeep
+/web/dist/
+/web/test-results/
+.env.*
+!.env.example
+
+__pycache__/
+/output/playwright/

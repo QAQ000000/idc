@@ -13,7 +13,7 @@ from typing import Optional
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA = ROOT / "database/schema.sql"
 DICTIONARY = ROOT / "docs/DATABASE.md"
-EXPECTED_TABLES = 26
+EXPECTED_TABLES = 27
 CREATE_TABLE = re.compile(
     r"^[ \t]*CREATE[ \t]+TABLE[ \t]+(?:IF[ \t]+NOT[ \t]+EXISTS[ \t]+)?`(?P<name>[^`]+)`[ \t]*\(",
     re.MULTILINE | re.IGNORECASE,
@@ -197,7 +197,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--check", action="store_true", help="check only (the default); never modify files")
-    mode.add_argument("--write", action="store_true", help="refresh the 26 generated CREATE TABLE excerpts")
+    mode.add_argument("--write", action="store_true", help="refresh the 27 generated CREATE TABLE excerpts")
     args = parser.parse_args()
     try:
         return synchronize(args.write)

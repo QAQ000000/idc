@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """创建并清理独立 MySQL/Redis/HTTP 环境，不读取部署 .env 或连接现有数据库。"""
+import argparse
 import base64
+import json
+import grp
+import pwd
 import os
 from pathlib import Path
 import secrets
@@ -23,10 +27,18 @@ def free_port():
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--browser', action='store_true', help='Keep an isolated backend + Vite running until Enter')
+    args = parser.parse_args()
     php = shutil.which("php")
     redis = os.getenv("REDIS_SERVER") or shutil.which("redis-server")
+    fpm = os.getenv('PHP_FPM') or (str(Path(php).resolve().parent.parent / 'sbin/php-fpm') if php else '')
     if not php or not redis or not shutil.which("docker"):
         raise RuntimeError("Requires php, docker and redis-server (or REDIS_SERVER=/absolute/path)")
+    if not Path(fpm).is_file():
+        raise RuntimeError('PHP-FPM binary required (or PHP_FPM=/absolute/path)')
+    if args.browser and not shutil.which('npm'):
+        raise RuntimeError('Browser fixture requires npm and installed web dependencies')
     name = "jianyun-test-" + secrets.token_hex(6)
     env = os.environ.copy()
     redis_port, http_port = free_port(), free_port()
@@ -42,6 +54,7 @@ def main():
     container_created = False
     with tempfile.TemporaryDirectory(prefix="jianyun-test-") as directory:
         directory = Path(directory)
+        env.update(APP_ENVIRONMENT_PATH=str(directory), APP_CONFIG_CACHE=str(directory / 'config.php'))
         try:
             # 密码通过子进程环境传递，不进入命令行参数或日志。
             docker_env = env | {"MYSQL_ROOT_PASSWORD": env["DB_PASSWORD"]}
@@ -84,7 +97,40 @@ def main():
             result = subprocess.run([php, "tests/integration.php"], cwd=ROOT, env=env)
             if result.returncode:
                 raise RuntimeError("Integration checks failed")
+            subprocess.run([php, 'artisan', 'migrate', '--force'], cwd=ROOT, env=env, check=True)
+            subprocess.run([php, 'tests/browser_fixture.php'], cwd=ROOT, env=env, check=True)
+            fpm_socket = directory / 'fpm.sock'
+            fpm_config = directory / 'fpm.conf'
+            pool_user = pwd.getpwuid(os.getuid()).pw_name
+            pool_group = grp.getgrgid(os.getgid()).gr_name
+            # 测试池只监听私有 socket，继承测试进程身份，不复用共享 FPM。
+            fpm_config.write_text(f"[global]\ndaemonize=no\nerror_log={directory / 'fpm-error.log'}\n[jianyun-test]\nuser={pool_user}\ngroup={pool_group}\nlisten={fpm_socket}\npm=static\npm.max_children=1\nclear_env=no\ncatch_workers_output=yes\nphp_admin_value[variables_order]=EGPCS\n")
+            with (directory / 'fpm.log').open('w') as log:
+                processes.append(subprocess.Popen([fpm, '-R', '-F', '-y', str(fpm_config)], env=env, stdout=log, stderr=log, start_new_session=True))
+            deadline = time.monotonic() + 10
+            while not fpm_socket.exists():
+                if time.monotonic() > deadline:
+                    raise RuntimeError('Isolated FPM did not become ready')
+                time.sleep(0.1)
+            from test_fpm import verify
+            verify(fpm_socket, ROOT)
+            # 配置缓存路径同样隔离；缓存启用后继续验证 HTTP 配置与 Token。
+            subprocess.run([php, 'artisan', 'config:cache'], cwd=ROOT, env=env, check=True)
+            (directory / 'config.php').chmod(0o600)
+            verify(fpm_socket, ROOT)
+            if args.browser:
+                vite_port = free_port()
+                vite_env = env | {'API_PROXY_TARGET': env['TEST_BASE_URL']}
+                with (directory / 'vite.log').open('w') as log:
+                    processes.append(subprocess.Popen(['npm', 'run', 'dev', '--', '--port', str(vite_port), '--strictPort'], cwd=ROOT / 'web', env=vite_env, stdout=log, stderr=log, start_new_session=True))
+                print(json.dumps({'browser_url': f'http://127.0.0.1:{vite_port}', 'database': env['DB_DATABASE']}), flush=True)
+                input('Browser fixture ready. Press Enter to stop and clean up.\n')
             print("Integration environment verified; cleaning up all test resources.")
+        except BaseException:
+            log_path = directory / 'http.log'
+            if log_path.exists():
+                print(log_path.read_text()[-6000:])
+            raise
         finally:
             for process in reversed(processes):
                 try:

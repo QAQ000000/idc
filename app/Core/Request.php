@@ -4,18 +4,14 @@ namespace App\Core;
 
 final class Request
 {
-    private static ?array $body = null;
-
     public static function body(): array
     {
-        if (self::$body !== null) {
-            return self::$body;
-        }
-        if (!str_starts_with(strtolower($_SERVER['CONTENT_TYPE'] ?? ''), 'application/json')) {
+        $request = app('request');
+        if (!str_starts_with(strtolower($request->header('Content-Type', '')), 'application/json')) {
             throw new ApiException('Content-Type must be application/json', 415, 400);
         }
-        $raw = file_get_contents('php://input', false, null, 0, 65537);
-        if ($raw === false || strlen($raw) > 65536) {
+        $raw = $request->getContent();
+        if (strlen($raw) > 65536) {
             throw new ApiException('Request body too large', 413, 400);
         }
         try {
@@ -23,7 +19,7 @@ final class Request
             if (!$object instanceof \stdClass) {
                 throw new ApiException('JSON body must be an object');
             }
-            return self::$body = json_decode($raw, true, 32, JSON_THROW_ON_ERROR);
+            return json_decode($raw, true, 32, JSON_THROW_ON_ERROR);
         } catch (\JsonException) {
             throw new ApiException('Invalid JSON body');
         }

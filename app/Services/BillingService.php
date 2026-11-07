@@ -23,16 +23,47 @@ final class BillingService
         if (!empty($input['coupon_code'])) {
             throw new ApiException('Coupons are not enabled in this milestone');
         }
-        return Database::transaction(function (PDO $db) use ($userId, $productId, $cycle, $hostname, $password, $options, $input): array {
+        $checkoutKey = isset($input['checkout_key']) ? Request::text($input, 'checkout_key', 16, 64) : null;
+        if ($checkoutKey !== null && !preg_match('/^[a-zA-Z0-9_-]{16,64}$/D', $checkoutKey)) {
+            throw new ApiException('Invalid checkout_key');
+        }
+        // HMAC 避免请求摘要泄漏可离线枚举的主机密码；不记录原始载荷。
+        $requestHash = $checkoutKey === null ? null : Security::requestFingerprint(json_encode([
+            $productId, $cycle, $hostname, $password, $options, $input['use_balance'] ?? false,
+        ], JSON_THROW_ON_ERROR));
+        return Database::transaction(function (PDO $db) use ($userId, $productId, $cycle, $hostname, $password, $options, $input, $checkoutKey, $requestHash): array {
+            // 串行化同用户的新购。此处只锁用户及本次新行，不锁已有实例/账单。
+            // 已有付款仍遵循实例→账单→钱包；重放只读已有订单，避免反向持锁。
+            $stmt = $db->prepare('SELECT status FROM users WHERE id = ? FOR UPDATE');
+            $stmt->execute([$userId]);
+            if ($stmt->fetchColumn() !== 'active') { throw new ApiException('Account unavailable', 403, 403); }
+            if ($checkoutKey !== null) {
+                $stmt = $db->prepare('SELECT id, checkout_hash FROM invoices WHERE user_id = ? AND checkout_key = ?');
+                $stmt->execute([$userId, $checkoutKey]);
+                $existing = $stmt->fetch();
+                if ($existing) {
+                    if (!hash_equals($existing['checkout_hash'], $requestHash)) {
+                        throw new ApiException('Checkout key already used with different parameters', 409, 409);
+                    }
+                    return $this->invoice($userId, (int)$existing['id']);
+                }
+            }
             $quote = (new CatalogService())->quote($db, $productId, $cycle, $options, true);
             $product = $quote['product'];
             $snapshot = json_encode(['product_id' => $productId, 'billing_cycle' => $cycle, 'config_options' => $quote['config_options'], 'total' => $quote['total'], 'stock_reserved' => (int)$product['stock'] > 0], JSON_THROW_ON_ERROR);
+            if ((int)$product['stock'] > 0 && !($input['use_balance'] ?? false)) {
+                $stmt = $db->prepare("SELECT COUNT(*) FROM invoices WHERE user_id = ? AND type = 'new' AND status = 'unpaid' AND JSON_EXTRACT(price_snapshot, '$.stock_reserved') = true");
+                $stmt->execute([$userId]);
+                if ((int)$stmt->fetchColumn() >= config('jianyun.max_unpaid_stock_holds')) {
+                    throw new ApiException('Cancel or pay an existing stock reservation first', 409, 409);
+                }
+            }
             // 新购租期由交付成功后的原子激活起算，未付与等待交付均不消耗租期。
             $db->prepare('INSERT INTO instances (user_id, product_id, provider_id, name, encrypted_password, config_snapshot, billing_cycle, recurring_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
                 ->execute([$userId, $productId, $product['provider_id'], $hostname, Security::encrypt($password), $snapshot, $cycle, $quote['total']]);
             $instanceId = (int)$db->lastInsertId();
-            $db->prepare("INSERT INTO invoices (user_id, instance_id, type, total, price_snapshot, quote_expired_at) VALUES (?, ?, 'new', ?, ?, DATE_ADD(UTC_TIMESTAMP(), INTERVAL 30 MINUTE))")
-                ->execute([$userId, $instanceId, $quote['total'], $snapshot]);
+            $db->prepare("INSERT INTO invoices (user_id, instance_id, type, total, price_snapshot, quote_expired_at, checkout_key, checkout_hash) VALUES (?, ?, 'new', ?, ?, DATE_ADD(UTC_TIMESTAMP(), INTERVAL 30 MINUTE), ?, ?)")
+                ->execute([$userId, $instanceId, $quote['total'], $snapshot, $checkoutKey, $requestHash]);
             $invoiceId = (int)$db->lastInsertId();
             // 本地库存作为预留：未付款也占用一个名额；取消时归还。
             if ((int)$product['stock'] > 0) {

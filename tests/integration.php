@@ -100,7 +100,7 @@ curl_setopt_array($preflight, [CURLOPT_CUSTOMREQUEST => 'OPTIONS', CURLOPT_RETUR
 $headers = curl_exec($preflight);
 check(curl_getinfo($preflight, CURLINFO_RESPONSE_CODE) === 204 && stripos($headers, 'Access-Control-Allow-Origin: https://console.example.test') !== false, 'CORS preflight returns configured origin');
 curl_close($preflight);
-check((int)scalar('SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE()') === 26, 'schema has exactly 26 physical tables');
+check((int)scalar('SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE()') === 27, 'schema has 26 business/support tables and one migration table');
 $r = http('GET', '/api/v1/captcha/config?scene=register');
 $config = $r[1]['data'];
 check($r[0] === 200 && $config['enabled'] && str_starts_with($config['img_base64'], 'data:image/png;base64,'), 'default local image captcha generation');
@@ -196,10 +196,10 @@ check(scalar('SELECT status FROM invoices WHERE id = ?', [$invoice]) === 'unpaid
 
 $ref = 'test_' . bin2hex(random_bytes(8)); $recharge = $demo->recharge($uid, '100.00', $ref);
 check($demo->recharge($uid, '100.00', $ref) === $recharge && scalar('SELECT balance FROM users WHERE id = ?', [$uid]) === '100.00', 'demo recharge idempotent with ledger');
-putenv('APP_ENV=production');
+config(['app.env' => 'production']);
 try { $demo->recharge($uid, '1.00', 'must_fail'); check(false, 'production demo guard'); }
 catch (RuntimeException) { check(true, 'production cannot inject demo balance'); }
-finally { putenv('APP_ENV=test'); }
+finally { config(['app.env' => 'test']); }
 
 $results = parallel(array_fill(0, 8, ["/api/v1/invoices/{$invoice}/pay", ['gateway' => 'balance'], $token]));
 check(count(array_filter($results, static fn($r) => $r[0] === 200 && $r[1]['data']['status'] === 'paid')) === 8, '8 concurrent payments return paid idempotently');
@@ -323,6 +323,72 @@ try { $insertSnapshot->execute([$activationInstance, $uid, 'snapshot', 'legacy-4
 catch (PDOException $e) { check(($e->errorInfo[1] ?? null) === 1062, 'duplicate snapshot identity within one instance and type is rejected'); }
 $db->prepare("INSERT INTO instance_snapshots (instance_id, user_id) VALUES (?, ?), (?, ?)")->execute([$instance, $uid, $instance, $uid]);
 check((int)scalar('SELECT COUNT(*) FROM instance_snapshots WHERE instance_id = ? AND remote_snapshot_id IS NULL', [$instance]) === 2, 'pending snapshots can reserve separate local rows before remote IDs exist');
+
+// M0: 下单请求键与框架兼容回归，所有数据仍位于隔离库。
+check(Database::getInstance() === Illuminate\Support\Facades\DB::connection()->getPdo(), 'domain and framework share one physical PDO');
+Illuminate\Support\Facades\DB::transaction(function () use ($uid): void {
+    try {
+        Database::transaction(function (PDO $connection) use ($uid): void {
+            $connection->prepare('UPDATE users SET last_login_ip = ? WHERE id = ?')->execute(['192.0.2.99', $uid]);
+            throw new RuntimeException('savepoint');
+        });
+    } catch (RuntimeException) {}
+    check(scalar('SELECT last_login_ip FROM users WHERE id = ?', [$uid]) !== '192.0.2.99', 'domain savepoint rolls back inside framework transaction');
+});
+$nulRegistration = ['email' => 'nul@example.test', 'password' => "ValidPrefix!\0Suffix", 'captcha_payload' => captcha('register')];
+check(http('POST', '/api/v1/auth/register', $nulRegistration)[0] === 400, 'NUL password returns validation error without server failure');
+check((int)scalar('SELECT COUNT(*) FROM users WHERE email = ?', ['nul@example.test']) === 0, 'invalid password never creates account');
+$db->prepare('UPDATE products SET stock = -1 WHERE id = ?')->execute([$product]);
+$demo->recharge($uid, '100.00', 'm0-checkout-fixture');
+$keyed = order($product, true) + ['checkout_key' => 'm0-' . bin2hex(random_bytes(12))];
+$balanceBefore = scalar('SELECT balance FROM users WHERE id = ?', [$uid]);
+$results = parallel(array_fill(0, 8, ['/api/v1/orders/checkout', $keyed, $token]));
+$ids = array_map(static fn($r) => $r[1]['data']['invoice_id'] ?? null, $results);
+check(count(array_filter($results, static fn($r) => $r[0] === 200)) === 8 && count(array_unique($ids)) === 1, 'concurrent keyed checkout returns exactly one invoice');
+$keyInvoice = (int)$ids[0];
+check(scalar('SELECT balance FROM users WHERE id = ?', [$uid]) === bcsub($balanceBefore, '10.00', 2), 'keyed checkout deducts wallet once across retries');
+foreach (['transactions', 'payment_records', 'tasks'] as $table) {
+    check((int)scalar("SELECT COUNT(*) FROM {$table} WHERE invoice_id = ?", [$keyInvoice]) === 1, 'keyed checkout writes one '.$table);
+}
+$changed = $keyed; $changed['hostname'] = 'different-host';
+check(http('POST', '/api/v1/orders/checkout', $changed, $token)[0] === 409, 'same checkout key rejects a changed payload');
+$otherKeyOrder = $keyed; $otherKeyOrder['use_balance'] = false;
+check(http('POST', '/api/v1/orders/checkout', $otherKeyOrder, $otherToken)[0] === 200, 'checkout keys are isolated between users');
+$cancelOrder = order($product) + ['checkout_key' => 'cancel-' . bin2hex(random_bytes(12))];
+$cancelId = http('POST', '/api/v1/orders/checkout', $cancelOrder, $token)[1]['data']['invoice_id'];
+http('POST', "/api/v1/invoices/{$cancelId}/cancel", [], $token);
+check(http('POST', '/api/v1/orders/checkout', $cancelOrder, $token)[1]['data']['status'] === 'cancelled', 'cancelled checkout key never creates another purchase');
+$db->exec("CREATE TRIGGER m0_fail_task BEFORE INSERT ON tasks FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'forced'");
+$retryOrder = order($product, true) + ['checkout_key' => 'rollback-' . bin2hex(random_bytes(12))];
+try { check(http('POST', '/api/v1/orders/checkout', $retryOrder, $token)[0] === 500, 'keyed checkout failure rolls back'); }
+finally { $db->exec('DROP TRIGGER m0_fail_task'); }
+check(http('POST', '/api/v1/orders/checkout', $retryOrder, $token)[0] === 200, 'rolled-back checkout key can retry successfully');
+$db->prepare('UPDATE products SET stock = 10 WHERE id = ?')->execute([$product]);
+$reservations = parallel(array_fill(0, 6, ['/api/v1/orders/checkout', order($product), $token]));
+$reserved = array_values(array_filter($reservations, static fn($r) => $r[0] === 200));
+check(count($reserved) === 3 && scalar('SELECT stock FROM products WHERE id = ?', [$product]) === 7, 'concurrent unpaid reservations respect per-user finite-stock cap');
+check(http('POST', '/api/v1/orders/checkout', order($product, true), $token)[0] === 200, 'paid checkout is not blocked by unpaid reservation cap');
+$released = $reserved[0][1]['data']['invoice_id'];
+http('POST', "/api/v1/invoices/{$released}/cancel", [], $token);
+check(http('POST', '/api/v1/orders/checkout', order($product), $token)[0] === 200, 'cancellation frees a reservation slot');
+check(http('GET', '/api/v1/auth/me')[0] === 401, 'authenticated request cannot leak identity to next anonymous request');
+check(http('GET', '/api/v1/invoices/999999', null, $token)[0] === 404, 'missing invoice preserves 404 response');
+$method = http('PUT', '/api/v1/products');
+check($method[0] === 405 && $method[1]['data'] === null, 'framework method rejection preserves API envelope');
+
 $db->prepare("UPDATE users SET status = 'suspended' WHERE id = ?")->execute([$uid]);
 check(http('GET', '/api/v1/auth/me', null, $token)[0] === 403, 'suspension immediately invalidates access');
+
+// 模拟上一版原生 MVP 的原地升级，不使用部署库，也不删除业务数据。
+$preservedBalance = scalar('SELECT balance FROM users WHERE id = ?', [$uid]);
+$preservedTasks = scalar('SELECT COUNT(*) FROM tasks');
+$db->exec('ALTER TABLE invoices DROP INDEX uk_user_checkout, DROP COLUMN checkout_key, DROP COLUMN checkout_hash');
+$db->exec('DROP TABLE migrations');
+$process = proc_open([PHP_BINARY, dirname(__DIR__).'/artisan', 'migrate', '--force'], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+foreach ($pipes as $pipe) { stream_get_contents($pipe); fclose($pipe); }
+check(proc_close($process) === 0, 'standard Laravel migrator upgrades the reviewed native MVP');
+check(scalar('SELECT balance FROM users WHERE id = ?', [$uid]) === $preservedBalance && scalar('SELECT COUNT(*) FROM tasks') === $preservedTasks, 'schema upgrade preserves wallet and pending task facts');
+check((int)scalar("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'invoices' AND column_name IN ('checkout_key','checkout_hash')") === 2, 'upgrade installs checkout idempotency columns');
+check((int)scalar('SELECT COUNT(*) FROM migrations') === 2, 'framework records exactly two schema versions');
+
 echo "{$checks} checks passed.\n";

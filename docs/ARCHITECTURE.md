@@ -8,7 +8,7 @@
 
 系统采用 **“极简内核 + 驱动抽象 + 异步可靠任务”** 的清晰三层结构：
 
-**已确认技术底座**：PHP 8.4 + Laravel 13、MySQL 8.0+、Redis，以及单一 Vue 3/Vite/TypeScript/Element Plus 前端。HTTP 首版采用普通 PHP-FPM；Laravel 承接路由、校验、配置、日志、命令和调度，领域服务保留财务与履约规则。当前代码仍为原生 PHP/PDO MVP，框架及前端尚待实现，适配边界见 [TECH_STACK.md](TECH_STACK.md)。
+**已确认技术底座**：PHP 8.4 + Laravel 13、MySQL 8.0+、Redis，以及单一 Vue 3/Vite/TypeScript/Element Plus 前端。HTTP 首版采用普通 PHP-FPM；Laravel 承接路由、校验、配置、日志、命令和调度，领域服务保留财务与履约规则。当前 MVP 已接入 Laravel 及单一前端，已验证范围为模拟余额交易闭环；真实驱动与 Worker 尚待实现，适配边界见 [TECH_STACK.md](TECH_STACK.md)。
 
 **事务与运行边界**：财务服务使用同一数据库连接提交账单 CAS、钱包/账本及 `tasks`，不以框架普通队列、`afterCommit` 或自动重试替代 Outbox。Worker 独立运行并管理逐任务状态；Redis 仅用于缓存和唤醒，不能取代 MySQL 业务占用。框架迁移保留插件隔离及现有 API、身份和密文兼容要求。
 

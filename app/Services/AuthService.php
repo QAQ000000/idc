@@ -40,20 +40,28 @@ final class AuthService
     {
         $email = $this->email($input);
         $password = Request::text($input, 'password', 1, 72);
-        return Database::transaction(function (PDO $db) use ($email, $password): array {
-            $stmt = $db->prepare('SELECT id, password, status FROM users WHERE email = ? FOR UPDATE');
-            $stmt->execute([$email]);
+        $db = Database::getInstance();
+        $stmt = $db->prepare('SELECT id, password, status FROM users WHERE email = ?');
+        $stmt->execute([$email]);
+        $snapshot = $stmt->fetch();
+        // 昂贵哈希在行锁外完成，不存在账号仍执行相同成本校验。
+        $hash = $snapshot['password'] ?? '$2y$12$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2uheWG/igi.';
+        if (str_contains($password, "\0") || !Security::verifyPassword($password, $hash) || !$snapshot) {
+            throw new ApiException('Invalid email or password', 401, 401);
+        }
+        $newHash = password_needs_rehash($hash, PASSWORD_BCRYPT, ['cost' => 12]) ? Security::hashPassword($password) : null;
+        return Database::transaction(function (PDO $db) use ($snapshot, $newHash): array {
+            $stmt = $db->prepare('SELECT id, password, status FROM users WHERE id = ? FOR UPDATE');
+            $stmt->execute([$snapshot['id']]);
             $user = $stmt->fetch();
-            // 对不存在的账号也执行相同成本的密码校验。
-            $hash = $user['password'] ?? '$2y$12$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2uheWG/igi.';
-            if (!Security::verifyPassword($password, $hash) || !$user) {
-                throw new ApiException('Invalid email or password', 401, 401);
+            if (!$user || !hash_equals($snapshot['password'], $user['password'])) {
+                throw new ApiException('Account credentials changed; log in again', 409, 409);
             }
             if ($user['status'] !== 'active') {
                 throw new ApiException('Account suspended', 403, 403);
             }
-            if (password_needs_rehash($hash, PASSWORD_BCRYPT, ['cost' => 12])) {
-                $db->prepare('UPDATE users SET password = ? WHERE id = ?')->execute([Security::hashPassword($password), $user['id']]);
+            if ($newHash !== null) {
+                $db->prepare('UPDATE users SET password = ? WHERE id = ?')->execute([$newHash, $user['id']]);
             }
             $db->prepare('UPDATE users SET last_login_at = UTC_TIMESTAMP(), last_login_ip = ? WHERE id = ?')
                 ->execute([Security::getClientIp(), $user['id']]);

@@ -2,7 +2,7 @@
 
 namespace App\Middlewares;
 
-use App\Core\Response;
+use App\Core\ApiException;
 use App\Core\Security;
 use App\Core\Database;
 
@@ -10,19 +10,23 @@ class AdminAuthMiddleware
 {
     private static ?array $currentAdmin = null;
 
+    public static function reset(): void
+    {
+        self::$currentAdmin = null;
+    }
+
     public function handle(): bool
     {
+        self::reset();
         $authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
         if (!preg_match('/Bearer\s+(\S+)/i', $authHeader, $matches)) {
-            Response::error('Unauthorized: Missing or invalid admin token', 401, 401);
-            return false;
+            throw new ApiException('Unauthorized: Missing or invalid admin token', 401, 401);
         }
 
         $token = $matches[1];
         $payload = Security::verifyToken($token);
         if (!$payload || empty($payload['uid']) || ($payload['sub_type'] ?? '') !== 'admin') {
-            Response::error('Unauthorized: Invalid admin credentials or token expired', 401, 401);
-            return false;
+            throw new ApiException('Unauthorized: Invalid admin credentials or token expired', 401, 401);
         }
 
         $db = Database::getInstance();
@@ -31,13 +35,11 @@ class AdminAuthMiddleware
         $admin = $stmt->fetch();
 
         if (!$admin) {
-            Response::error('Admin user not found', 401, 401);
-            return false;
+            throw new ApiException('Admin user not found', 401, 401);
         }
 
         if ($admin['status'] !== 'active') {
-            Response::error('Admin account disabled', 403, 403);
-            return false;
+            throw new ApiException('Admin account disabled', 403, 403);
         }
 
         self::$currentAdmin = $admin;

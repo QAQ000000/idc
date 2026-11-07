@@ -5,12 +5,12 @@ require dirname(__DIR__) . '/bootstrap.php';
 use App\Core\Security;
 
 $server = $_SERVER;
-$trusted = getenv('TRUSTED_PROXIES');
+$trusted = config('jianyun.trusted_proxies');
 $checks = 0;
 function ipCase(string $label, string $proxies, mixed $peer, mixed $xff, mixed $cf, string $expected): void
 {
     global $checks;
-    putenv('TRUSTED_PROXIES=' . $proxies);
+    config(['jianyun.trusted_proxies' => $proxies]);
     $_SERVER['REMOTE_ADDR'] = $peer;
     $_SERVER['HTTP_X_FORWARDED_FOR'] = $xff;
     $_SERVER['HTTP_CF_CONNECTING_IP'] = $cf;
@@ -39,5 +39,5 @@ try {
     echo "{$checks} unit checks passed.\n";
 } finally {
     $_SERVER = $server;
-    putenv($trusted === false ? 'TRUSTED_PROXIES' : 'TRUSTED_PROXIES=' . $trusted);
+    config(['jianyun.trusted_proxies' => $trusted]);
 }

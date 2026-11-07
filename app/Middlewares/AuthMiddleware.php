@@ -2,7 +2,7 @@
 
 namespace App\Middlewares;
 
-use App\Core\Response;
+use App\Core\ApiException;
 use App\Core\Security;
 use App\Core\Database;
 
@@ -12,25 +12,30 @@ class AuthMiddleware
     private static bool $isImpersonated = false;
     private static ?int $operatorAdminId = null;
 
+    public static function reset(): void
+    {
+        self::$currentUser = null;
+        self::$isImpersonated = false;
+        self::$operatorAdminId = null;
+    }
+
     public function handle(): bool
     {
+        self::reset();
         $authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
         if (!preg_match('/Bearer\s+(\S+)/i', $authHeader, $matches)) {
-            Response::error('Unauthorized: Missing or invalid token', 401, 401);
-            return false;
+            throw new ApiException('Unauthorized: Missing or invalid token', 401, 401);
         }
 
         $token = $matches[1];
         $payload = Security::verifyToken($token);
         if (!$payload || empty($payload['uid'])) {
-            Response::error('Unauthorized: Token expired or invalid', 401, 401);
-            return false;
+            throw new ApiException('Unauthorized: Token expired or invalid', 401, 401);
         }
 
         // 作用域严格校验：拒绝将 admin Token 用于普通客户路由
         if (($payload['sub_type'] ?? 'user') !== 'user') {
-            Response::error('Unauthorized: Invalid token scope for client portal', 401, 401);
-            return false;
+            throw new ApiException('Unauthorized: Invalid token scope for client portal', 401, 401);
         }
 
         $db = Database::getInstance();
@@ -39,13 +44,11 @@ class AuthMiddleware
         $user = $stmt->fetch();
 
         if (!$user) {
-            Response::error('User not found', 401, 401);
-            return false;
+            throw new ApiException('User not found', 401, 401);
         }
 
         if ($user['status'] === 'suspended') {
-            Response::error('Account suspended', 403, 403);
-            return false;
+            throw new ApiException('Account suspended', 403, 403);
         }
 
         self::$isImpersonated = !empty($payload['is_impersonated']);
@@ -60,8 +63,7 @@ class AuthMiddleware
             $blockedReadPatterns = ['/verification/raw', '/security/tokens', '/realname/raw'];
             foreach ($blockedReadPatterns as $pattern) {
                 if (stripos($uri, $pattern) !== false) {
-                    Response::error('Forbidden in impersonation mode: sensitive identity credentials access blocked', 403, 403);
-                    return false;
+                    throw new ApiException('Forbidden in impersonation mode: sensitive identity credentials access blocked', 403, 403);
                 }
             }
 
@@ -69,12 +71,11 @@ class AuthMiddleware
             if ($method !== 'GET' && $method !== 'OPTIONS' && $method !== 'HEAD') {
                 $allowedWriteRegex = '#^/api/v1/(instances/\d+/power|tickets(/\d+/replies)?)$#i';
                 if (!preg_match($allowedWriteRegex, $uri)) {
-                    Response::error(
+                    throw new ApiException(
                         'Forbidden: Impersonated sessions are read-only except for instance power actions and ticket replies',
                         403,
                         403
                     );
-                    return false;
                 }
             }
         }

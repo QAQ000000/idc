@@ -199,6 +199,8 @@ CREATE TABLE IF NOT EXISTS `invoices` (
     `cycle_marker` VARCHAR(50) NULL COMMENT '防重标记 (如 instance_id:2026-12-01)',
     `price_snapshot` JSON NULL COMMENT '下单时锁定的规格配置明细、周期、基准价与折扣快照',
     `quote_expired_at` DATETIME NULL COMMENT '报价锁定期截止时间 (超时需重新核价)',
+    `checkout_key` VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL COMMENT '用户范围下单请求键，旧客户端可空',
+    `checkout_hash` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NULL COMMENT '规范请求的 HMAC 摘要，不存密码明文',
     `payment_method` VARCHAR(50) NULL COMMENT '最终支付通道',
     `paid_at` DATETIME NULL COMMENT '付款时间',
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -206,6 +208,7 @@ CREATE TABLE IF NOT EXISTS `invoices` (
     FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
     FOREIGN KEY (`instance_id`) REFERENCES `instances` (`id`) ON DELETE SET NULL,
     UNIQUE KEY `uk_cycle_instance` (`cycle_marker`),
+    UNIQUE KEY `uk_user_checkout` (`user_id`, `checkout_key`),
     INDEX `idx_status_due` (`status`, `created_at`),
     INDEX `idx_user_status_created` (`user_id`, `status`, `created_at`),
     INDEX `idx_instance_type` (`instance_id`, `type`, `status`)
@@ -542,3 +545,10 @@ END;;
 DELIMITER ;
 
 SET FOREIGN_KEY_CHECKS = 1;
+
+-- Laravel 标准 schema 版本登记；不承载业务或资金事实。
+CREATE TABLE IF NOT EXISTS `migrations` (
+    `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    `migration` VARCHAR(255) NOT NULL,
+    `batch` INT NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='框架 schema 迁移版本登记表';

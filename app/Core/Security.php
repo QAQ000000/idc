@@ -6,8 +6,8 @@ class Security
 {
     private static function getAppKey(): string
     {
-        $key = getenv('APP_KEY');
-        if ($key === false || $key === '') {
+        $key = config('app.key');
+        if (!is_string($key) || $key === '') {
             // 主密钥只允许来自环境变量；缺少时必须拒绝启动，
             // 严禁静默降级到任何代码内置的固定密钥（等于加密形同虚设）。
             throw new \RuntimeException(
@@ -27,8 +27,16 @@ class Security
     /**
      * 密码哈希 (Bcrypt)
      */
+    public static function requestFingerprint(string $payload): string
+    {
+        return hash_hmac('sha256', $payload, self::getAppKey());
+    }
+
     public static function hashPassword(string $password): string
     {
+        if (str_contains($password, "\0")) {
+            throw new ApiException('Invalid password');
+        }
         return password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]);
     }
 
@@ -172,7 +180,7 @@ class Security
     private static function isTrustedProxy(string $ip): bool
     {
         $address = inet_pton($ip);
-        foreach (explode(',', getenv('TRUSTED_PROXIES') ?: '') as $entry) {
+        foreach (explode(',', config('jianyun.trusted_proxies', '')) as $entry) {
             $parts = explode('/', trim($entry));
             if (count($parts) > 2 || !filter_var($parts[0], FILTER_VALIDATE_IP)) {
                 continue;

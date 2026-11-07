@@ -10,7 +10,7 @@ final class DemoService
 {
     private function guard(): void
     {
-        if (PHP_SAPI !== 'cli' || !in_array(getenv('APP_ENV'), ['local', 'test'], true)) {
+        if (PHP_SAPI !== 'cli' || !in_array(config('app.env'), ['local', 'test'], true)) {
             throw new \RuntimeException('Demo commands require CLI and APP_ENV=local or test');
         }
     }

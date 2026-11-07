@@ -67,6 +67,7 @@ def main():
                 time.sleep(0.3)
             subprocess.run([php, "scripts/console.php", "db:init"], cwd=ROOT, env=env, check=True)
             subprocess.run([php, "tests/unit.php"], cwd=ROOT, env=env, check=True)
+            subprocess.run([php, "tests/plugins.php"], cwd=ROOT, env=env, check=True)
             with (directory / "http.log").open("w") as log:
                 processes.append(subprocess.Popen([php, "-S", f"127.0.0.1:{http_port}", "-t", "public", "public/index.php"], cwd=ROOT, env=env, stdout=log, stderr=log, start_new_session=True))
             deadline = time.monotonic() + 10

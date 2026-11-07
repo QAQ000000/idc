@@ -10,6 +10,7 @@
 # Logs & Temporary storage
 /storage/logs/
 /storage/cache/
+/storage/legacy-payments/
 /storage/downloads/*
 !/storage/downloads/.gitkeep
 *.log

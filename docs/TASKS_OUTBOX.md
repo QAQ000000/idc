@@ -2,7 +2,7 @@
 
 > [!IMPORTANT]
 > **本契约已被正式冻结为异步交付与发件箱执行标准。**  
-> 明确规范：Task-as-Lock 任务租约即排他锁、Fencing Token 原子事务回写、崩溃调查接管、退避窗口硬校验、未知结果实例租约锁定防踩踏与人工核验防盲重试。
+> 明确规范：Task-as-Lock 业务占用与 Worker 执行租约分离、Fencing Token 原子事务回写、崩溃调查接管、退避窗口硬校验、未知结果持续阻断与人工核验防盲重试。
 
 ---
 
@@ -32,12 +32,14 @@
 3. **交付完成原子激活**：
    Worker 异步调用上游开通接口成功后，调用 `InstanceActivationService::completeCreate()`，在第 2.2 节的 Fencing Token 原子事务内，将 `instances.status` 由 `pending` 推进至 `active`，并写入真实的 `remote_instance_id` 与 `ip_address`。同时以本地交付成功入库的 UTC 时间写入 `start_date`，通过 `DATE_ADD(start_date, INTERVAL 1 MONTH/1 YEAR)` 生成首期 `due_date`，按目标月末截断，避免 PHP 自然月溢出；未付时间及交付排队不消耗租期。完成方法只接受已支付新购、有效执行令牌及未过期的所属 Worker 租约，激活失败时任务终态一并回滚。此方法尚无自动 Worker 调用入口。
 4. **超时未付安全清理**：
-   未支付账单超时自动取消（`unpaid -> cancelled`）时，定时清理任务同步将关联的 `status='pending'` 实例置为 `terminated`（或安全物理删除该未生效占位行），并释放锁定的优惠券 `user_coupons.status = 'unused'`。
+   未支付账单超时自动取消（`unpaid -> cancelled`，同步置 `cycle_marker = NULL`）时，定时清理任务同步将关联的 `status='pending'` 实例软终止置为 `terminated`（严禁物理 `DELETE`，遵守外键 `ON DELETE RESTRICT`），并释放锁定的优惠券 `user_coupons.status = 'unused'`。
 
-### 2.1 Task-as-Lock 任务即排他锁
-系统严格遵循 **Task-as-Lock** 原则：`tasks` 表自身即是实例分布式排他租约的唯一事实来源：
-- 实例是否处于互斥占用中，仅需查询是否存在状态为 `running` 或 `investigating` 且 `lease_until > NOW()` 的活跃任务；
-- 避免了在 `instances` 维护 `locked_at` 与 `lock_token` 导致的两表状态撕裂与双锁死锁问题。
+### 2.1 Task-as-Lock：业务占用与执行租约分离
+`tasks` 仍是实例任务执行占用的唯一事实来源，不新增实例锁字段或锁表。任务 blocker 与账单退款冻结分别由各自领域持久状态决定，业务准入必须同时检查。两种任务语义必须分别判断：
+- **业务占用（blocker）**：`status IN ('running', 'investigating')`，或 `status = 'failed' AND last_error LIKE 'MANUAL_AUDIT_REQUIRED:%'`。这些任务的外部结果尚未安全收口，**无论 `lease_until` 是否过期、为空，都阻断同实例的其他动作**。
+- **Worker 执行权**：`worker_id`、`execution_token`、任务执行状态与未过期的 `lease_until` 共同决定哪个 Worker 可续租、查询并回写。租约过期只允许其他 Worker 接管同一任务进行调查，不释放业务占用。
+- **统一锁顺序**：新动作入队、领取、接管、续租、回写和人工裁决均先锁 `instances`，再锁关联 `tasks`。所有 blocker 检查使用锁定读，避免事务快照读到旧状态。
+- **安全释放**：明确成功、证实未执行后安排安全重试，或完成人工裁决，才能在同一事务中释放对应业务占用。人工核验标记必须保留为 `last_error` 前缀，追加诊断信息不得覆盖该前缀。
 
 ### 2.2 任务终态与实例变更同事务提交（Fencing Token Atomic Commit）
 > [!CAUTION]
@@ -47,17 +49,27 @@
 ```sql
 START TRANSACTION;
 
--- 1. 带 execution_token 原子回写任务终态并释放租约
+-- 1. 先锁实例，再锁所属任务；校验 task.instance_id、action、已付账单及实例状态
+SELECT `id` FROM `instances` WHERE `id` = :instance_id FOR UPDATE;
+-- 按 §2.4 核验退款冻结与当前任务归属；异常冲突阻断自动回写并转人工核对。
+SELECT `id`, `instance_id`, `status`, `worker_id`, `execution_token`, `lease_until`
+FROM `tasks` WHERE `id` = :task_id FOR UPDATE;
+
+-- 2. 同时校验任务归属、Worker、执行状态、令牌及有效租约
 UPDATE `tasks`
 SET `status` = 'success',
     `lease_until` = NULL,
     `payload` = :final_payload,
     `updated_at` = NOW()
-WHERE `id` = :task_id 
-  AND `execution_token` = :acquired_execution_token;
--- 检查影响行数: 若 affected_rows === 0，说明租约已超时被新 Worker 接管（令牌已被递增），立即 ROLLBACK 并终止！
+WHERE `id` = :task_id
+  AND `instance_id` = :instance_id
+  AND `worker_id` = :worker_id
+  AND `execution_token` = :acquired_execution_token
+  AND `status` IN ('running', 'investigating')
+  AND `lease_until` > UTC_TIMESTAMP();
+-- affected_rows 必须为 1，否则立即 ROLLBACK；即使尚未被接管，过期租约也不能回写
 
--- 2. 同事务原子回写实例业务变更
+-- 3. 同事务原子回写实例业务变更（此处为已校验的新购月付示例）
 UPDATE `instances`
 SET `status` = 'active',
     `remote_instance_id` = :remote_id,
@@ -69,41 +81,76 @@ WHERE `id` = :instance_id;
 
 COMMIT;
 ```
-- **原子保证**：若第 1 步更新影响行数不为 1，整个事务立即回滚，内存中执行结果直接作废，杜绝慢 Worker 覆写已被新任务占用的实例！
+- **原子保证**：若第 2 步更新影响行数不为 1，整个事务立即回滚，内存中执行结果直接作废。任务终态与实例、快照台账等业务结果一起提交；不得仅凭令牌未变化就接受已过期 Worker 回写。
 
 ### 2.3 结果未知期间实例锁持续占用原则
 当外部调用返回超时或异常中断，任务进入 `investigating` 状态：
-- **租约持续持有**：任务保持 `investigating` 状态并维持 `lease_until > NOW()`（或由接管 Worker 持续续租）；
-- **全表互斥约束**：任何其他尝试针对该实例创建新动作（如升降级、注销、快照）的事务，必须首先执行互斥查询：
+- **业务占用持续保留**：调查 Worker 应续租；若其崩溃导致租约过期，任务仍阻断其他动作，等待同任务安全接管。转人工核验 `failed` 也不解除占用。
+- **统一互斥查询**：任何其他尝试针对该实例创建、领取或接管动作（如升降级、注销、快照）的事务，先锁 `instances`，再执行锁定读：
   ```sql
-  SELECT 1 FROM `tasks` 
-  WHERE `instance_id` = :instance_id 
-    AND `status` IN ('running', 'investigating')
-    AND `lease_until` > NOW();
+  SELECT `id` FROM `tasks`
+  WHERE `instance_id` = :instance_id
+    AND (`status` IN ('running', 'investigating')
+      OR (`status` = 'failed' AND `last_error` LIKE 'MANUAL_AUDIT_REQUIRED:%'))
+  ORDER BY `id` FOR UPDATE;
   ```
-  若存在记录，**立即物理阻断新动作排队**，报错：“该实例当前正处于外部交付状态核实中，禁止并发操作”。
+  若存在记录，阻断新动作排队或领取，提示“该实例存在未决交付或人工核验任务”。接管或裁决当前任务时，仅可通过 `id <> :current_task_id` 排除自身；若仍存在其他 blocker，必须回滚并告警冲突，禁止任意挑选一条继续执行。
+
+### 2.4 退款业务冻结与任务准入联动
+正常 `cloud_consumption` 主收款退款不复用实例 `tasks` 执行网关退款，因此必须将账单退款状态接入实例业务准入。与 [PAYMENTS_LEDGER.md](PAYMENTS_LEDGER.md) §3 保持以下同一边界：
+
+- **认领互斥**：云消费退款认领先锁实例，检查本节任务 blocker；已有 `running` / `investigating` 或受保护人工核验任务时，拒绝退款认领，不能先冻结实例再踩到上游在途动作。
+- **入队与领取门禁**：持实例锁后，以当前锁定读查询该实例 `new/renew/upgrade` 正常消费主账单是否存在 `status='refund_pending'`。该状态只能由经服务端用途核验的云消费退款认领写入；任何历史用途不明记录保守冻结并转人工核对。存在退款冻结时，新动作不得入队，已有 `pending` 的快照、变配、续费等任务也不得领取；它们保留等待退款终态，不自动视作失败或重发。
+- **退款成功后的关停门禁**：仅正常消费退款终态 CAS 成功的事务可以把对应主账单 `refund_pending -> refunded`，使该实例所有旧 `pending` 任务失效（`failed`，标注 `CANCELLED_BY_REFUND:{稳定退款号}`，禁止通用重试），再投递由本次退款号唯一标识的 `terminate`。上述操作及退款审计同事务提交；实例维持绑定退款号的待销毁冻结，直至销毁确认。即使 `refund_pending` 已消失，也不得开放新动作，仅允许该退款对应的销毁任务领取；实例已 `terminated` 时禁止执行任何非 `terminate` 任务。
+- **拒绝与未知结果**：明确拒绝按原状态快照及退款归属 CAS 恢复本次改变的状态；只有退款冻结安全解除后，原 `pending` 任务才重新具备领取资格，仍须重新校验实例状态和任务 blocker。网关结果未知则保持冻结，不提前放行。原已因其他原因暂停的实例，不因拒绝而恢复 `active`。
+- **既有未决任务异常冲突**：接管、续租和结果回写也必须核验退款冻结与当前任务的归属。若发现退款冻结与已在途的非退款任务并存，说明认领互斥被破坏，阻断自动推进并告警人工核对；保留原任务 blocker 和反查证据，既不能放行新动作，也不能盲重试或因冻结直接判定远端未执行。退款生成的 `terminate` 只有在核准关联退款号后才允许正常接管与回写。
+- **迟到款隔离**：`late_wallet_credit` 退款只修改该收款凭证与实际预扣钱包款，不修改父账单，也不冻结其关联实例；不能因为凭证引用了同一个 `invoice_id` 就触发上述云消费冻结。
 
 ---
 
 ## 3. 租约抢占、退避与调查接管流水线
 
-### 3.1 正常新任务领取 (`pending` -> `running`)
-调度器必须严格遵守退避窗口 `next_retry_at`：
+### 3.1 正常新任务领取 (`pending` -> `running`，强制实例行锁互斥)
+为防止同一实例名下多条 `pending` 任务被并发抢占，领取事务必须先锁定所属 `instances` 行并确认无其他未决业务占用，同时严格遵守退避窗口 `next_retry_at`：
 ```sql
+START TRANSACTION;
+
+-- 1. 锁定所属实例行，串行化同一实例的所有任务认领
+SELECT `id` FROM `instances` WHERE `id` = :instance_id FOR UPDATE;
+-- 同时执行 §2.4 退款门禁：refund_pending 或已退款待销毁冻结阻断普通任务。
+-- 仅经归属核验的退款 terminate 例外；旧 pending 任务不能绕过此检查。
+
+-- 2. 当前读校验其他未决任务；不得按 lease_until 过滤 blocker
+SELECT `id` FROM `tasks`
+WHERE `instance_id` = :instance_id
+  AND `id` <> :task_id
+  AND (`status` IN ('running', 'investigating')
+    OR (`status` = 'failed' AND `last_error` LIKE 'MANUAL_AUDIT_REQUIRED:%'))
+ORDER BY `id` FOR UPDATE;
+-- 若存在记录，立即 ROLLBACK 跳过本任务，等待前序任务完结！
+
+-- 3. 锁定并原子认领当前 pending 任务；校验 instance_id 与候选一致
+SELECT `id` FROM `tasks` WHERE `id` = :task_id AND `instance_id` = :instance_id FOR UPDATE;
 UPDATE `tasks`
 SET `status` = 'running',
     `worker_id` = :worker_id,
     `execution_token` = `execution_token` + 1,
-    `lease_until` = DATE_ADD(NOW(), INTERVAL 5 MINUTE),
-    `updated_at` = NOW()
+    `lease_until` = DATE_ADD(UTC_TIMESTAMP(), INTERVAL 5 MINUTE),
+    `updated_at` = UTC_TIMESTAMP()
 WHERE `id` = :task_id 
+  AND `instance_id` = :instance_id
   AND `status` = 'pending'
-  AND (`next_retry_at` IS NULL OR `next_retry_at` <= NOW());
+  AND (`next_retry_at` IS NULL OR `next_retry_at` <= UTC_TIMESTAMP());
+-- affected_rows 必须为 1；否则 ROLLBACK，不得调用上游
+
+COMMIT;
 ```
 
 ### 3.2 崩溃接管流水线（失联任务转核验）
 > [!CAUTION]
 > **严禁将租约过期的任务直接重置为 `running` 重新调用上游开通/续费！**
+
+以下接管 SQL 均在同一个短事务内执行：先 `SELECT instances ... FOR UPDATE`，再按 §2.3 检查其他 blocker（`id <> :task_id`）并核验 §2.4 退款归属冲突，然后锁当前任务并执行对应 CAS；影响行数必须为 1 才提交。领取与接管使用相同锁顺序；外部反查在事务提交后执行。`lease_until <= UTC_TIMESTAMP()` 或 NULL 只表示执行权失效，不代表上游未执行。
 
 - **分支 A：`running` 状态超时接管**：
   ```sql
@@ -111,30 +158,36 @@ WHERE `id` = :task_id
   SET `status` = 'investigating',
       `worker_id` = :worker_id,
       `execution_token` = `execution_token` + 1,
-      `lease_until` = DATE_ADD(NOW(), INTERVAL 5 MINUTE),
+      `lease_until` = DATE_ADD(UTC_TIMESTAMP(), INTERVAL 5 MINUTE),
       `last_error` = 'Worker lease expired; taken over into investigating state',
-      `updated_at` = NOW()
+      `updated_at` = UTC_TIMESTAMP()
   WHERE `id` = :task_id 
+    AND `instance_id` = :instance_id
     AND `status` = 'running' 
-    AND `lease_until` < NOW();
+    AND (`lease_until` IS NULL OR `lease_until` <= UTC_TIMESTAMP());
   ```
 - **分支 B：`investigating` 状态超时接管（调查 Worker 自身崩溃）**：
   ```sql
   UPDATE `tasks`
   SET `worker_id` = :worker_id,
       `execution_token` = `execution_token` + 1,
-      `lease_until` = DATE_ADD(NOW(), INTERVAL 5 MINUTE),
-      `updated_at` = NOW()
+      `lease_until` = DATE_ADD(UTC_TIMESTAMP(), INTERVAL 5 MINUTE),
+      `updated_at` = UTC_TIMESTAMP()
   WHERE `id` = :task_id 
+    AND `instance_id` = :instance_id
     AND `status` = 'investigating' 
-    AND `lease_until` < NOW();
+    AND (`lease_until` IS NULL OR `lease_until` <= UTC_TIMESTAMP());
   ```
   新 Worker 继续保持 `investigating` 状态，带新令牌执行上游反查协议。
 
-### 3.3 人工核验任务防盲目重发保护 (Manual Audit Guard)
-当任务最终判定为不可自动恢复并转为 `failed` 时，若标注了 `last_error LIKE 'MANUAL_AUDIT_REQUIRED:%'`：
-- **物理阻断通用重试**：控制台通用的【一键重试所有失败任务】API 强制过滤 `WHERE last_error NOT LIKE 'MANUAL_AUDIT_REQUIRED:%'`；
-- **专职审批接口**：只有具备 `super_admin` 权限并在指定接口 `POST /api/v1/admin/tasks/{id}/force-retry` 显式提交人工核验工单号后，方可由人工授权重新放入 `pending` 队列。
+### 3.3 人工核验任务防盲目重发与双路径收口 (Manual Audit Guard & Dual Resolution)
+当任务最终判定为不可自动恢复并转为 `failed` 且标注 `last_error LIKE 'MANUAL_AUDIT_REQUIRED:%'` 时：
+- **保留业务占用**：清除 Worker 执行租约可以停止自动调查，但该任务仍是 blocker；销毁、变配、续费和快照等其他任务均被阻断。告警失败也不能释放占用。
+- **阻断通用重试**：通用【一键重试所有失败任务】只允许明确未执行且可安全重试的失败任务，必须在锁定读后再次拒绝人工核验前缀；不能仅靠列表筛选防重发。
+- **专职双路径人工裁决（需 `super_admin` 与核验材料，均写入 `admin_audit_logs`）**：先锁实例、检查其他 blocker 并锁定当前任务；校验其仍是 `failed + MANUAL_AUDIT_REQUIRED`。裁决 CAS 同时校验原状态、标记及所读 `execution_token`，将令牌递增并清空 `worker_id` / `lease_until`，使旧 Worker 永久失效；裁决、业务变更与审计必须同事务提交。
+  1. **路径 A（核实未执行 $\rightarrow$ `POST /api/v1/admin/tasks/{id}/force-retry`）**：确认上游未创建资产、未扣款，显式提交核验工单号，才可清除人工核验标记并重置为 `pending`。后续领取仍需重新检查其他 blocker 与退避窗口。
+  2. **路径 B（核实已交付 $\rightarrow$ `POST /api/v1/admin/tasks/{id}/manual-fulfill`）**：仅处理 `action='create'`、实例仍为 `pending` 且关联新购账单已支付的任务。提交真实 `remote_instance_id`、`ip_address` 与核验备注，同事务置任务 `success`、实例 `active`，按本地交付确认时间起租。`ManualAdminDriver` 待人工交付也进入上述受保护的人工核验状态。
+- **与普通 Worker 完成门禁分离**：人工裁决使用独立受审计命令，不伪造 Worker 租约调用 `InstanceActivationService::completeCreate()`，也不得放宽该方法要求有效 Worker、令牌和未过期租约的门禁。非新购任务的人工成功收口必须由对应生命周期处理器应用结果，不能调用新购激活入口。
 
 ---
 
@@ -167,3 +220,9 @@ flowchart TD
 | **SC-T03** | 调查 Worker 在反查上游时自身进程遭遇宿主机断电 | `investigating` 状态且租约超时 | 接管 SQL 命中分支 B，保持 `investigating` 并递增 `execution_token`；后续 Worker 继续完成资产反查 |
 | **SC-T04** | 上游开通接口返回 504 超时，驱动为 `NON_QUERYABLE` | 上游无反查 API 且不支持幂等键 | 任务熔断置为 `failed` 并注入 `MANUAL_AUDIT_REQUIRED`；系统阻断通用批量重试；报警人工核对后手动绑定资产 |
 | **SC-T05** | 任务重试退避时间为 10 分钟后 (`next_retry_at > NOW()`) | 定时 Poller 在第 2 分钟扫描 | Poller 的 SQL `AND next_retry_at <= NOW()` 严格阻断领取；任务静默等待退避时钟到达 |
+| **SC-T06** | 任务 A 租约过期，尚无新 Worker 接管；同实例任务 B 尝试入队或领取 | A 仍为 `running` / `investigating` | A 的业务占用持续有效；B 被阻断；只允许接管 A 进入/保持调查，绝不出现跨任务执行空窗 |
+| **SC-T07** | 不可反查任务转为 `failed + MANUAL_AUDIT_REQUIRED` 且租约已清空 | 新的销毁、变配或快照动作到达 | blocker 查询仍命中 A；拒绝新动作与通用重试，直至受审计人工裁决完成 |
+| **SC-T08** | 慢 Worker 回写时租约已过期但令牌尚未被递增 | 新 Worker 尚未接管 | 终态 CAS 因有效租约检查失败而回滚，实例和任务不变；禁止仅凭相同令牌接受结果 |
+| **SC-T09** | 人工回填与旧 Worker 结果同时到达 | 双方竞争同实例行锁 | 人工裁决递增令牌且同事务完成激活与审计；旧 Worker 因状态/Worker/令牌/租约任一条件不符被拒绝，不重复起租 |
+| **SC-T10** | 接管自己的过期任务时，同实例还存在另一条人工核验任务 | 排除当前 task_id 后仍有 blocker | 接管回滚并告警冲突；不能因排除了自身而跳过其他未决任务 |
+| **SC-T11** | 云消费退款审核期间，既有 pending 快照/变配/续费被扫描；或退款成功后销毁尚 pending | 主账单为 refund_pending，或已退款且实例处于该退款的待销毁冻结 | 普通任务不得入队/领取；拒绝安全解除后重新检查资格；成功同事务令旧 pending 失效并只允许本退款 terminate，迟到钱包款退款不触发父实例冻结 |

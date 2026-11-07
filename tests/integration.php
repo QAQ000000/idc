@@ -3,7 +3,8 @@ declare(strict_types=1);
 require dirname(__DIR__) . '/bootstrap.php';
 
 use App\Core\{ApiException, Database, Money, RedisStore, Security};
-use App\Services\{CatalogService, DemoService, InstanceActivationService, LedgerService};
+use App\Plugins\Captcha\{CaptchaDriverInterface, CaptchaDriverRegistry, CaptchaVerifyResult};
+use App\Services\{CaptchaService, CatalogService, DemoService, InstanceActivationService, LedgerService};
 
 if (getenv('APP_ENV') !== 'test' || !preg_match('/^jianyun_test(?:_[a-z0-9]+)?$/D', getenv('DB_DATABASE') ?: '')) {
     fwrite(STDERR, "Integration tests require APP_ENV=test and an isolated jianyun_test[_suffix] database.\n");
@@ -111,6 +112,28 @@ $db->prepare('INSERT INTO system_settings (`key`, value) VALUES (?, ?)')->execut
 try {
     check(http('GET', '/api/v1/captcha/config?scene=login')[1]['data']['enabled'] === false, 'captcha scene policy reads dynamic settings');
     check(http('GET', '/api/v1/captcha/config?scene=register')[1]['data']['enabled'] === true, 'captcha scene policy remains isolated');
+} finally { $db->exec("DELETE FROM system_settings WHERE `key` = 'captcha_scenes'"); }
+$externalDriver = new class implements CaptchaDriverInterface {
+    public function getDriverId(): string { return 'external_test'; }
+    public function getName(): string { return 'Isolated test driver'; }
+    public function getType(): string { return 'click'; }
+    public function getConfigSchema(): array { return []; }
+    public function generateChallenge(string $scene, string $clientIp): array { return ['challenge_id' => $scene . ':' . $clientIp]; }
+    public function verify(array $payload, string $clientIp): CaptchaVerifyResult {
+        return new CaptchaVerifyResult(($payload['scene'] ?? '') === 'register' && ($payload['proof'] ?? '') === $clientIp);
+    }
+};
+$db->prepare('INSERT INTO system_settings (`key`, value) VALUES (?, ?)')->execute(['captcha_scenes', json_encode(['register' => ['enabled' => true, 'mode' => 'always', 'driver' => 'external_test']])]);
+try {
+    $service = new CaptchaService(new CaptchaDriverRegistry(['external_test' => static fn() => $externalDriver]));
+    $externalConfig = $service->config('register', '192.0.2.8');
+    check($externalConfig['driver'] === 'external_test' && $externalConfig['type'] === 'click'
+        && $externalConfig['challenge_id'] === 'register:192.0.2.8', 'scene policy dispatches an injected driver without concrete core dependency');
+    $service->verify('register', ['proof' => '192.0.2.8', 'scene' => 'login'], '192.0.2.8');
+    check(true, 'captcha service supplies the trusted scene to the selected driver');
+    try { $service->verify('register', ['proof' => 'wrong'], '192.0.2.8'); check(false, 'external captcha failure'); }
+    catch (ApiException $e) { check($e->httpStatus === 422, 'selected driver rejection still blocks the business request'); }
+    check(http('GET', '/api/v1/captcha/config?scene=register')[0] === 500, 'uninstalled configured driver fails closed through HTTP');
 } finally { $db->exec("DELETE FROM system_settings WHERE `key` = 'captcha_scenes'"); }
 $proof = captcha('login');
 check(http('POST', '/api/v1/auth/register', $registration + ['captcha_payload' => $proof])[0] === 422, 'captcha cannot cross scenes');
@@ -285,6 +308,21 @@ $db->exec('ALTER TABLE instances MODIFY start_date DATETIME NOT NULL DEFAULT CUR
 $db->exec(file_get_contents(dirname(__DIR__) . '/database/migrations/001_delivery_dates.sql'));
 check((int)scalar("SELECT COUNT(*) FROM instances WHERE status = 'pending' AND remote_instance_id IS NULL AND (start_date IS NOT NULL OR due_date IS NOT NULL)") === 0, 'migration clears old pending rental dates');
 check(scalar('SELECT start_date FROM instances WHERE id = ?', [$activationInstance]) === $start && scalar('SELECT due_date FROM instances WHERE id = ?', [$activationInstance]) === $due, 'migration preserves delivered instance dates');
+// 在一次性库还原旧索引，再运行实际迁移；已有台账必须保留。
+$db->prepare("INSERT INTO instance_snapshots (instance_id, user_id, type, remote_snapshot_id, status) VALUES (?, ?, 'snapshot', 'legacy-42', 'active')")->execute([$activationInstance, $uid]);
+$snapshotId = (int)$db->lastInsertId();
+$db->exec('ALTER TABLE instance_snapshots DROP INDEX uk_instance_type_remote_snapshot, MODIFY remote_snapshot_id VARCHAR(100) NOT NULL, ADD UNIQUE KEY uk_remote_snapshot_id (remote_snapshot_id)');
+$db->exec(file_get_contents(dirname(__DIR__) . '/database/migrations/002_snapshot_identity.sql'));
+check(scalar('SELECT remote_snapshot_id FROM instance_snapshots WHERE id = ?', [$snapshotId]) === 'legacy-42', 'snapshot identity migration preserves existing remote IDs');
+$insertSnapshot = $db->prepare("INSERT INTO instance_snapshots (instance_id, user_id, type, remote_snapshot_id, status) VALUES (?, ?, ?, ?, 'active')");
+$insertSnapshot->execute([$instance, $uid, 'snapshot', 'legacy-42']);
+check(true, 'different instances can own the same upstream snapshot ID');
+$insertSnapshot->execute([$activationInstance, $uid, 'backup', 'legacy-42']);
+check(true, 'snapshot and backup remote ID namespaces are isolated');
+try { $insertSnapshot->execute([$activationInstance, $uid, 'snapshot', 'legacy-42']); check(false, 'duplicate snapshot identity'); }
+catch (PDOException $e) { check(($e->errorInfo[1] ?? null) === 1062, 'duplicate snapshot identity within one instance and type is rejected'); }
+$db->prepare("INSERT INTO instance_snapshots (instance_id, user_id) VALUES (?, ?), (?, ?)")->execute([$instance, $uid, $instance, $uid]);
+check((int)scalar('SELECT COUNT(*) FROM instance_snapshots WHERE instance_id = ? AND remote_snapshot_id IS NULL', [$instance]) === 2, 'pending snapshots can reserve separate local rows before remote IDs exist');
 $db->prepare("UPDATE users SET status = 'suspended' WHERE id = ?")->execute([$uid]);
 check(http('GET', '/api/v1/auth/me', null, $token)[0] === 403, 'suspension immediately invalidates access');
 echo "{$checks} checks passed.\n";

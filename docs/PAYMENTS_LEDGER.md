@@ -98,162 +98,156 @@ function bc_round(string $number, int $precision = 2): string
 
 ---
 
-## 3. 协议三：退款幂等认领、预扣、回滚与状态机
+## 3. 协议三：退款幂等认领、用途隔离与失败恢复
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Paid: 账单支付成功 (invoices.status='paid')
-    Paid --> RefundPending: 发起退款，CAS原子认领+钱包预扣 (refund_status='pending')
-    
-    RefundPending --> Paid: 审核驳回，解除机器与账单冻结
-    RefundPending --> RefundingGateway: 批准原路退款，调用网关 refundPayment()
-    
-    RefundingGateway --> Refunded: 网关确认成功 (refund_status='success', invoices.status='refunded')
-    RefundingGateway --> RefundInvestigating: 网关网络超时 / 结果未决 (保持 pending 异步反查)
-    
-    RefundInvestigating --> Refunded: 反查网关确认已退款成功
-    RefundInvestigating --> RefundRolledBack: 网关权威拒绝/不可退款，回滚补偿钱包余额
-    
-    RefundRolledBack --> Paid: 恢复 paid 状态，款项以 refund_rollback 流水入账
-    Refunded --> [*]
+    [*] --> Received: 收款凭证已入账
+    Received --> RefundPending: 按凭证用途分类，CAS认领并记录恢复上下文
+    RefundPending --> RefundingGateway: 批准原路退款，持久化调用认领后发起
+    RefundPending --> RefundSucceeded: 云消费退至钱包，同事务完成
+    RefundPending --> RefundRejected: 管理员驳回
+    RefundingGateway --> RefundSucceeded: 网关明确成功
+    RefundingGateway --> RefundInvestigating: 结果未知，保持pending
+    RefundingGateway --> RefundRejected: 网关明确拒绝
+    RefundInvestigating --> RefundSucceeded: 单向反查确认成功
+    RefundInvestigating --> RefundRejected: 权威确认失败
+    RefundRejected --> Restored: 按原快照恢复，仅补回实际预扣款
+    RefundSucceeded --> [*]: 按凭证用途推进业务状态
 ```
 
-### 3.1 退款业务场景双轨分流与原子认领规范
+### 3.1 按收款凭证用途分流，禁止以父账单类型替代
 
-退款在业务上有两种本质不同的来源，系统严格做场景分流，严禁混淆：
+同一张账单可能有正常消费收款和额外的迟到/多收款；`payment_records.invoice_id` 仅表达关联，**不代表每笔凭证都购买了该实例权益**。收款入账时，服务端将不可变的 `settlement_purpose` 写入 `payment_records.payload`，保留原网关报文；退款以该用途和实际入账流水为依据，禁止采信客户端提交的用途。已有凭证缺失用途时，必须结合收款状态、原始钱包/消费流水核对后补全；无法确定则转人工，不能猜测。
 
-#### 场景 3.1.A：钱包余额/迟到款原路退款 (Balance / Late-Credited Refund)
-- **资金现状**：款项此前已通过充值或迟到款入账存放在 `users.balance` 中。用户申请原路退款时，必须先扣除钱包余额，防止用户在网关退款在途期间再次使用该余额消费。
-- **原子事务规范**：
+| 用途 (`settlement_purpose`) | 判定依据 | 认领阶段 | 成功后的允许副作用 |
+|---|---|---|---|
+| `late_wallet_credit` | 凭证 `status='late_credited_to_balance'`，实际钱包入账为 `late_payment_credit`，或 SC-L02 专用 `credit_reason='termination_blocked_renewal'` 的 `refund_to_balance`；无论父账单类型/状态 | 仅该凭证 CAS + 钱包预扣；父账单只读 | 仅该凭证退款终态；**不改父账单、实例、佣金或 `total_spent`** |
+| `wallet_recharge` | 独立 `type='recharge'` 账单的正常主收款，凭证 `status='success'`，实际入账流水为 `recharge` | 该凭证 CAS + 钱包预扣；仅该独立充值账单置 `refund_pending` | 该凭证与该独立充值账单置退款终态；不创建实例任务、不冲佣金/消费 |
+| `cloud_consumption` | `new/renew/upgrade` 正常消费主收款，凭证 `status='success'`，已交付且消费权益归属校验通过 | 该凭证 CAS + 对应业务账单冻结；按需本地冻结实例；**不预扣钱包** | 按经批准的云资源退订方案退钱、冲消费/佣金并投递销毁任务 |
+
+`late_wallet_credit` 的判断优先于父账单类型。例：实例已由余额支付并运行，用户又扫码支付同一张 `new` 账单；第二笔款入钱包后申请原路退回，原 `new` 账单仍为 `paid`、实例仍为 `active`、原消费额及佣金全部保留。已取消账单的迟到款退回后，原账单仍为 `cancelled`。
+
+退款认领时，在同一 `payment_records.payload.refund_context` 中固化：用途、原账单状态（仅会修改账单的用途）、本次实际预扣金额、退款目标、原实例状态及暂停原因（仅会冻结实例的用途）、稳定退款号与审批/调用阶段。上下文由服务端写入，网关回调不得覆盖。每笔凭证当前仅支持一次退款裁决，金额须为正且不超过该凭证实收；需要多次部分退款时须先扩展契约，不能覆盖现有退款号。
+
+#### 场景 3.1.A：迟到/多收款及独立充值退款的钱包预扣
+
+两种用途均已将款项充入 `users.balance`，必须先预扣；其账单副作用严格按上表分开。
+
 ```sql
 START TRANSACTION;
 
--- 1. CAS 原子认领退款请求 (锁定 payment_records 凭证行，解耦收款状态与退款状态)
-UPDATE `payment_records` 
+-- 按全局锁序：关联实例(若需锁定) -> 账单 -> 收款凭证 -> 用户。
+-- 迟到/多收款可读取父账单，但绝不写父账单或其关联实例。
+-- 校验凭证归属、服务端用途、原始入账流水及 0 < refund_amount <= amount。
+
+UPDATE `payment_records`
 SET `refund_status` = 'pending',
     `refund_amount` = :refund_amount,
     `refund_reason` = :reason,
-    `refund_trade_no` = :stable_refund_trade_no -- 稳定退款幂等键 (如 ref_inv_1024_01)
-WHERE `id` = :payment_record_id 
-  AND `status` IN ('success', 'late_credited_to_balance')
+    `refund_trade_no` = :stable_refund_trade_no,
+    `payload` = :payload_with_refund_context
+WHERE `id` = :payment_record_id
+  AND `status` = :verified_receipt_status
   AND `refund_status` = 'none';
--- ⚡ 关键行级校验: 若 affected_rows === 0 说明已被其他并发请求认领，立即 ROLLBACK 并返回并发报错！
+-- affected_rows 必须为 1，否则 ROLLBACK；不预扣、不调用网关。
 
--- 2. 悲观行锁锁定用户钱包并校验余额
 SELECT `balance` FROM `users` WHERE `id` = :user_id FOR UPDATE;
--- ⚡ 校验: 若 balance < :refund_amount，说明用户已将款项消费，立即 ROLLBACK 并阻断原路退款！
+-- 余额不足则 ROLLBACK；足够时通过 LedgerService 预扣并写 refund 流水。
+-- 稳定流水键按 payment_record_id + refund_trade_no 生成。
 
--- 3. 原子扣减钱包余额并计算 balance_after
-UPDATE `users` 
-SET `balance` = `balance` - :refund_amount 
-WHERE `id` = :user_id;
-
--- 4. 插入预扣资金流水 (触发器物理校验 balance_after = balance_before + amount)
-INSERT INTO `transactions` (
-    `user_id`, `invoice_id`, `account_type`, `type`, `amount`, 
-    `balance_before`, `balance_after`, `idempotency_key`, `remark`
-) VALUES (
-    :user_id, :invoice_id, 'wallet', 'refund', -:refund_amount,
-    :balance_before, :balance_after, :pre_deduct_idempotency_key, '原路退款在途预扣冻结'
-);
-
--- 5. 账单状态置为退款审批中
-UPDATE `invoices` SET `status` = 'refund_pending' WHERE `id` = :invoice_id;
+-- 仅 wallet_recharge 执行：独立充值主账单 paid -> refund_pending，校验影响行数为 1。
+-- late_wallet_credit 不执行任何 invoices / instances / commissions / total_spent 更新。
 
 COMMIT;
 ```
 
-#### 场景 3.1.B：已交付云资源退订/故障销毁退款 (Cloud Instance Decommissioning Refund)
-- **资金现状**：款项已在开通时交付为云资源，用户钱包余额中**不存在**此笔款项。**严禁从用户 `users.balance` 扣钱**！
-- **原子认领与风控时序（严禁未退先毁）**：
-  必须在同一事务中完成“锁账单凭证 + CAS认领 + 实例临时挂起”，**严禁在退款未决阶段提前下发 `terminate` 任务**，防止退款被驳回或网关退款失败时云资源已被误毁：
+#### 场景 3.1.B：正常云消费凭证的已交付资源退订
+
+款项已经购买云资源，**不得再从用户钱包预扣**。按统一顺序锁定实例、同实例任务、相关账单、凭证，核实主收款与权益归属，遵守 [LIFECYCLE_PRICING.md](LIFECYCLE_PRICING.md) 和 [TASKS_OUTBOX.md](TASKS_OUTBOX.md) 的实例排他协议；存在执行中、调查中或人工核验未决任务时，先阻断退款认领，不改变凭证/账单/实例。仅有 pending 任务时可以认领退款，但它们必须在退款冻结期间停止领取，成功退订后永久取消。
+
 ```sql
 START TRANSACTION;
 
--- 1. 悲观行锁锁定账单与收款凭证
-SELECT `id`, `user_id`, `instance_id`, `status` FROM `invoices` 
-WHERE `id` = :invoice_id AND `status` = 'paid' FOR UPDATE;
+SELECT `id`, `status`, `suspend_type`, `suspend_reason`
+FROM `instances` WHERE `id` = :instance_id FOR UPDATE;
+SELECT `id`, `status`, `last_error` FROM `tasks`
+WHERE `instance_id` = :instance_id ORDER BY `id` FOR UPDATE;
+-- 只要存在 running/investigating 或 failed+MANUAL_AUDIT_REQUIRED，立即ROLLBACK；不按租约过滤。
+-- pending任务暂不执行：本事务即将写入的云消费refund_pending是其领取门禁。
+SELECT `id`, `user_id`, `instance_id`, `type`, `status`
+FROM `invoices`
+WHERE `instance_id` = :instance_id AND `type` IN ('new', 'renew', 'upgrade')
+ORDER BY `id` FOR UPDATE;
+-- 从锁定结果中取得本次invoice_id，确认不存在另一笔退款冻结或退款销毁待执行。
+-- 校验本次业务账单paid、凭证/实例/用户归属及cloud_consumption用途。
+-- 保存原状态至服务端refund_context后再修改。
 
--- 2. CAS 原子认领退款凭证 (保持 status='success', 仅推进 refund_status)
-UPDATE `payment_records` 
+UPDATE `payment_records`
 SET `refund_status` = 'pending',
     `refund_amount` = :refund_amount,
     `refund_reason` = :reason,
-    `refund_trade_no` = :stable_refund_trade_no
-WHERE `id` = :payment_record_id 
-  AND `status` = 'success' 
+    `refund_trade_no` = :stable_refund_trade_no,
+    `payload` = :payload_with_refund_context
+WHERE `id` = :payment_record_id
+  AND `invoice_id` = :invoice_id
+  AND `status` = 'success'
   AND `refund_status` = 'none';
+-- affected_rows 必须为 1，否则整个事务回滚。
 
--- 3. 账单状态推进至退款审核中
-UPDATE `invoices` SET `status` = 'refund_pending' WHERE `id` = :invoice_id;
+UPDATE `invoices` SET `status` = 'refund_pending'
+WHERE `id` = :invoice_id AND `status` = 'paid';
+-- affected_rows 必须为 1。
 
--- 4. 实例临时安全挂起 (锁定防并发使用，但绝不下发物理销毁任务)
-UPDATE `instances` 
-SET `status` = 'suspended', 
-    `suspend_type` = 'manual', 
-    `suspend_reason` = '退款审核中临时冻结' 
-WHERE `id` = :instance_id AND `status` = 'active';
+-- 仅原为 active 的实例设置本地退款审核冻结；将稳定退款号写入冻结原因，作为恢复 CAS 的归属标记。
+-- 原为 compliance/abuse/manual 等暂停的实例保留原状态及原因，不能覆盖。
+-- 本地冻结不是上游停机凭证；退款审核期间禁止其他业务动作绕过此冻结。
+-- 未决阶段不投递 terminate，不调用物理销毁接口。
 
 COMMIT;
 ```
+
+**退款冻结与 Worker 的共同门禁**：所有普通入队、pending 领取及人工重试都先锁同一实例并检查同实例云消费账单。`refund_pending` 期间不能领取原有续费/变配/快照等任务，也不能通过另一张未付账单付款绕过冻结。若 Worker 先领取，退款事务看到未决 task 必须回滚；若退款先认领，Worker 看到退款冻结必须等待。两者不可能各自通过旧快照执行。SC-L02 转钱包的账单不代表资源退订，其凭证用途不能触发这个云消费退款门禁。
+
 > [!IMPORTANT]
-> **已付订单退款不退券（MARKETING_ENGINE §5.1 铁律）**：已支付订单无论因何种原因申请退款，使用的优惠券状态**保持为 `used`**，严禁回滚为 `unused`，彻底封死领券购买再退款套刷优惠券的漏洞。优惠券回滚仅允许在“未支付账单超时取消（`unpaid -> cancelled`）”中执行。
+> **已付订单退款不退券（MARKETING_ENGINE §5.1）**：正常消费退款后优惠券仍为 `used`；迟到/多收款退款不改原订单用券状态。只有未付账单取消流程可以回滚其锁定的优惠券。
 
-> [!NOTE]
-> 事务提交后，若退款方式为**原路退回**，则调用网关 `refundPayment()`；若客户选择**退回站内余额**（场景 SC-L02），则在管理员审批通过后直接调用 `LedgerService` 插入 `type='refund_to_balance'` 的增额流水并将资金充入用户钱包。
+### 3.2 外部调用与终态 CAS 门控
 
-### 3.2 外部网关调用、终态裁决与失败补偿协议 (`refund_rollback`)
-1. **调用时机**：上述认领事务提交成功后，方可调用支付插件发起 `refundPayment()`；
-2. **场景 A：网关返回成功（或管理员正式批准退款）**：
-   退款实质成功，在同一事务内完成终态标记、下发物理销毁与佣金级联扣回：
-   ```sql
-   START TRANSACTION;
-   -- 1. 推进凭证与账单终态
-   UPDATE `payment_records` SET `refund_status` = 'success', `refunded_at` = NOW() WHERE `id` = :id AND `refund_status` = 'pending';
-   UPDATE `invoices` SET `status` = 'refunded' WHERE `id` = :invoice_id;
+1. **持久化调用认领后调用网关**：认领事务提交、审批通过后，先在凭证行锁内将同退款号的 `refund_context.dispatch_state` 从未调用推进为已认领，提交后仅该认领者可调用 `refundPayment()`。并发审批、进程重启或 HTTP 超时不能再次发起；悬空认领按结果未知处理，使用稳定退款号单向 `queryRefund()` 或人工核验。云消费退站内余额无需外部网关，在批准事务内直接裁决。退款目标及用途一经认领不能修改。
+2. **同事务终态闸门**：网关返回、异步反查、人工裁决使用相同入口，均先校验凭证/退款号及服务端上下文，再执行下列 CAS；所有账单变化、钱包入账、消费冲减、返佣冲正、实例恢复或销毁投递都必须位于 CAS 成功的同一事务。CAS 影响 0 行时读取已有结果并结束，**绝不继续副作用**。
 
-   -- 2. 正式向发件箱投递实例销毁任务 (退款已定，此时方可物理销毁)
-   INSERT INTO `tasks` (
-       `instance_id`, `invoice_id`, `idempotency_key`, `action`, `status`, `payload`
-   ) VALUES (
-       :instance_id, :invoice_id, CONCAT('terminate:refund_inv_', :invoice_id), 'terminate', 'pending',
-       JSON_OBJECT('refund_amount', :refund_amount, 'reason', :reason)
-   );
+```sql
+START TRANSACTION;
+-- 先按统一锁序锁定本用途会变更的资源，重读 refund_context。
+UPDATE `payment_records`
+SET `refund_status` = :terminal_status,
+    `refunded_at` = CASE WHEN :is_success = 1 THEN UTC_TIMESTAMP() ELSE `refunded_at` END
+WHERE `id` = :payment_record_id
+  AND `refund_trade_no` = :stable_refund_trade_no
+  AND `refund_status` = 'pending';
+-- affected_rows 必须为 1 才可执行下一节副作用；否则结束事务并返回既有结果。
+-- 在此执行 §3.3 对应用途的全部副作用，再提交；不能先提交 CAS 再另起事务。
+-- 任一副作用失败时，连同该终态 CAS 一并 ROLLBACK。
+COMMIT;
+```
 
-   -- 3. 级联处理推广返佣 (基于 uk_invoice_affiliate 唯一索引)
-   -- 若佣金在冻结期 (status='pending')：直接置为 cancelled，扣减推荐人的 frozen_commission
-   -- 若佣金已入账 (status='available')：置为 clawbacked，从推荐人 available_commission 扣除
-   COMMIT;
-   ```
-3. **场景 B：网关网络超时 / 结果未知**：
-   - `payment_records.refund_status` **继续保持 `pending`**；
-   - 绝不重复调用发起退款！由退款对账定时任务调用 `queryRefund(refund_trade_no)` 进行单向查询确认。
-4. **场景 C：网关明确拒绝退款（或管理员后台驳回退款申请）**：
-   - 事务执行**状态恢复与补偿回滚**，机器恢复运行，用户权益不丢失：
-   ```sql
-   START TRANSACTION;
-   -- 1. 退款状态置为 failed，账单恢复 paid 状态
-   UPDATE `payment_records` SET `refund_status` = 'failed' WHERE `id` = :id AND `refund_status` = 'pending';
-   UPDATE `invoices` SET `status` = 'paid' WHERE `id` = :invoice_id;
+3. **未知结果保持 pending**：超时、进程崩溃、非权威的“未查到”均不等于退款失败，不退还预扣款、不恢复资源、不重复请求退款。退款对账按 `payment_records.refund_status='pending'` 扫描，结合服务端审批/调用阶段进行单向查询；无法权威裁决则保留冻结并告警人工。审批驳回仅允许尚未认领外部调用的阶段；一旦调用已认领，人工也不能仅凭本地超时判定失败，须有网关权威拒绝/未执行且以后不会执行的证据。任何人工结果也要走同一终态 CAS。
 
-   -- 2. 若实例曾因退款审核被临时冻结，安全解挂恢复活跃状态
-   UPDATE `instances` 
-   SET `status` = 'active', 
-       `suspend_type` = 'billing', 
-       `suspend_reason` = NULL 
-   WHERE `id` = :instance_id AND `suspend_reason` = '退款审核中临时冻结';
+### 3.3 成功与拒绝的用途专属副作用
 
-   -- 3. 若属于场景 3.1.A (此前预扣了钱包余额)，将预扣款全额补偿返还至用户钱包
-   UPDATE `users` SET `balance` = `balance` + :refund_amount WHERE `id` = :user_id;
-   INSERT INTO `transactions` (
-       `user_id`, `account_type`, `type`, `amount`,
-       `balance_before`, `balance_after`, `idempotency_key`, `remark`
-   ) VALUES (
-       :user_id, 'wallet', 'refund_rollback', :refund_amount,
-       :before, :after, :rollback_idempotency_key, '原路退款网关拒绝补偿返还'
-   );
-   COMMIT;
-   ```
+**成功（终态 CAS `pending -> success`，影响 1 行）**：
+
+- `late_wallet_credit`：此前钱包已经预扣，只更新本凭证退款终态；父账单无论为 `paid/cancelled/refund_pending/refunded` 均原样保留。禁止按父账单类型冲减 `total_spent`、冲佣金、改实例或派发 `terminate`。
+- `wallet_recharge`：此前钱包已经预扣，仅将上下文指向的独立充值主账单 `refund_pending -> refunded`；CAS 影响必须为 1。无实例任务、消费冲减或佣金副作用。
+- `cloud_consumption`：仅该正常消费主账单 `refund_pending -> refunded`，同步释放 `cycle_marker`；通过 `LedgerService` 按批准方案退至站内余额（`refund_to_balance`）或由已确认成功的网关原路退回。只在此用途冲减 `users.total_spent`、级联冲正 `commissions`。在持有实例行锁的**同一终态事务**中，先将该实例原有全部 pending 任务（包含原有暂停、销毁、变配及快照任务）置 `failed`、写入 `CANCELLED_BY_REFUND:{refund_trade_no}`、递增 `execution_token` 并清空 Worker/租约，再投递唯一退款 `terminate`（`termination_reason='user_voluntary'`，payload绑定凭证ID及稳定退款号）。取消与销毁入队任一步失败均整体回滚；幂等键包含本地凭证 ID 与稳定退款号。旧任务取消标记属于永久终止，通用重试/强制重试不得复活。退款成功到销毁确认之间，其他新动作也须被这条退款销毁任务阻断；只允许对应销毁领取，不能因 refund_pending 消失而放行旧动作或新续费。不能以“父账单有 instance_id”代替用途校验。
+
+**明确拒绝或审批驳回（终态 CAS `pending -> failed`，影响 1 行）**：
+
+- 仅当 `refund_context.wallet_pre_deducted_amount > 0` 且存在对应预扣流水时，通过 `LedgerService` 将**实际预扣额**退回钱包并写 `refund_rollback`；使用同凭证/退款号派生的稳定幂等键。正常云消费从未预扣，拒绝时不能凭空加钱。
+- `late_wallet_credit` 从未改变父账单或实例，无任何业务状态要恢复；包括原 `cancelled` 账单也不能被改回 `paid`。
+- `wallet_recharge` 只将被本次退款改为 `refund_pending` 的独立充值账单恢复为 `refund_context` 中的原状态，禁止无条件写 `paid`。
+- `cloud_consumption` 只恢复本次退款实际改变的账单和本地实例冻结，使用原状态快照及冻结所属退款号做 CAS；原来被 `compliance/abuse/manual` 暂停的实例继续保持原暂停。若期间另有安全处置或状态已变化，不覆盖新状态，保留暂停交人工核验；不能统一恢复 `active/billing`。未下发物理销毁，因此拒绝不能额外创建云资源或盲目上游解挂；原 pending 任务在冻结解除后仍须重新校验实例、报价及所有门禁再领取，不能直接补执行。
 
 ---
 
@@ -261,8 +255,17 @@ COMMIT;
 
 | 场景编号 | 场景描述 | 故障触发点 | 系统预期动作与终态 |
 |---|---|---|---|
-| **SC-P01** | 同一笔迟到款账单遭到前台客户与客服后台两路并发发起退款 | 两个请求在同一毫秒到达 | 第一个事务成功执行 CAS 认领 (`affected_rows=1`)；第二个事务 `affected_rows=0` 立即回滚并报错；绝不产生两次网关退款与两次预扣 |
-| **SC-P02** | 迟到款充入钱包后被客户购买了其他主机，随后发起原路退款 | `users.balance < refund_amount` | 事务步骤 2 扣减余额失败 (`affected_rows=0`)；事务回滚；系统阻断退款并标记 `RISK_NEGATIVE_BALANCE_BLOCKED` |
+| **SC-P01** | 同一笔迟到款凭证遭到前台客户与客服后台两路并发发起退款 | 两个请求在同一毫秒到达 | 第一个事务成功执行 CAS 认领 (`affected_rows=1`)；第二个事务 `affected_rows=0` 立即回滚并报错；绝不产生两次网关退款与两次预扣 |
+| **SC-P02** | 迟到款已被消费，随后发起原路退款 | `users.balance < refund_amount` | 用户行锁内校验余额失败，认领事务整体回滚；不调用网关，不产生预扣，返回 `RISK_NEGATIVE_BALANCE_BLOCKED` |
 | **SC-P03** | 调用网关退款时遭遇三方接口 504 响应丢失 | HTTP 客户端抛出网络超时 | `payment_records.refund_status` 保持 `pending`；退款查询任务调度反查；网关确认入账后置为 `success`，无重复退款 |
-| **SC-P04** | 原路退款被第三方网关明确驳回（如原银行卡已注销） | 网关返回业务拒绝错误码 | 触发回滚补偿事务；状态置为 `failed`；生成 `refund_rollback` 流水将款项全额返充回用户钱包可用余额 |
+| **SC-P04** | 钱包预扣退款被网关明确驳回 | 网关权威拒绝 | 终态 CAS 成功后按预扣证明补回实际预扣额，写 `refund_rollback`；迟到款不改父账单，独立充值仅恢复自身原状态 |
 | **SC-P05** | 高额机型（¥3000）日割折算退款 (31天剩1天) | 浮点截断计算导致分币差 | 强制使用 `bcmul` 先乘后除与 `bc_round`；精确得出 96.77 元；流水、入账与网关传参分毫不差 |
+| **SC-P06** | 已交付实例的账单收到第二笔扫码款，用户仅退这笔多收款 | 父账单 `paid` 且实例 `active`，凭证为 `late_wallet_credit` | 仅认领/预扣并退回第二笔款；原账单仍 paid、实例仍 active、消费额/佣金/用券状态不变，无销毁任务 |
+| **SC-P07** | 已取消订单的迟到款退款被拒绝或成功 | 父账单原为 `cancelled` | 拒绝只补回实际预扣额，成功只完成凭证；两种结局父账单始终 cancelled，不复活待交付实例 |
+| **SC-P08** | 云消费退款申请在原合规暂停实例上被驳回 | 原实例 `suspended/compliance`，钱包未预扣 | 正常消费账单按快照恢复；实例继续原合规暂停，钱包不加款，不产生解挂/销毁任务 |
+| **SC-P09** | 网关结果与退款反查同时确认成功，或重复确认拒绝 | 两路竞争同凭证、同退款号终态 CAS | 仅 affected_rows=1 的事务执行业务副作用；其余读取既有结果，消费/钱包/佣金/任务均只变更一次 |
+| **SC-P10** | 退款调用认领后进程崩溃，不能确定请求是否发出 | dispatch_state 已认领且 refund_status pending | 不重发 refundPayment、不提前补回预扣；同退款号单向反查或人工核验，最终仍经 CAS 裁决 |
+| **SC-P11** | 普通变配/快照任务未决时收到续费网关实收 | 父续费单仍 unpaid，存在非销毁 blocker | 仅 late_payment_credit 入钱包，父单/周期标记不变，不延长到期日；自动代扣路径不扣钱；解除门禁后重新正常结算 |
+| **SC-P12** | 退款认领与 pending 任务领取竞争 | 同时锁定同实例 | Worker先领取则退款回滚；退款先写refund_pending则Worker等待；退款成功后原pending永久取消，仅退款terminate可执行 |
+| **SC-P13** | 不可逆销毁时续费扫码到账并重复回调 | SC-L02专用保护 | invoice仅一次置refunded清周期标记，实收仅一笔refund_to_balance入钱包；立即结束，不追加late_payment_credit、不再按云消费退订退款 |
+| **SC-P14** | 旧云消费账单正在退款，另一张续费账单收到网关款 | 同实例另一张账单refund_pending | 同实例门禁命中；仅将新实收转钱包，续费单仍unpaid、原退款保持不变，不派续费或解挂 |

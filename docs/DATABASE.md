@@ -5,20 +5,24 @@
 > [!IMPORTANT]
 > **全库时间列统一使用 `DATETIME`（不使用 TIMESTAMP）**：`TIMESTAMP` 存在 2038-01-19 的硬上限，会直接导致年付/多年付实例的到期日写入失败。时区语义由应用层统一约定（按 UTC 存取、展示层转换），数据库层不做隐式时区换算。
 >
-> **DDL 单一事实来源**：建表与变更以 `database/schema.sql` 为唯一权威，本字典为与之同步的字段释义文档。
+> **DDL 单一事实来源**：建表与变更以 [database/schema.sql](../database/schema.sql) 为唯一权威。本字典保留字段释义与领域约束；下方 26 段 `CREATE TABLE` 是从该文件同步生成的摘录，禁止独立修改。摘录不包含初始化设置与触发器，**不是完整初始化脚本**；资金账本与管理审计的五个保护触发器均以 schema 文件为准。
+
+修改 schema 后运行 `python3 scripts/sync_schema_docs.py --write` 同步摘录；运行 `python3 scripts/sync_schema_docs.py --check` 检查完整 DDL（含 SQL 注释）、表名及重复/缺失表。省略参数同样只检查，不写文件。同步器仅替换各表 SQL 语句，保留正文说明；这些命令不连接数据库，也不执行迁移。
 
 ---
 
 ## 1. 全库表 DDL（8 张核心业务表 + 18 张支撑业务表）
 
+<a id="table-admins"></a>
+
 ### 1.1 `admins`（系统管理与运维员工档案）
 ```sql
-CREATE TABLE `admins` (
+CREATE TABLE IF NOT EXISTS `admins` (
     `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     `username` VARCHAR(50) NOT NULL UNIQUE COMMENT '管理员登录名',
     `email` VARCHAR(100) NOT NULL UNIQUE COMMENT '安全邮箱',
     `password` VARCHAR(255) NOT NULL COMMENT '密码哈希 (Argon2id/Bcrypt)',
-    `role` ENUM('super_admin', 'finance', 'support', 'operator') NOT NULL DEFAULT 'operator' COMMENT '后台权限角色',
+    `role` ENUM('super_admin', 'finance', 'support', 'operator') NOT NULL DEFAULT 'operator' COMMENT '后台管理角色',
     `two_factor_secret` VARCHAR(255) NULL COMMENT 'Google 2FA 密钥 (AES-256-GCM 加密存储, 严禁明文)',
     `status` ENUM('active', 'disabled') NOT NULL DEFAULT 'active' COMMENT '状态',
     `last_login_at` DATETIME NULL COMMENT '最后登录时间',
@@ -30,9 +34,11 @@ CREATE TABLE `admins` (
 
 ---
 
+<a id="table-system-settings"></a>
+
 ### 1.2 `system_settings`（系统全局与插件动态配置表）
 ```sql
-CREATE TABLE `system_settings` (
+CREATE TABLE IF NOT EXISTS `system_settings` (
     `key` VARCHAR(100) NOT NULL PRIMARY KEY COMMENT '配置键 (如 captcha_scenes, payment.alipay_f2f, notify.telegram, seo.config)',
     `group` VARCHAR(50) NOT NULL DEFAULT 'general' COMMENT '配置分组: general | captcha | payment | notification | seo',
     `value` JSON NULL COMMENT '非敏感公开配置 JSON',
@@ -47,13 +53,15 @@ CREATE TABLE `system_settings` (
 
 ---
 
+<a id="table-users"></a>
+
 ### 1.3 `users`（终端客户账户与钱包资产）
 ```sql
-CREATE TABLE `users` (
+CREATE TABLE IF NOT EXISTS `users` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     `email` VARCHAR(100) NOT NULL UNIQUE COMMENT '登录邮箱',
     `phone` VARCHAR(30) NULL UNIQUE COMMENT '手机号',
-    `password` VARCHAR(255) NOT NULL COMMENT '密码哈希 (Argon2id/Bcrypt)',
+    `password` VARCHAR(255) NOT NULL COMMENT '密码哈希',
     `balance` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '可用钱包余额',
     `frozen_commission` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '冻结中的推广佣金',
     `available_commission` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '可提现的推广佣金',
@@ -73,9 +81,11 @@ CREATE TABLE `users` (
 
 ---
 
+<a id="table-user-verifications"></a>
+
 ### 1.4 `user_verifications`（用户实名认证与法定公历生日档案）
 ```sql
-CREATE TABLE `user_verifications` (
+CREATE TABLE IF NOT EXISTS `user_verifications` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     `user_id` BIGINT UNSIGNED NOT NULL UNIQUE COMMENT '关联用户ID',
     `real_name` VARCHAR(50) NOT NULL COMMENT '真实姓名',
@@ -96,9 +106,11 @@ CREATE TABLE `user_verifications` (
 
 ---
 
+<a id="table-providers"></a>
+
 ### 1.5 `providers`（上游服务提供方与自营节点）
 ```sql
-CREATE TABLE `providers` (
+CREATE TABLE IF NOT EXISTS `providers` (
     `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     `name` VARCHAR(50) NOT NULL COMMENT '节点名称 (如: SakuraIDC上游 / 亚太自营PVE / Sub2API)',
     `driver` VARCHAR(50) NOT NULL COMMENT '驱动标识: zjmf | easypanel | sub2api | pve | manual',
@@ -112,9 +124,11 @@ CREATE TABLE `providers` (
 
 ---
 
+<a id="table-product-categories"></a>
+
 ### 1.6 `product_categories`（产品分类与聚合落地页表）
 ```sql
-CREATE TABLE `product_categories` (
+CREATE TABLE IF NOT EXISTS `product_categories` (
     `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     `name` VARCHAR(100) NOT NULL COMMENT '分类名称 (如: 香港CN2云服务器 / 洛杉矶Cera大带宽)',
     `slug` VARCHAR(100) NOT NULL UNIQUE COMMENT 'SEO友好URL别名 (如: hk-cn2-cloud)',
@@ -134,9 +148,11 @@ CREATE TABLE `product_categories` (
 
 ---
 
+<a id="table-products"></a>
+
 ### 1.7 `products`（商品目录定义）
 ```sql
-CREATE TABLE `products` (
+CREATE TABLE IF NOT EXISTS `products` (
     `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     `category_id` INT UNSIGNED NULL COMMENT '所属分类/产品组',
     `provider_id` INT UNSIGNED NOT NULL COMMENT '关联 provider',
@@ -163,9 +179,11 @@ CREATE TABLE `products` (
 
 ---
 
+<a id="table-instances"></a>
+
 ### 1.8 `instances`（已售云实例与服务资产）
 ```sql
-CREATE TABLE `instances` (
+CREATE TABLE IF NOT EXISTS `instances` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     `user_id` BIGINT UNSIGNED NOT NULL COMMENT '归属用户',
     `product_id` INT UNSIGNED NOT NULL COMMENT '关联商品',
@@ -174,10 +192,10 @@ CREATE TABLE `instances` (
     `name` VARCHAR(100) NULL COMMENT '实例自定义名称/主机名',
     `ip_address` VARCHAR(100) NULL COMMENT '主 IP 地址',
     `encrypted_password` VARCHAR(255) NULL COMMENT '实例当前 Root/面板密码 (AES-256-GCM 密文)',
-    `config_snapshot` JSON NULL COMMENT '当前实例规格配置快照 (如 CPU、内存、OS)',
-    `billing_cycle` VARCHAR(20) NOT NULL DEFAULT 'monthly' COMMENT '付费周期: monthly/annually等',
+    `config_snapshot` JSON NULL COMMENT '当前实例规格配置快照',
+    `billing_cycle` VARCHAR(20) NOT NULL DEFAULT 'monthly' COMMENT '付费周期',
     `recurring_price` DECIMAL(10,2) NOT NULL COMMENT '标准下次续费价格',
-    `override_price` DECIMAL(10,2) NULL COMMENT '运维后台手动改价覆盖值 (优先于 recurring_price)',
+    `override_price` DECIMAL(10,2) NULL COMMENT '运维后台手动改价覆盖值',
     `status` ENUM('pending', 'active', 'suspended', 'terminated') NOT NULL DEFAULT 'pending',
     `suspend_type` ENUM('billing', 'compliance', 'abuse', 'manual') NOT NULL DEFAULT 'billing' COMMENT '暂停原因类型 (续费仅可自动解挂billing类型)',
     `suspend_reason` VARCHAR(255) NULL COMMENT '暂停原因详细描述',
@@ -195,13 +213,15 @@ CREATE TABLE `instances` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='已购云资源实例';
 ```
 > [!NOTE]
-> **Task-as-Lock 互斥设计**：实例排他锁不再冗余保存在 `instances.locked_at` 与 `lock_token`，而是以 `tasks` 表中对应实例状态为 `running` 或 `investigating` 且 `lease_until > NOW()` 的活跃任务作为单一事实来源（Single Source of Truth），彻底消除双锁脱节隐患。
+> **Task-as-Lock 互斥设计**：`tasks` 是实例任务执行占用的单一事实来源。`running`、`investigating` 以及 `failed AND last_error LIKE 'MANUAL_AUDIT_REQUIRED:%'` 都阻断同实例其他动作，**不因租约过期解除业务阻断**。`lease_until` 仅决定 Worker 执行权、接管及回写资格；所有领取、接管和人工裁决先锁 `instances` 行，再锁任务。业务准入还须检查正常云消费主账单的 `refund_pending` 及已退款待销毁冻结；这些是退款领域状态，不复制为另一份任务锁。迟到/多收钱包款退款不修改父账单，不触发父实例冻结。详见 [TASKS_OUTBOX.md](TASKS_OUTBOX.md) §2.1/§2.4/§3。
 
 ---
 
+<a id="table-instance-snapshot-schedules"></a>
+
 ### 1.9 `instance_snapshot_schedules`（云快照与备份自主计划任务）
 ```sql
-CREATE TABLE `instance_snapshot_schedules` (
+CREATE TABLE IF NOT EXISTS `instance_snapshot_schedules` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     `instance_id` BIGINT UNSIGNED NOT NULL COMMENT '所属云实例ID',
     `user_id` BIGINT UNSIGNED NOT NULL COMMENT '所属用户ID',
@@ -225,16 +245,18 @@ CREATE TABLE `instance_snapshot_schedules` (
 
 ---
 
+<a id="table-instance-snapshots"></a>
+
 ### 1.10 `instance_snapshots`（云快照与备份归属凭证台账）
 ```sql
-CREATE TABLE `instance_snapshots` (
+CREATE TABLE IF NOT EXISTS `instance_snapshots` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     `instance_id` BIGINT UNSIGNED NOT NULL COMMENT '所属云实例ID',
     `schedule_id` BIGINT UNSIGNED NULL COMMENT '来源计划任务ID (手动/外部来源为NULL; 计划任务删除后转孤儿, 不参与自动清理)',
     `user_id` BIGINT UNSIGNED NOT NULL COMMENT '所属用户ID (冗余, 便于用户侧列表查询)',
     `type` ENUM('snapshot', 'backup') NOT NULL DEFAULT 'snapshot' COMMENT '操作类型: snapshot快照 / backup备份',
     `origin` ENUM('manual', 'scheduled') NOT NULL DEFAULT 'manual' COMMENT '产生来源: manual手动 / scheduled计划任务 (配额全额计数模型依赖此字段区分)',
-    `remote_snapshot_id` VARCHAR(100) NOT NULL COMMENT '上游快照/备份唯一标识 (清理任务幂等键 snapshot_delete:{remote_snapshot_id} 的依据)',
+    `remote_snapshot_id` VARCHAR(100) NULL COMMENT '上游实例内该类型的快照/备份标识，创建未决时为NULL；清理使用本地台账ID',
     `size_bytes` BIGINT UNSIGNED NULL COMMENT '快照/备份大小 (字节, 上游可查时回填)',
     `status` ENUM('creating', 'active', 'deleting', 'deleted', 'failed') NOT NULL DEFAULT 'creating' COMMENT '生命周期: creating创建中 / active可用 / deleting删除中 / deleted已删除墓碑 / failed创建失败',
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -242,29 +264,31 @@ CREATE TABLE `instance_snapshots` (
     FOREIGN KEY (`instance_id`) REFERENCES `instances` (`id`) ON DELETE CASCADE,
     FOREIGN KEY (`schedule_id`) REFERENCES `instance_snapshot_schedules` (`id`) ON DELETE SET NULL,
     FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
-    UNIQUE KEY `uk_remote_snapshot_id` (`remote_snapshot_id`),
+    UNIQUE KEY `uk_instance_type_remote_snapshot` (`instance_id`, `type`, `remote_snapshot_id`),
     INDEX `idx_schedule_cleanup` (`schedule_id`, `status`, `created_at`),
     INDEX `idx_instance_type_status` (`instance_id`, `type`, `status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='云快照与备份归属凭证台账 (清理候选严格按schedule_id查询, 严禁模糊名称匹配)';
 ```
 > [!NOTE]
-> **快照归属凭证（LIFECYCLE_PRICING 协议 §5.2）**：每次快照/备份创建成功后，上游返回的 `remote_snapshot_id` 必须与本表记录严格关联，滚动清理候选**严格仅限** `schedule_id` 匹配的历史记录，严禁任何模糊名称匹配。`origin` 字段服务于协议 §5.1 的配额全额计数模型（Manual + Auto + Other 三类分账）。计划任务被删除后，其历史快照转为孤儿记录（`schedule_id = NULL`），不参与自动清理，仅允许管理员手动处置。
+> **快照归属凭证（LIFECYCLE_PRICING 协议 §5.2）**：远端标识仅在 `(instance_id, type)` 内唯一，不能假定不同 Provider、实例或 snapshot/backup 类型共用全局编号。创建前预占 `creating` 台账，`remote_snapshot_id = NULL`，并在同一事务插入稳定计划时刻键的 `snapshot_create` / `backup_create` 任务、推进调度时刻；任务唯一键冲突时整笔回滚，避免重复台账。重试复用原任务与台账，成功后原子回填远端 ID。删除任务统一以本地台账主键生成 `snapshot_delete:{instance_snapshots.id}`，payload 固化 `snapshot_id/provider_id/instance_id/type/remote_instance_id/remote_snapshot_id`，执行前逐项核验归属。滚动清理候选**严格仅限** `schedule_id` 匹配的历史记录，严禁模糊名称匹配。`origin` 用于 Manual + Auto + Other 全额配额计数；计划删除后孤儿台账（`schedule_id = NULL`）不参与自动清理。旧库升级见 `database/migrations/002_snapshot_identity.sql`。
 
 ---
 
+<a id="table-invoices"></a>
+
 ### 1.11 `invoices`（账单与结算）
 ```sql
-CREATE TABLE `invoices` (
+CREATE TABLE IF NOT EXISTS `invoices` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     `user_id` BIGINT UNSIGNED NOT NULL COMMENT '客户 ID',
-    `instance_id` BIGINT UNSIGNED NULL COMMENT '关联实例 ID (续费/变配必须关联)',
+    `instance_id` BIGINT UNSIGNED NULL COMMENT '关联实例 ID',
     `type` ENUM('new', 'renew', 'upgrade', 'recharge') NOT NULL COMMENT '账单类型',
     `total` DECIMAL(10,2) NOT NULL COMMENT '账单总额',
     `status` ENUM('unpaid', 'paid', 'refund_pending', 'refunded', 'cancelled') NOT NULL DEFAULT 'unpaid',
-    `cycle_marker` VARCHAR(50) NULL COMMENT '防重标记 (如 instance_id:2026-12-01)，配合唯一索引',
+    `cycle_marker` VARCHAR(50) NULL COMMENT '防重标记 (如 instance_id:2026-12-01)',
     `price_snapshot` JSON NULL COMMENT '下单时锁定的规格配置明细、周期、基准价与折扣快照',
     `quote_expired_at` DATETIME NULL COMMENT '报价锁定期截止时间 (超时需重新核价)',
-    `payment_method` VARCHAR(50) NULL COMMENT '支付通道: alipay_f2f | hpjpay | epay | balance',
+    `payment_method` VARCHAR(50) NULL COMMENT '最终支付通道',
     `paid_at` DATETIME NULL COMMENT '付款时间',
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -277,20 +301,22 @@ CREATE TABLE `invoices` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='账单结算表';
 ```
 > [!NOTE]
-> **`cycle_marker` 唯一键对 NULL 的依赖是有意设计**：MySQL 唯一索引允许多行 NULL，因此非周期类账单（新购/充值）`cycle_marker` 为 NULL 不占位，续费/变配账单通过唯一标记实现数据库级防重。请勿将其"修复"为 NOT NULL。
+> **`cycle_marker` 唯一键对 NULL 的依赖与释放规则**：MySQL 唯一索引允许多行 NULL，因此非周期类账单（新购/充值）`cycle_marker` 为 NULL 不占位，续费/变配账单通过唯一标记实现数据库级防重。当周期账单被取消（`status = 'cancelled'`）或因撞上不可逆销毁而退回余额（SC-L02 `status = 'refunded'`）时，必须同步执行 `SET cycle_marker = NULL` 释放唯一槽位，以便同一周期内重新出账。请勿将其"修复"为 NOT NULL。
 
 ---
 
+<a id="table-payment-records"></a>
+
 ### 1.12 `payment_records`（支付尝试与实收凭证流水表）
 ```sql
-CREATE TABLE `payment_records` (
+CREATE TABLE IF NOT EXISTS `payment_records` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     `invoice_id` BIGINT UNSIGNED NOT NULL,
     `user_id` BIGINT UNSIGNED NOT NULL,
     `channel` VARCHAR(50) NOT NULL COMMENT '支付通道: alipay | epay | balance | wechat',
     `trade_no` VARCHAR(100) NOT NULL UNIQUE COMMENT '系统内部收单流水号',
     `gateway_trade_no` VARCHAR(100) NULL COMMENT '第三方支付网关交易单号',
-    `amount` DECIMAL(10,2) NOT NULL COMMENT '实际收款金额 (严禁使用 float)',
+    `amount` DECIMAL(10,2) NOT NULL COMMENT '实际收款金额',
     `currency` VARCHAR(10) NOT NULL DEFAULT 'CNY',
     `status` ENUM('pending', 'success', 'failed', 'late_credited_to_balance') NOT NULL DEFAULT 'pending',
     `refund_status` ENUM('none', 'pending', 'success', 'failed') NOT NULL DEFAULT 'none' COMMENT '退款状态',
@@ -312,9 +338,11 @@ CREATE TABLE `payment_records` (
 
 ---
 
+<a id="table-transactions"></a>
+
 ### 1.13 `transactions`（资金全账本明细流水）
 ```sql
-CREATE TABLE `transactions` (
+CREATE TABLE IF NOT EXISTS `transactions` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     `user_id` BIGINT UNSIGNED NOT NULL,
     `invoice_id` BIGINT UNSIGNED NULL,
@@ -339,13 +367,15 @@ CREATE TABLE `transactions` (
 -- trg_transactions_no_delete (物理拦截 DELETE)
 ```
 > [!NOTE]
-> **`refund_to_balance` 流水类型**：用于 LIFECYCLE_PRICING 协议 §2.1 分支 2.1（场景 SC-L02）——续费支付撞上已进入执行中（`running`/`investigating`）的不可逆销毁流程时，账单标记为 `refunded`，款项原路转入用户钱包可用余额。
+> **`refund_to_balance` 流水类型**：既用于 [LIFECYCLE_PRICING.md](LIFECYCLE_PRICING.md) §2.1 的 SC-L02（已实收续费款被不可逆销毁阻断，款项转入钱包），也用于 [PAYMENTS_LEDGER.md](PAYMENTS_LEDGER.md) §3.3 的正常云消费退款至钱包。前者凭证用途为 `late_wallet_credit`、记录 `credit_reason='termination_blocked_renewal'`，后者为 `cloud_consumption`；不能仅凭流水类型推断实例销毁或佣金冲正资格。未实际扣款的自动代扣不产生退款入账。
 
 ---
 
+<a id="table-tasks"></a>
+
 ### 1.14 `tasks`（事务发件箱与幂等任务队列）
 ```sql
-CREATE TABLE `tasks` (
+CREATE TABLE IF NOT EXISTS `tasks` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     `instance_id` BIGINT UNSIGNED NOT NULL,
     `invoice_id` BIGINT UNSIGNED NULL,
@@ -371,13 +401,15 @@ CREATE TABLE `tasks` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='事务发件箱与幂等任务队列';
 ```
 > [!NOTE]
-> **`idx_instance_lease` 索引**：Task-as-Lock 的实例互斥检查（`WHERE instance_id = ? AND status IN ('running','investigating') AND lease_until > NOW()`）在每次创建任何新任务时都会执行，必须走索引避免全表扫描。
+> **`idx_instance_lease` 索引**：互斥检查先按 `instance_id` 限定，再判断 `status IN ('running','investigating') OR (status='failed' AND last_error LIKE 'MANUAL_AUDIT_REQUIRED:%')`，不得用租约是否过期过滤未裁决任务。`lease_until` 用于接管轮询和执行权校验。所有检查均遵守先实例行锁、再任务行锁的顺序。
 
 ---
 
+<a id="table-commissions"></a>
+
 ### 1.15 `commissions`（推荐返利明细与退款联动）
 ```sql
-CREATE TABLE `commissions` (
+CREATE TABLE IF NOT EXISTS `commissions` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     `affiliate_user_id` BIGINT UNSIGNED NOT NULL COMMENT '推荐人 A',
     `buyer_user_id` BIGINT UNSIGNED NOT NULL COMMENT '买家 B',
@@ -399,14 +431,16 @@ CREATE TABLE `commissions` (
 
 ---
 
+<a id="table-commission-withdrawals"></a>
+
 ### 1.16 `commission_withdrawals`（推广返佣提现申请表）
 ```sql
-CREATE TABLE `commission_withdrawals` (
+CREATE TABLE IF NOT EXISTS `commission_withdrawals` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     `user_id` BIGINT UNSIGNED NOT NULL COMMENT '申请提现的用户ID',
     `amount` DECIMAL(10,2) NOT NULL COMMENT '提现金额',
     `destination` ENUM('balance', 'external') NOT NULL COMMENT '提现目标: balance=转入站内可用余额, external=站外转账',
-    `channel_type` ENUM('alipay', 'bank', 'manual') NOT NULL DEFAULT 'alipay' COMMENT '站外提现渠道: alipay=支付宝, bank=银行卡, manual=线下核验',
+    `channel_type` ENUM('alipay', 'bank', 'manual') NOT NULL DEFAULT 'alipay' COMMENT '站外提现渠道',
     `account_name` VARCHAR(100) NULL COMMENT '收款人姓名/开户名',
     `account_no` VARCHAR(255) NULL COMMENT '收款账号 (支付宝账号/银行卡号, AES-256-GCM 加密存储)',
     `channel_info` TEXT NULL COMMENT '站外提现备注/附加信息 (如开户支行等)',
@@ -425,12 +459,14 @@ CREATE TABLE `commission_withdrawals` (
 
 ---
 
+<a id="table-notification-deliveries"></a>
+
 ### 1.17 `notification_deliveries`（通知投递与渠道级幂等防重）
 ```sql
-CREATE TABLE `notification_deliveries` (
+CREATE TABLE IF NOT EXISTS `notification_deliveries` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    `fingerprint` VARCHAR(100) NOT NULL COMMENT '业务消息唯一指纹 (如 host:10024:due:2026-11-07)',
-    `channel` VARCHAR(30) NOT NULL COMMENT '渠道标识 (如 mail, sms, telegram, wechat, qq)',
+    `fingerprint` VARCHAR(100) NOT NULL COMMENT '业务消息唯一指纹',
+    `channel` VARCHAR(30) NOT NULL COMMENT '渠道标识 (如 mail, sms, telegram)',
     `user_id` BIGINT UNSIGNED NOT NULL COMMENT '接收用户 ID',
     `target` VARCHAR(100) NOT NULL COMMENT '投递目标 (邮箱/手机号/ChatID)',
     `status` ENUM('pending', 'sending', 'success', 'failed', 'pending_manual_check') NOT NULL DEFAULT 'pending',
@@ -438,7 +474,6 @@ CREATE TABLE `notification_deliveries` (
     `sent_at` DATETIME NULL COMMENT '实际送达时间',
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    -- ⚡ 铁律唯一索引：相同指纹在同一个渠道下绝对只允许存在一条记录
     UNIQUE KEY `uk_fingerprint_channel` (`fingerprint`, `channel`),
     INDEX `idx_user_created` (`user_id`, `created_at`),
     INDEX `idx_status_updated` (`status`, `updated_at`)
@@ -447,13 +482,15 @@ CREATE TABLE `notification_deliveries` (
 
 ---
 
+<a id="table-web-push-subscriptions"></a>
+
 ### 1.18 `web_push_subscriptions`（浏览器 Web Push 设备订阅）
 ```sql
-CREATE TABLE `web_push_subscriptions` (
+CREATE TABLE IF NOT EXISTS `web_push_subscriptions` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     `user_id` BIGINT UNSIGNED NOT NULL COMMENT '归属用户',
     `endpoint` TEXT NOT NULL COMMENT '浏览器推送网关 Endpoint URL',
-    `endpoint_hash` CHAR(64) NOT NULL COMMENT 'Endpoint SHA256 哈希',
+    `endpoint_hash` CHAR(64) NOT NULL COMMENT 'Endpoint SHA256 哈希 (用于唯一索引)',
     `p256dh_key` VARCHAR(255) NOT NULL COMMENT '客户端公钥 P256DH',
     `auth_token` VARCHAR(255) NOT NULL COMMENT '客户端鉴权密钥 Auth Secret (AES-256-GCM 加密存储)',
     `browser` VARCHAR(30) NULL COMMENT '浏览器类型: chrome | edge | safari | firefox',
@@ -468,9 +505,11 @@ CREATE TABLE `web_push_subscriptions` (
 
 ---
 
+<a id="table-tickets"></a>
+
 ### 1.19 `tickets`（客服工单）
 ```sql
-CREATE TABLE `tickets` (
+CREATE TABLE IF NOT EXISTS `tickets` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     `user_id` BIGINT UNSIGNED NOT NULL COMMENT '提交人',
     `instance_id` BIGINT UNSIGNED NULL COMMENT '关联实例',
@@ -491,9 +530,11 @@ CREATE TABLE `tickets` (
 
 ---
 
+<a id="table-ticket-replies"></a>
+
 ### 1.20 `ticket_replies`（工单协同与回复）
 ```sql
-CREATE TABLE `ticket_replies` (
+CREATE TABLE IF NOT EXISTS `ticket_replies` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     `ticket_id` BIGINT UNSIGNED NOT NULL,
     `user_id` BIGINT UNSIGNED NULL COMMENT '客户ID (客户回复时必填)',
@@ -514,9 +555,11 @@ CREATE TABLE `ticket_replies` (
 
 ---
 
+<a id="table-coupons"></a>
+
 ### 1.21 `coupons`（统一促销与优惠券模板）
 ```sql
-CREATE TABLE `coupons` (
+CREATE TABLE IF NOT EXISTS `coupons` (
     `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     `name` VARCHAR(100) NOT NULL COMMENT '优惠券/码名称 (如: 新人礼券 / 2024迎新9折)',
     `code` VARCHAR(50) NULL UNIQUE COMMENT '口令码 (NULL表示专属/定向卡券，填值表示公开优惠码)',
@@ -538,9 +581,11 @@ CREATE TABLE `coupons` (
 
 ---
 
+<a id="table-user-coupons"></a>
+
 ### 1.22 `user_coupons`（用户卡券资产包）
 ```sql
-CREATE TABLE `user_coupons` (
+CREATE TABLE IF NOT EXISTS `user_coupons` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     `user_id` BIGINT UNSIGNED NOT NULL COMMENT '所属用户',
     `coupon_id` INT UNSIGNED NOT NULL COMMENT '关联优惠券模板',
@@ -561,9 +606,11 @@ CREATE TABLE `user_coupons` (
 
 ---
 
+<a id="table-coupon-issue-logs"></a>
+
 ### 1.23 `coupon_issue_logs`（优惠券发放幂等与审计日志）
 ```sql
-CREATE TABLE `coupon_issue_logs` (
+CREATE TABLE IF NOT EXISTS `coupon_issue_logs` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     `user_id` BIGINT UNSIGNED NOT NULL COMMENT '目标用户ID',
     `coupon_id` INT UNSIGNED NOT NULL COMMENT '关联优惠券模板ID',
@@ -580,9 +627,11 @@ CREATE TABLE `coupon_issue_logs` (
 
 ---
 
+<a id="table-articles"></a>
+
 ### 1.24 `articles`（统一公告与帮助中心）
 ```sql
-CREATE TABLE `articles` (
+CREATE TABLE IF NOT EXISTS `articles` (
     `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     `type` ENUM('news', 'help') NOT NULL DEFAULT 'news' COMMENT 'news: 新闻公告, help: 帮助文档',
     `category` VARCHAR(50) NOT NULL DEFAULT '默认分类' COMMENT '分类名称',
@@ -605,9 +654,11 @@ CREATE TABLE `articles` (
 
 ---
 
+<a id="table-admin-audit-logs"></a>
+
 ### 1.25 `admin_audit_logs`（管理员高危操作审计日志）
 ```sql
-CREATE TABLE `admin_audit_logs` (
+CREATE TABLE IF NOT EXISTS `admin_audit_logs` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     `admin_id` INT UNSIGNED NOT NULL COMMENT '操作管理员ID',
     `action` VARCHAR(100) NOT NULL COMMENT '动作标识 (如 task.force_retry / instance.price_override / invoice.refund.approve)',
@@ -626,9 +677,11 @@ CREATE TABLE `admin_audit_logs` (
 
 ---
 
+<a id="table-downloads"></a>
+
 ### 1.26 `downloads`（资源与工具下载中心表）
 ```sql
-CREATE TABLE `downloads` (
+CREATE TABLE IF NOT EXISTS `downloads` (
     `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     `category` VARCHAR(50) NOT NULL DEFAULT '常用工具' COMMENT '分类名称 (如: 远程连接 / 常用工具 / 专属驱动)',
     `title` VARCHAR(150) NOT NULL COMMENT '资源名称',

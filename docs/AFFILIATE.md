@@ -4,9 +4,9 @@
 
 ```mermaid
 flowchart TD
-    A["买家支付订单 Invoices"] --> B["生成冻结返利 commissions<br/>(status='pending', 统一定义15天无理由退款冻结期)"]
+    A["正常云消费结算成功"] --> B["生成冻结返利 commissions<br/>(status='pending', 15天佣金冻结期)"]
     
-    B -- 15天内买家申请退款 --> C["佣金自动级联作废<br/>(status='cancelled')"]
+    B -- 冻结期内云消费退款成功 --> C["佣金同事务级联作废<br/>(status='cancelled')"]
     B -- 满15天且无退款 --> D["解冻转入可提现推广金<br/>(users.available_commission)"]
     
     D --> E{"推广人申请提现"}
@@ -27,11 +27,18 @@ flowchart TD
    - 注册落地时，将推荐人的 `users.id` 写入买家的 `users.affiliate_id`（带有外键约束 `fk_users_affiliate`，`ON DELETE SET NULL`）。
    - **反作弊铁律**：严禁自推自买（注册与结算时校验 `affiliate_id != id`），同一 IP / 身份证盲索引碰撞时阻断佣金结算。
 
-### 1.2 分品类差异化返佣比例 (`products.commission_rate`)
+### 1.2 分品类差异化返佣比例 (`products.commission_rate`) 与三轨账本流转
+- **适用账单类型过滤（防充值套利铁律）**：仅云产品消费类账单（`invoices.type IN ('new', 'renew', 'upgrade')`）可触发返佣计算；**余额充值账单（`invoices.type = 'recharge'`）及迟到款转余额入账绝不产生返佣**，彻底封死“充值拿佣金 + 余额买机器再拿佣金 / 原路退款套现”的双重套利。
 - 返佣比例不再全站一刀切，下放至商品维度：`products.commission_rate DECIMAL(5,2)`（例如 `15.00` 代表 15%，`0.00` 代表特价机/不参与返佣）。
 - **佣金计算基数**：严格按账单扣除优惠券后的实际净实收金额（Net Paid Amount）计算：
   $$\text{CommissionAmount} = \text{bc\_round}\left(\frac{\text{NetPaid} \times \text{CommissionRate}}{100}, 2\right)$$
 - **数据库防重入约束**：`commissions` 表设置 `UNIQUE KEY uk_invoice_affiliate (invoice_id, affiliate_user_id)`，从数据库底层彻底杜绝同一账单向同一推荐人多次计入佣金。
+- **三轨分户账本对冲规范**：
+  1. **付款生成冻结佣金（`status = 'pending'`）**：同事务累加推荐人 `users.frozen_commission`，并写入 `transactions`（`account_type = 'frozen_commission', type = 'commission_settle', amount = +X`）；
+  2. **满 15 天解冻入账（`pending -> available`）**：同事务扣减 `users.frozen_commission`（写 `account_type = 'frozen_commission', type = 'commission_settle', amount = -X`）并累加 `users.available_commission`（写 `account_type = 'available_commission', type = 'commission_settle', amount = +X`）；
+  3. **退款与违规清退级联冲正**：退款分支仅限 `cloud_consumption` 成功终态 CAS 影响 1 行的同一事务；待审、拒绝、结果未知及 `wallet_recharge` / `late_wallet_credit` 退款均不冲原佣金，见 [PAYMENTS_LEDGER.md](PAYMENTS_LEDGER.md) §3。
+     - 若处于冻结期（`pending -> cancelled`）：当正常云消费退款成功，或实例因恶意滥用/违规（`admin_abuse`）在 15 天冻结期内被管理员强制清退销毁时，将佣金置为 `cancelled`，扣减 `users.frozen_commission` 并写入 `account_type = 'frozen_commission', type = 'commission_clawback', amount = -X`；
+     - 若已解冻（`available -> clawbacked`）：扣减 `users.available_commission` 并写入 `account_type = 'available_commission', type = 'commission_clawback', amount = -X`（允许 `available_commission` 扣为负数以冻结后续提现）。
 
 ---
 
@@ -41,46 +48,40 @@ flowchart TD
 - **商业价值**：激励推广者将返现直接转为站内消费资本（用于续费现有服务器或开通新节点），留存资金并降低平台的现金流压力。
 - **执行机制**：
   - **免人工审批，事务级秒到，遵循悲观行锁锁定与全账本流水物理平衡**。
-  - 核心原子 CAS 事务（伪代码逻辑）：
+  - 核心原子 CAS 事务（基于 `App\Core\Database`）：
     ```php
-    DB::transaction(function() use ($userId, $amount) {
+    Database::transaction(function (PDO $db) use ($userId, $amount, $idemKey): void {
         // 1. 悲观行锁锁定用户资产行
-        $user = DB::selectOne("
-            SELECT balance, available_commission FROM users WHERE id = :uid FOR UPDATE
-        ", ['uid' => $userId]);
+        $stmt = $db->prepare('SELECT balance, available_commission FROM users WHERE id = ? FOR UPDATE');
+        $stmt->execute([$userId]);
+        $user = $stmt->fetch();
 
-        if (bccomp($user->available_commission, $amount, 2) < 0) {
-            throw new InsufficientCommissionException("可提现佣金不足或并发冲突");
+        if (!$user || bccomp($user['available_commission'], $amount, 2) < 0) {
+            throw new ApiException('Insufficient available commission', 409, 409);
         }
 
+        $commAfter = bcsub($user['available_commission'], $amount, 2);
+        $walletAfter = Money::add($user['balance'], $amount);
+
         // 2. 原子扣减可提现推广金并增加钱包可用余额
-        $affected = DB::update("
-            UPDATE `users` 
-            SET `available_commission` = `available_commission` - :amt,
-                `balance` = `balance` + :amt 
-            WHERE `id` = :uid AND `available_commission` >= :amt
-        ", ['amt' => $amount, 'uid' => $userId]);
+        $stmt = $db->prepare('UPDATE users SET available_commission = ?, balance = ? WHERE id = ? AND available_commission >= ?');
+        $stmt->execute([$commAfter, $walletAfter, $userId, $amount]);
+        if ($stmt->rowCount() !== 1) {
+            throw new ApiException('Commission transfer state conflict', 409, 409);
+        }
 
         // 3. 双向记入全账本流水表 (双分录，触发器物理校验 balance_after = balance_before + amount)
+        $ledgerStmt = $db->prepare(
+            'INSERT INTO transactions (user_id, account_type, type, amount, balance_before, balance_after, idempotency_key, remark) VALUES (?, ?, \'affiliate_to_balance\', ?, ?, ?, ?, ?)'
+        );
         // 3.1 推广账户出账流水
-        DB::insert("
-            INSERT INTO `transactions` 
-            (`user_id`, `account_type`, `type`, `amount`, `balance_before`, `balance_after`, `idempotency_key`, `remark`)
-            VALUES (:uid, 'available_commission', 'affiliate_to_balance', -:amt, :comm_before, :comm_after, :idem_key1, '推广返佣转出至钱包余额')
-        ", [...]);
-
+        $ledgerStmt->execute([$userId, 'available_commission', bcsub('0', $amount, 2), $user['available_commission'], $commAfter, "aff_out:{$idemKey}", '推广返佣转出至钱包余额']);
         // 3.2 钱包账户入账流水
-        DB::insert("
-            INSERT INTO `transactions` 
-            (`user_id`, `account_type`, `type`, `amount`, `balance_before`, `balance_after`, `idempotency_key`, `remark`)
-            VALUES (:uid, 'wallet', 'affiliate_to_balance', :amt, :wallet_before, :wallet_after, :idem_key2, '推广返佣转入钱包可用余额')
-        ", [...]);
+        $ledgerStmt->execute([$userId, 'wallet', $amount, $user['balance'], $walletAfter, "aff_in:{$idemKey}", '推广返佣转入钱包可用余额']);
 
         // 4. 记入提现记录表 (直接标记为 approved 已成功)
-        DB::insert("
-            INSERT INTO `commission_withdrawals` (`user_id`, `amount`, `destination`, `status`, `processed_at`) 
-            VALUES (:uid, :amt, 'balance', 'approved', NOW())
-        ", ['uid' => $userId, 'amt' => $amount]);
+        $db->prepare("INSERT INTO commission_withdrawals (user_id, amount, destination, status, processed_at) VALUES (?, ?, 'balance', 'approved', UTC_TIMESTAMP())")
+            ->execute([$userId, $amount]);
     });
     ```
 

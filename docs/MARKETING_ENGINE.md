@@ -87,6 +87,16 @@ flowchart TD
 - **筛选条件**：累计消费满额度（如 $\ge 200$ 元）、名下无在跑机器、超过 30 天未登录的用户；
 - **周期防重键**：`cycle_marker = CONCAT('winback:', user_id, ':', DATE_FORMAT(NOW(), '%Y%m'))`（按自然月滚动冷却，每月最多打扰 1 次）。
 
+### 3.4 营销活动动态配置载体（`system_settings.key = 'marketing.campaigns'`）
+由于 `coupons` 表仅定义优惠券模板的面额与公开口令绝对过期时间（`expire_at`），三大自动化发券命令的**模板绑定与领券后相对有效天数（`valid_days`）**统一托管于 `system_settings` 表（`key = 'marketing.campaigns'`, `group = 'general'`）：
+```json
+{
+  "register_gift": { "enabled": true, "coupon_id": 1, "valid_days": 7 },
+  "birthday_gift": { "enabled": true, "coupon_id": 2, "valid_days": 15 },
+  "winback_gift":  { "enabled": true, "coupon_id": 3, "valid_days": 10, "min_total_spent": "200.00", "inactive_days": 30 }
+}
+```
+
 ---
 
 ## 4. `coupon_issue_logs` 消除死锁与原子提交协议
@@ -154,3 +164,6 @@ COMMIT;
    - 无论何种高额优惠券或叠加，支付总额绝不允许低于 $0.01$ 元人民币，杜绝 0 元注入或负数结算导致上游接口开通崩溃。
 3. **单据权益互斥规则**：
    - 一笔订单默认只能核销 1 项优惠权益（用户若既有可用专属券，又输入了口令码，结算器自动比对并推荐减免金额最高的一项，严格禁止无序叠加）。
+4. **首期优惠 (`once`) 与终身循环优惠 (`recurring`) 的实例续费价隔离**：
+   - **`apply_cycle = 'once'`（首期优惠）**：仅扣减首张新购账单的 `invoices.total`，预创建实例的 `instances.recurring_price` **必须写入折前标准周期原价**，严禁将首期折扣带入后续续费周期；
+   - **`apply_cycle = 'recurring'`（循环优惠）**：同时扣减 `invoices.total` 与 `instances.recurring_price`，并将循环折扣规则（`coupon_id`、`type`、`value`）固化至 `instances.config_snapshot`，供后续弹性变配重算新周期续费价时继承。

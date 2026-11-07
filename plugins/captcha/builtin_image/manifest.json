@@ -1,0 +1,8 @@
+{
+  "id": "builtin_image",
+  "name": "本地图片验证码",
+  "version": "1.0.0",
+  "type": "captcha",
+  "entry": "BuiltinImageDriver.php",
+  "form_fields": []
+}

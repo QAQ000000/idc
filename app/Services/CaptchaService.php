@@ -3,11 +3,17 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Core\{ApiException, Database};
-use App\Plugins\Captcha\CaptchaDriverInterface;
-use Plugins\captcha\builtin_image\BuiltinImageDriver;
+use App\Plugins\Captcha\{CaptchaDriverInterface, CaptchaDriverRegistry};
 
 final class CaptchaService
 {
+    private readonly CaptchaDriverRegistry $drivers;
+
+    public function __construct(?CaptchaDriverRegistry $drivers = null)
+    {
+        $this->drivers = $drivers ?? CaptchaDriverRegistry::installed();
+    }
+
     private function policy(string $scene): array
     {
         if (!in_array($scene, ['login', 'register', 'password_reset'], true)) {
@@ -26,10 +32,10 @@ final class CaptchaService
 
     private function driver(array $policy): CaptchaDriverInterface
     {
-        if (($policy['driver'] ?? '') !== 'builtin_image' || ($policy['mode'] ?? 'always') !== 'always') {
-            throw new \RuntimeException('Captcha driver or mode is not installed');
+        if (!is_string($policy['driver'] ?? null) || ($policy['mode'] ?? 'always') !== 'always') {
+            throw new \RuntimeException('Captcha driver or mode is not supported');
         }
-        return new BuiltinImageDriver();
+        return $this->drivers->get($policy['driver']);
     }
 
     public function config(string $scene, string $ip): array

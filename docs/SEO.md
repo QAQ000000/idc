@@ -116,9 +116,12 @@ Google 搜索结果会直接以手风琴样式展开问答，实现**搜索结�
 ### 5.1 百度快速收录接口（主动推送）
 系统在文章发布、更新或分类上架时，由后端异步触发推送：
 ```php
-// 示例：向百度资源平台主动提交新 URL
-$urls = ['https://yourdomain.com/help/' . $article->slug];
-$api = 'http://data.zz.baidu.com/urls?site=https://yourdomain.com&token=' . config('seo.baidu_token');
+// 示例：从 system_settings 读取 seo.config 并向百度资源平台主动提交新 URL
+$stmt = Database::getInstance()->prepare("SELECT value FROM system_settings WHERE `key` = 'seo.config'");
+$stmt->execute();
+$seoConfig = json_decode((string)$stmt->fetchColumn() ?: '{}', true);
+$urls = ['https://yourdomain.com/help/' . $article['slug']];
+$api = 'http://data.zz.baidu.com/urls?site=https://yourdomain.com&token=' . urlencode($seoConfig['baidu_token'] ?? '');
 
 $ch = curl_init();
 curl_setopt_array($ch, [

@@ -19,6 +19,10 @@
 | **自营服务节点** | `shd_servers` | 6 台 | 映射为 `providers` 表中的 `easypanel`, `sub2api`, `mcsm` 驱动。 |
 | **历史日志** | `shd_activity_log` 等 | 40+ 万行 (330MB) | **彻底抛弃不迁移**（旧库作为冷备份保留在磁盘，无需搬运垃圾）。 |
 
+**存量驱动支持范围**：资产导入与自动运维验收分开进行。DCIM/魔方、Easypanel、宝塔 `skymnbt`、Sub2API 必须逐节点核准真实标识、续费语义与能力声明；驱动缺失或能力不支持时服务端禁用相应自动动作，并按 [MIGRATION_RUNBOOK.md](MIGRATION_RUNBOOK.md) §2.1 明确人工接管人、入口、时限和对账流程。未完成这些前置条件，不能宣称 118 台 Active 均可自动重启/续费。
+
+**旧支付在途款**：11 笔旧未付订单与旧收银台可能在停写后继续回调。必须先实施 [MIGRATION_RUNBOOK.md](MIGRATION_RUNBOOK.md) §4.0 的持久接收、旧商户验签、受控订单映射、幂等重放和逐笔对账；不能将旧回调 `302` 到新接口，不能把旧账单 ID 直接用作新账单 ID。原始报文加密保存于私有目录，未知映射持续隔离核办，不占用实例 Outbox 或伪造账单。
+
 ---
 
 ## 二、 核心技术难点解决：旧密码平滑升级 (MD5 $\rightarrow$ Bcrypt)
@@ -67,8 +71,7 @@ FROM idc2.shd_clients c;
 ```sql
 -- 详细映射脚本与缺失映射挂起规则，以 docs/MIGRATION_RUNBOOK.md 第 3 节为唯一标准
 -- 严禁任何 COALESCE(..., h.id) 本地 ID 降级操作！
-```
-WHERE h.domainstatus IN ('Active', 'Suspended', 'Pending');
+-- 过滤范围: WHERE h.domainstatus IN ('Active', 'Suspended', 'Pending');
 ```
 
 ### 3. `shd_news` & `shd_news_menu` $\rightarrow$ `articles` (118 篇公告)
@@ -116,12 +119,15 @@ FROM idc2.shd_downloads d;
 
 ---
 
-## 四、 零停机迁移上线实操步骤 (Runbook)
+## 四、 迁移实施顺序与生产门禁
+
+以下仅为导航；生产割接、回调接收所有权、最终余额快照和回滚条件以 [MIGRATION_RUNBOOK.md](MIGRATION_RUNBOOK.md) §4 为唯一权威。维护窗口必须保留旧回调持久接收，不能把“停写旧站”解释为关闭全部支付接收入口。
 
 ```text
 [准备阶段] 
 1. 新建并初始化 jianyun 数据库结构 (schema.sql)
 2. 确认旧库 idc2 数据正常且已备份
+   部署旧支付持久接收与重放桥接，验收加密存储、映射、幂等和逐笔对账
       ↓
 [全量静态导入] (耗时约 10 秒)
 3. 运行专用迁移脚本: php scripts/migrate_legacy.php
@@ -130,10 +136,13 @@ FROM idc2.shd_downloads d;
 [功能并行灰度验证]
 5. 随机抽取 3~5 个老账户进行免密测试登录与实例查看
 6. 验证一台在跑的 Active 主机执行【重启】和【查看VNC】，确认上游透传无误
+   按每类存量 Provider 验收实际支持能力；不支持项服务端禁用并确认人工接管
       ↓
 [正式割接切换] (维护窗口 5 分钟)
-7. 旧系统配置 Nginx 停写维护公告，确保旧库不再产生新订单
-8. 运行增量迁移，同步最后几分钟内产生的新数据
+7. 停写旧业务及旧结算，保留原商户回调 URL 的持久接收，明确唯一结算归属
+8. 冻结最终余额和旧新订单映射，运行增量迁移，对接收凭证幂等重放并逐笔对账
 9. 将生产域名解析 (DNS / Nginx 反向代理) 指向 JianYun 新系统
-10. 割接完成，开放对外服务！
+10. 回调桥接/对账、存量能力或人工接管、可靠Worker及应急门禁全部通过后，开放支持范围内的生产服务
 ```
+
+本流程和新增协议仍需实现迁移/桥接脚本并通过演练；不得因文档已补齐就将路线图任务 5.4 标记为完成。

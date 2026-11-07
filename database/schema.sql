@@ -176,7 +176,7 @@ CREATE TABLE IF NOT EXISTS `instance_snapshots` (
     `user_id` BIGINT UNSIGNED NOT NULL COMMENT '所属用户ID (冗余, 便于用户侧列表查询)',
     `type` ENUM('snapshot', 'backup') NOT NULL DEFAULT 'snapshot' COMMENT '操作类型: snapshot快照 / backup备份',
     `origin` ENUM('manual', 'scheduled') NOT NULL DEFAULT 'manual' COMMENT '产生来源: manual手动 / scheduled计划任务 (配额全额计数模型依赖此字段区分)',
-    `remote_snapshot_id` VARCHAR(100) NOT NULL COMMENT '上游快照/备份唯一标识 (清理任务幂等键 snapshot_delete:{remote_snapshot_id} 的依据)',
+    `remote_snapshot_id` VARCHAR(100) NULL COMMENT '上游实例内该类型的快照/备份标识，创建未决时为NULL；清理使用本地台账ID',
     `size_bytes` BIGINT UNSIGNED NULL COMMENT '快照/备份大小 (字节, 上游可查时回填)',
     `status` ENUM('creating', 'active', 'deleting', 'deleted', 'failed') NOT NULL DEFAULT 'creating' COMMENT '生命周期: creating创建中 / active可用 / deleting删除中 / deleted已删除墓碑 / failed创建失败',
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -184,7 +184,7 @@ CREATE TABLE IF NOT EXISTS `instance_snapshots` (
     FOREIGN KEY (`instance_id`) REFERENCES `instances` (`id`) ON DELETE CASCADE,
     FOREIGN KEY (`schedule_id`) REFERENCES `instance_snapshot_schedules` (`id`) ON DELETE SET NULL,
     FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
-    UNIQUE KEY `uk_remote_snapshot_id` (`remote_snapshot_id`),
+    UNIQUE KEY `uk_instance_type_remote_snapshot` (`instance_id`, `type`, `remote_snapshot_id`),
     INDEX `idx_schedule_cleanup` (`schedule_id`, `status`, `created_at`),
     INDEX `idx_instance_type_status` (`instance_id`, `type`, `status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='云快照与备份归属凭证台账 (清理候选严格按schedule_id查询, 严禁模糊名称匹配)';

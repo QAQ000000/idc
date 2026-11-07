@@ -20,6 +20,10 @@
 
 所有验证码插件（无论内置还是第三方）存放在 `plugins/captcha/`，并实现统一接口：
 
+**当前装配边界**：每个已安装驱动在 `plugins/captcha/{id}/manifest.json` 声明 `id`、`type: "captcha"`、`entry` 和 `form_fields`。`entry` 必须是该目录内的单一 PHP 文件名，实现类命名空间为 `Plugins\captcha\{id}\{EntryClass}`。`CaptchaDriverRegistry` 在加载 PHP 前校验清单与入口的物理目录归属（拒绝符号链接逃逸），并验证接口与驱动标识；`CaptchaService` 仅根据场景解析接口，禁止导入或实例化具体插件。没有清单的占位目录不属于已安装插件，配置未安装驱动时拒绝请求。
+
+现已内置 `builtin_image` 清单及实现。新增驱动只添加插件文件与清单，再配置场景，不修改核心服务。当前只支持 `mode=always`，`after_failed_attempts` 等策略仍待实现，不能通过配置绕过校验。可运行 `php tests/plugins.php` 验证插件解析和核心依赖边界。
+
 ```php
 namespace App\Plugins\Captcha;
 

@@ -3,14 +3,14 @@
 > **极简、高扩展的现代化云产品聚合销售系统**
 > 面向异构上游代理（智简魔方等）与多形态自营服务（Kangle、PVE、Sub2API、手工VPS）。
 
-## 核心设计特性
+## 目标设计能力
 
 - ⚡ **极致极简**：告别旧魔方 178 张表的臃肿泥潭，仅用 8 张核心领域表（全系统共精简收敛为 26 张物理表）支撑 100% 真实业务。
 - 🔌 **驱动插件化**：无论是魔方代理、自营虚拟主机还是 AI 额度分发，均统一抽象为 `Provider` 驱动。
 - 🛡️ **事务发件箱 (Transactional Outbox)**：杜绝“先调上游接口导致网络超时丢任务”，确保支付、账务与履约百分之百一致。
 - 🔄 **双阶段自动续费**：出账与代扣彻底解耦，无论何时充值余额，均能秒级自动代扣续费，杜绝欠费假死停机。
 - 📈 **智能升降级与改价神器**：弹性云按天补差（降级 0 元不退款）；后台支持单实例一键改续费价并自动划扣当期差价。
-- 🔒 **返佣防套利**：退款与返利实时级联冲正，彻底杜绝自推自买套现。
+- 🔒 **返佣防套利**：正常云消费退款成功时同事务冲正返利；迟到/多收钱包款退款保留原消费及佣金，详见 [用途隔离契约](docs/PAYMENTS_LEDGER.md)。
 
 ---
 
@@ -26,7 +26,7 @@
 4. `APP_ENV=local` 时运行 `php scripts/console.php demo:seed`，得到模拟商品 ID。
 5. 运行 `php -S 127.0.0.1:8080 -t public public/index.php`，检查 `GET /health`。
 
-注册前请求 `GET /api/v1/captcha/config?scene=register`，显示 `data.img_base64` 并填写图片字符。注册请求中的 `captcha_payload` 为 `{ "challenge_id": "返回的ID", "answer": "图片字符" }`；登录使用独立的 `scene=login` 挑战。挑战有效期 5 分钟，尝试一次即销毁。默认所有认证场景启用图片验证码，可通过 `system_settings.key=captcha_scenes` 的 JSON 值按场景配置 `enabled`、`mode=always`、`driver=builtin_image`，其他驱动/模式尚未安装，配置后会拒绝请求。
+注册前请求 `GET /api/v1/captcha/config?scene=register`，显示 `data.img_base64` 并填写图片字符。注册请求中的 `captcha_payload` 为 `{ "challenge_id": "返回的ID", "answer": "图片字符" }`；登录使用独立的 `scene=login` 挑战。挑战有效期 5 分钟，尝试一次即销毁。默认所有认证场景启用图片验证码，可通过 `system_settings.key=captcha_scenes` 的 JSON 值按场景配置 `enabled`、`mode=always`、`driver=builtin_image`。驱动由 `CaptchaDriverRegistry` 读取插件清单并解析，新增实现无需修改核心服务；当前只安装内置图片驱动，未安装驱动或未支持模式会拒绝请求。
 
 注册后用返回的用户 ID 执行 `php scripts/console.php demo:recharge USER_ID 100.00 UNIQUE_REFERENCE` 注入演示余额；同一个参考号重复执行不会重复入账。演示充值仅允许 CLI 且 `APP_ENV=local/test`，无公开充值接口。
 
@@ -49,6 +49,8 @@
 
 实例在待交付期间 `start_date/due_date` 均为 `NULL`。后续 Worker 确认实际交付成功后，通过 `InstanceActivationService::completeCreate()` 带任务令牌与租约原子激活并起租；自然月/年到期日对齐目标月末。已有 MVP 库需先备份，再审阅执行 `database/migrations/001_delivery_dates.sql`，新库直接使用更新后的 `schema.sql`。本次代码修改不自动迁移现有数据库。
 
+快照台账采用 `(instance_id, type, remote_snapshot_id)` 唯一键，创建未决时允许远端 ID 为 `NULL`，不同上游实例及快照/备份类型可使用相同远端编号。已有库对应迁移为 `database/migrations/002_snapshot_identity.sql`，执行前暂停快照相关调度、核对未决任务并备份；本项目不会自动执行该迁移。快照驱动和调度器目前仍是规划能力。
+
 反向代理部署时配置 `TRUSTED_PROXIES` 为实际代理 IP 或 CIDR 列表（例如 `127.0.0.1,::1,10.0.0.0/24`）；默认不信任转发头。登录审计与验证码统一从可信 `X-Forwarded-For` 链右侧剥离代理，返回最近的非受信跳点；代理必须覆盖或正确追加真实来源地址。不会直接采纳 `CF-Connecting-IP`，Cloudflare 部署需由受信边缘规范化到 XFF 或 Web 服务器的 `REMOTE_ADDR`。畸形转发链回退连接来源 IP。
 
 ### 隔离集成测试
@@ -61,7 +63,7 @@ REDIS_SERVER=/absolute/path/to/redis-server python3 scripts/test_integration.py
 
 要求 Python 3.9+、Docker、PHP 和本地 `redis-server`；脚本使用 `mysql:8.0.35`（可通过 `MYSQL_TEST_IMAGE` 覆盖为兼容的 MySQL 8 镜像），自动创建独立容器、随机端口 Redis 和多进程 PHP HTTP 服务，执行真实接口/数据库检查后清理资源。测试不加载部署 `.env`，不连接现有业务库。
 
-覆盖并发付款只扣一次、最后库存并发预留、Outbox 写入失败整笔回滚、越权阻断、验证码场景隔离与单次消费、过期报价和账本只追加约束；并验证同上游不同商品的锁隔离、可信代理 IPv4/IPv6 与伪造链、交付起租的月末/闰年运算、失效令牌/租约保护及旧库日期迁移。IP 解析单元检查也可独立运行 `php tests/unit.php`。
+覆盖并发付款只扣一次、最后库存并发预留、Outbox 写入失败整笔回滚、越权阻断、验证码场景隔离与单次消费、过期报价和账本只追加约束；并验证同上游不同商品的锁隔离、可信代理 IPv4/IPv6 与伪造链、交付起租的月末/闰年运算、失效令牌/租约保护、插件替换与失效拒绝、快照跨实例/类型编号隔离及旧库迁移。IP 解析可独立运行 `php tests/unit.php`；插件解析与核心依赖边界可独立运行 `php tests/plugins.php`。Worker、退款、通知和割接协议的故障矩阵尚待对应功能实现后演练，这些静态契约修正不等于运行验收完成。
 
 ---
 

@@ -1,71 +1,90 @@
 # JianYun (简云) · 支付网关聚合与资金安全规范 (Payments & Security)
 
-本文档定义了 JianYun 的支付网关插件扩展契约、异步回调原子防重入机制，以及敏感凭据的应用层信封加密设计。
+本文档定义了 JianYun 的支付领域编排、异步回调原子防重入机制，以及敏感凭据的应用层信封加密设计。
 
 ---
 
 ## 1. 支付网关插件接口契约 (`PaymentGatewayInterface`)
 
-所有支付插件放置在 `plugins/payments/` 目录下（如 `alipay_f2f`, `epay`, `hpjpay`, `balance`），实现统一规范：
+所有支付插件放置在 `plugins/payments/` 目录下，实现 `App\Plugins\Payments\PaymentGatewayInterface`。
 
-```php
-namespace App\Plugins\Payments;
-
-interface PaymentGatewayInterface
-{
-    /**
-     * 网关唯一标识
-     */
-    public function getGatewayId(): string;
-
-    /**
-     * 展现名称 (如 '支付宝当面付', '微信支付 (汇付宝)')
-     */
-    public function getName(): string;
-
-    /**
-     * 后台动态配置项 (商户ID, 异步通知地址, RSA公私钥, MD5密钥)
-     */
-    public function getConfigSchema(): array;
-
-    /**
-     * 发起支付，统一返回前端收银台形态
-     * @return PaymentPurchaseResult (包含支付URL, 二维码QrCodeBase64, 或唤起参数)
-     */
-    public function purchase(Invoice $invoice, array $config): PaymentPurchaseResult;
-
-    /**
-     * 异步通知验签与解析
-     */
-    public function handleNotify(array $requestData, array $config): PaymentNotifyResult;
-}
-```
+**接口签名与支付 DTO 的唯一文档来源是 [PLUGIN_DEV.md · 支付网关插件开发规范](PLUGIN_DEV.md#payment-gateway-interface)**；本文不再维护接口定义副本。插件负责收银台、验签、退款请求与状态查询，账单 CAS、钱包变更、返佣和 Outbox 由支付领域服务按照本文及 [PAYMENTS_LEDGER.md](PAYMENTS_LEDGER.md) §3 编排，插件不得自行推进业务状态。
 
 ---
 
-## 2. 异步回调防重入铁律 (Anti-Reentrant Callback)
+## 2. 异步回调防重入与迟到/多收款分流铁律 (Anti-Reentrant & Late-Credit Callback)
 
-第三方支付平台（如支付宝、易支付等）因网络抖动，经常会在短时间内发送 3~5 次相同的异步通知。**绝对禁止裸查裸改**（即先 `SELECT` 发现未付，然后直接修改），必须使用原子行级更新：
+第三方支付平台（如支付宝、易支付等）因网络抖动，经常会在短时间内发送 3~5 次相同的异步通知；同时，客户可能在账单超时取消（`cancelled`）或已通过其他渠道/余额完成支付（`paid`）后，又完成了此前打开的第三方收银台扫码。
+
+**绝对禁止仅用 `UPDATE invoices ... WHERE status='unpaid'` 的 `rowCount() === 0` 盲目丢弃回调（否则超时取消后到账或跨渠道重付的真金白银会被静默吞没）**！必须严格先按 `(channel, gateway_trade_no)` 判重，再按账单当前状态分流：
+
+> **以下是待实现支付编排器的规划伪代码，不是可直接运行的现有接口。** `$flow` 的方法用于明确事务顺序和分支，当前代码库未实现这些方法或第三方支付回调。验签、实收金额/币种/商户及账单归属校验必须由服务端完成；不采信客户端的“可履约”标记。
 
 ```php
-// ⚡ 核心铁律：利用数据库底层行锁做 CAS (Compare-And-Swap) 原子状态跃迁
-$affectedRows = DB::update("
-    UPDATE invoices 
-    SET status = 'paid', paid_at = NOW(), payment_method = ?
-    WHERE id = ? AND status = 'unpaid'
-", [$gatewayId, $invoiceId]);
+// 规划伪代码：$notice 已通过对应网关验签，包含可信交易号及十进制实收额。
+Database::transaction(static function (PDO $db) use ($flow, $notice): void {
+    // 先只读取关联ID，再依次锁实例、同实例任务、相关账单、收款凭证；
+    // 锁后重检关联不变。查询采用当前锁定读，不在持锁期间调用上游。
+    $state = $flow->lockPaymentState($db, $notice->invoiceId);
+    $invoice = $state->invoice;
+    $record = $flow->lockReceipt($db, $notice->gatewayId, $notice->tradeNo);
+    $flow->assertReceiptMatchesInvoice($notice, $invoice, $record);
+    if ($flow->receiptAlreadyAccounted($record)) {
+        return; // 同一笔已入账实收重放，不能再次加钱或派任务。
+    }
 
-if ($affectedRows === 0) {
-    // 说明该账单已经被前一个并发通知或定时任务成功处理过了
-    Log::info("账单 #{$invoiceId} 回调重复触发，CAS 拦截生效，直接响应平台 SUCCESS");
-    return response('SUCCESS');
-}
+    if ($invoice->status !== 'unpaid') {
+        $flow->creditLateReceiptToWalletOnce($db, $notice, $invoice);
+        return; // 仅本凭证与钱包；父账单和实例保持原状。
+    }
 
-// 只有成功抢占状态的这一个线程，才能继续往下执行：
-// 1. 记录交易流水 transactions
-// 2. 如果是余额充值账单 -> 增加用户 wallet.balance
-// 3. 如果是产品购买/续费 -> 事务发件箱 tasks 插入待执行任务
+    // 优先使用续费遇到不可逆销毁的专用SC-L02保护，不能再落入通用入钱包分支。
+    if ($invoice->type === 'renew' && $state->hasNonCancellableTermination) {
+        $flow->creditTerminationBlockedRenewalOnce($db, $notice, $invoice);
+        return; // 同事务 invoice unpaid->refunded/清cycle_marker + refund_to_balance一次。
+    }
+
+    // 这些判断都取服务端锁定状态，必须在CAS paid之前完成。
+    $quoteValid = $flow->serverQuoteIsValid($notice, $invoice, $state);
+    $instanceEligible = $flow->instanceAllowsPayment($invoice, $state);
+    $blocked = $state->hasUnresolvedTask
+        || $state->hasCloudRefundPending
+        || $state->hasRefundTerminationPending;
+    if (!$quoteValid || !$instanceEligible || $blocked) {
+        $flow->creditLateReceiptToWalletOnce($db, $notice, $invoice);
+        return; // 即使父账单仍unpaid也不履约；保留其状态与cycle_marker。
+    }
+
+    // 仅允许取消尚未执行的纯欠费销毁；CAS失败则回滚并重新判定，不能盲目续费。
+    $flow->cancelPendingBillingTerminationOrRetryTransaction($db, $invoice, $state);
+    $stmt = $db->prepare("UPDATE invoices SET status='paid', paid_at=UTC_TIMESTAMP(), payment_method=? WHERE id=? AND status='unpaid'");
+    $stmt->execute([$notice->gatewayId, $invoice->id]);
+    if ($stmt->rowCount() !== 1) {
+        throw new RuntimeException('Payment state changed; rollback and re-evaluate');
+    }
+
+    // paid CAS影响1行才正常结算：记录success凭证并固化收款用途；
+    // recharge入钱包；正常云消费累计消费、返佣及create/renew/upgrade Outbox均同事务。
+    // renew还要固化目标到期日及是否解挂；new付款不提前起租。
+    $flow->settleNewlyPaidInvoiceAndOutbox($db, $notice, $invoice, $state);
+});
 ```
+
+上述规划方法的约束：
+
+- `lockPaymentState()` 必须在实例行锁内锁定并检查**全部同实例**的未决任务（`running/investigating`、`failed + MANUAL_AUDIT_REQUIRED`，不按租约过滤），以及所有云消费 `refund_pending` 账单和已成功退款待执行的销毁任务；只检查当前这张未付续费单会漏掉另一张原消费单的退款冻结。充值单无实例则跳过实例门禁。
+- `serverQuoteIsValid()` 对 `new/upgrade` 校验服务端快照、可信实收额与应付额一致、库存/销售策略与 `quote_expired_at`，不得仅依赖账单仍为 unpaid；过期但尚未被清理器取消也不能正常履约。`renew/recharge` 按其固定报价契约处理，不能强套 30 分钟过期。已验签但金额不符的真实收款归为不可正常履约并安全入钱包，不能因 CAS 未执行而丢弃；不支持的币种或不能确定归属的款项须单独冻结核验，不得凭客户端数据入账。所需外部预检先于短事务完成，其结果在持锁时校验有效性。
+- `instanceAllowsPayment()` 对新购要求占位实例仍为 `pending` 且未交付；对续费要求已交付、未销毁且符合续费策略；对变配要求实例状态与能力允许该操作。合规/滥用暂停可按政策续费但绝不能解挂；退款审核冻结及退款销毁待执行时禁止正常续费/变配。
+- `creditLateReceiptToWalletOnce()` 将凭证记为 `late_credited_to_balance`、用途 `late_wallet_credit`，保留原网关报文，并以网关交易唯一键及稳定账本键同事务记 `late_payment_credit`。**不改父账单/实例/佣金/消费累计、不派续费任务**。非销毁 blocker 存在时父账单仍可为 unpaid，`cycle_marker` 保留；解除门禁后由正常付款/代扣流程再结算。
+- `creditTerminationBlockedRenewalOnce()` 仅处理尚为 unpaid 且因不可逆/主动销毁不能续费的账单：同事务 CAS 该账单为 `refunded` 并清空 `cycle_marker`，将本次实收记为 `late_credited_to_balance`、用途 `late_wallet_credit`、`payload.credit_reason='termination_blocked_renewal'`，记一笔 `refund_to_balance`。不得先写 `late_payment_credit` 再写退款；已有凭证在入口直接幂等返回。此处款项未购买新周期，后续退回原网关仍按钱包入账凭证退款处理，不按云消费退订处理。
+- **余额/自动代扣**使用同一组报价、实例、退款及任务门禁。非销毁 blocker 或退款冻结存在时保留未付账单等待，**不扣钱包、不投 Outbox**，因此也没有一笔需要再“退回”的扣款。SC-L02 适用于已实际收取款项的保护；未扣款代扣不能凭空给用户加钱。
+
+### 2.1 收款用途与退款边界
+
+- `payment_records.payload.settlement_purpose` 由服务端随收款入账同事务固化，原网关报文继续保留。该字段不能由请求参数指定，也不能被重复回调覆盖；缺失的历史凭证须依据原始入账流水核对，无法核定则人工处理。
+- `late_wallet_credit` 表示该笔实收只进入钱包，**不购买父账单对应的云资源**。其父账单可能是已付云消费单、已取消订单或充值单；退款时仅处理该凭证与此前预扣的钱包款，禁止修改原 `invoices`、`instances`、`commissions`、`total_spent`，禁止投递销毁。
+- `wallet_recharge` 仅指独立充值账单的正常主收款；`cloud_consumption` 仅指正常消费主收款。两者与迟到/多收款的认领、成功和拒绝恢复流程，统一遵守 [PAYMENTS_LEDGER.md](PAYMENTS_LEDGER.md) §3。拒绝时只恢复本次实际修改的原状态，不按父账单类型盲写 `paid`，不向从未预扣的钱包补钱。
+- 退款终态 CAS 必须包含凭证 ID、稳定退款号及 `refund_status='pending'`；唯有影响 1 行才能在**同一事务内**执行该用途允许的账单/钱包/佣金/任务副作用，任一失败则整体回滚。重复通知与并发反查只读取既有结果；插件返回成功也不能绕过这道门禁。
 
 ---
 

@@ -57,6 +57,6 @@ stateDiagram-v2
 ## 4. 关键数据结构规范
 
 > [!NOTE]
-> **DDL 单一事实来源**：`tickets` 与 `ticket_replies` 的完整字段定义以 `database/schema.sql` 为唯一权威（字典释义见 [DATABASE.md](DATABASE.md) §1.18 / §1.19），本规范不再内嵌 DDL 副本，避免双源漂移。
+> **DDL 单一事实来源**：`tickets` 与 `ticket_replies` 的完整字段定义以 `database/schema.sql` 为唯一权威（字典释义见 [工单主表](DATABASE.md#table-tickets) / [工单回复表](DATABASE.md#table-ticket-replies)），本规范不再内嵌 DDL 副本，避免双源漂移。
 > - 工单主表：`assigned_admin_id`（承办管理员）、`closed_at`（结单时间）与 `idx_assigned_status` 索引均已内建于建表脚本；
 > - 回复流表：`type`（`reply` / `internal_note` / `transfer_log`）与 `transfer_to_admin_id` 已内建，流转语义见本文 §2、§3；回复人身份由 `user_id`（客户）或 `admin_id`（管理员）承载。

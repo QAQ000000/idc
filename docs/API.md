@@ -2,6 +2,8 @@
 
 本文档定义了 JianYun 系统客户端门户（Client Portal）与管理控制台（Admin Console）的全部 RESTful API 契约。
 
+> 本字典同时包含规划接口；实际交付状态以 [ROADMAP.md](ROADMAP.md) 与 README 的当前实现说明为准。下述快照、变配确认和人工裁决接口尚未实现，不得据此认定已通过运行验收。
+
 ---
 
 ## 一、 协议与统一规范
@@ -159,6 +161,15 @@
 - **载荷**：`{ "new_config": { "bandwidth": 20 } }`
 - **响应**：返回升级差价金额（降级时金额为 `0.00` 元）。
 
+- **确认变更（规划）**：`POST /api/v1/instances/{id}/upgrade`，载荷 `{ "quote_token": "...", "new_config": { ... }, "idempotency_token": "...", "confirm_downgrade": false }`。后端验证归属、能力与报价快照，锁实例并按 TASKS_OUTBOX 未决任务互斥协议检查冲突；升级创建补差账单，支付后投递任务，降级需显式确认并同事务投递无账单的 `upgrade` 任务。HTTP 线程不执行 `resize()`。
+
+### 8. 快照、备份与自主计划任务（规划）
+- **能力与列表**：`GET /api/v1/instances/{id}/snapshots?type={snapshot|backup}`，返回驱动能力、本地台账 ID、状态及配额快照；以 `SnapshotDriverInterface` 为可选能力出口，不支持时禁止创建入口。
+- **手动创建**：`POST /api/v1/instances/{id}/snapshots`，载荷 `{ "type": "snapshot", "idempotency_token": "..." }`。同事务预占 `creating` 台账（远端 ID 为 `NULL`）与可靠创建任务，返回 `202` 及 `snapshot_id/task_id`；令牌长度受限，最终任务键不超过 100 字符。
+- **删除**：`DELETE /api/v1/instances/{id}/snapshots/{snapshot_id}`，其中 `snapshot_id` 为本地台账主键；同事务标记 `deleting` 并投递 `snapshot_delete:{snapshot_id}`，按资源类型执行 `snapshot_delete` / `backup_delete`，返回 `202`。
+- **计划管理**：`GET/POST /api/v1/instances/{id}/snapshot-schedules`；`PATCH/DELETE /api/v1/instances/{id}/snapshot-schedules/{schedule_id}`。配置字段见 DATABASE §1.9；必须校验 `1 <= retention_count <= physical_max`、UTC 调度时刻和单槽位风险授权，暂停/删除规则不直接删除恢复点。
+- **统一边界**：实例、台账、计划均需校验 `user_id` 和所属关系；所有写动作先锁实例并检查未裁决任务，再锁对应规则/台账，禁止以远端 ID 查找并操作其他实例资源。计划与手动操作共用同一配额、Outbox 及未知结果核验协议，详见 [BACKUP_SCHEDULER.md](BACKUP_SCHEDULER.md)。
+
 ---
 
 ## 五、 财务与结算接口 (Billing & Payments)
@@ -219,11 +230,16 @@
   "remark": "运维在母鸡上加了2核4G，同步改价"
 }
 ```
-- **效果**：同一事务完成改价、生成已付差价账单、扣除余额、写审计日志。
+- **效果**：同一事务完成改价、作废在途未付 `renew` 账单（`cycle_marker = NULL`）、生成已付差价账单（`invoices.type = 'upgrade'`, `status = 'paid'`，因运维已在母鸡手动完成变配，不投递 Outbox `tasks`）、扣除余额、写 `admin_audit_logs` 审计日志。
 
-### 3. 任务队列监控与【一键重试】
+### 3. 任务队列监控、【一键重试】与【人工核验回填激活】
 - **请求**：`GET /api/v1/admin/tasks?status=failed`
-- **重发**：`POST /api/v1/admin/tasks/{id}/retry`（一键重新触发上游开通/变配）。
+- **通用重发**：`POST /api/v1/admin/tasks/{id}/retry`（一键重新触发上游开通/变配，自动过滤拦截 `MANUAL_AUDIT_REQUIRED` 任务）。
+- **强制重发（核实上游未创建）**：`POST /api/v1/admin/tasks/{id}/force-retry`（需 `super_admin` 权限并提交核验工单号，记入 `admin_audit_logs`）。
+- **手动回填交付（核实上游已创建 / `ManualAdminDriver` 人工开通）**：`POST /api/v1/admin/tasks/{id}/manual-fulfill`
+  - **权限与候选**：仅 `super_admin` 可裁决，必须提交核验工单号。仅接受 `create` 且处于 `failed + MANUAL_AUDIT_REQUIRED` 的任务；人工商品等待交付也进入此受保护状态，未裁决前持续阻断同实例其他动作。
+  - **载荷**：`{ "remote_instance_id": "vm-1092", "ip_address": "192.0.2.10", "expected_execution_token": 9, "audit_ticket": "OPS-1024", "audit_remark": "人工核验已开通并绑定" }`
+  - **效果**：独立管理员裁决命令先锁实例再锁任务、校验已付新购与最新令牌，CAS 原 `failed` 状态并递增令牌、清理 Worker 租约；唯有影响一行才能同事务写任务成功、实例激活起租及 `admin_audit_logs`。禁止伪造 Worker 租约绕过 `completeCreate()` 门禁，禁止重复调用上游。其他任务类型须采用对应动作的人工裁决协议，不能套用开通激活。
 
 ### 4. 资源下载管理与安全上传
 - **文件上传**：`POST /api/v1/admin/downloads/upload`

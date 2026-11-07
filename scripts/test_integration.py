@@ -29,6 +29,7 @@ def free_port():
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--browser', action='store_true', help='Keep an isolated backend + Vite running until Enter')
+    parser.add_argument('--runtime', action='store_true', help='Also verify temporary systemd units, timer, restart and journal (root + systemd required)')
     args = parser.parse_args()
     php = shutil.which("php")
     redis = os.getenv("REDIS_SERVER") or shutil.which("redis-server")
@@ -39,6 +40,8 @@ def main():
         raise RuntimeError('PHP-FPM binary required (or PHP_FPM=/absolute/path)')
     if args.browser and not shutil.which('npm'):
         raise RuntimeError('Browser fixture requires npm and installed web dependencies')
+    if args.runtime and (os.geteuid() != 0 or not Path('/run/systemd/system').is_dir()):
+        raise RuntimeError('Runtime verification requires root on a running systemd host')
     name = "jianyun-test-" + secrets.token_hex(6)
     env = os.environ.copy()
     redis_port, http_port = free_port(), free_port()
@@ -133,6 +136,9 @@ def main():
             subprocess.run([php, 'artisan', 'config:cache'], cwd=ROOT, env=env, check=True)
             (directory / 'config.php').chmod(0o600)
             verify(fpm_socket, ROOT)
+            if args.runtime:
+                from test_runtime import verify_runtime
+                verify_runtime(env, directory, php)
             if args.browser:
                 vite_port = free_port()
                 vite_env = env | {'API_PROXY_TARGET': env['TEST_BASE_URL']}

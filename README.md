@@ -34,7 +34,7 @@ M0 已接入 Laravel 13/PHP 8.4，并建立唯一 `web/` 前端工程。现有�
 4. `APP_ENV=local php artisan demo:seed` 创建演示商品。演示充值继续使用 `php artisan demo:recharge USER_ID 100.00 UNIQUE_REFERENCE`，仅允许 CLI local/test。
 5. 本地 API：`php artisan serve --host=127.0.0.1 --port=8080`，检查 `GET /health`。生产 HTTP 使用普通 PHP-FPM，入口 `public/index.php`；不使用开发服务器或常驻 HTTP 模式替代生产 FPM。
 6. 前端：`npm --prefix web ci`，`npm --prefix web run dev`。默认代理 API 到 `http://127.0.0.1:8080`，可通过启动进程的 `API_PROXY_TARGET` 指定独立后端。构建输出为 `web/dist/`，部署时由 Web 服务器提供 SPA 静态文件并将 `/api/`、`/health` 转给 PHP-FPM；SPA 路由回落到 index.html，API 错误不能回落为页面。
-7. 接入系统 cron 每分钟运行 `php artisan schedule:run`，回收过期未付订单；仅定义调度并不表示已在服务器安装 cron。本轮未修改共享服务、业务数据库或系统计划任务。
+7. 为目标环境接入每分钟的 `schedule:run` 和独立 Worker。当前提供 systemd timer/守护配置，也可由部署侧选择 cron，二者不同时启用；正式环境尚待部署。现有 M2 验收环境已接入 systemd 并验证重启与日志采集，详见 [运行部署规程](docs/DEPLOYMENT_RUNTIME.md)。
 
 `php scripts/console.php ...` 保留为 Artisan 的薄兼容入口，不维护第二套命令执行器。配置变更后清理/重建 Laravel 配置缓存；日志仅记录异常类型，API 始终返回统一 JSON 错误，不输出 SQL、请求体或凭据。`APP_CONFIG_CACHE` 及环境目录可由隔离测试覆盖，不读取部署 `.env`。
 
@@ -152,7 +152,7 @@ REDIS_SERVER=/absolute/path/to/redis-server python3 scripts/test_integration.py
 
 该命令只预检，不购买；新建 Provider 固定资源命名空间，凭据 AES 加密，重复安装已有支付设置会回滚，不原地换上游账号。当前只支持无配置/自定义字段的固定 CNY 商品，月价必须与上游预检一致，未启用加价引擎。回调 URL 必须能被网关服务器访问，return_url 必须能被付款用户浏览器访问；密钥配置与应用 APP_KEY 由部署侧备份。
 
-用独立受管理进程运行 `php artisan outbox:work`，`--once` 处理一次候选。需要值守并监控 critical 日志，用 `php artisan outbox:inspect` 查看任务和 token。人工材料通过 stdin 交给 `php artisan outbox:resolve TASK_ID ADMIN_ID`，具体要求见 [Outbox](docs/TASKS_OUTBOX.md#m2-运行与永久取消)。新增 Worker 不自动安装系统服务或 cron。
+用独立受管理进程运行 `php artisan outbox:work`，`--once` 处理一次候选。需要值守并监控 critical 日志，用 `php artisan outbox:inspect` 查看任务和 token。人工材料通过 stdin 交给 `php artisan outbox:resolve TASK_ID ADMIN_ID`，具体要求见 [Outbox](docs/TASKS_OUTBOX.md#m2-运行与永久取消)。运行安装步骤和现有 M2 守护接入证据见 [运行部署规程](docs/DEPLOYMENT_RUNTIME.md)。
 
 前端“易支付付款”每次发起独立尝试并提交标准 POST 收银台表单，旧尝试即使迟到付款也能幂等归属，避免重复提交同一商户订单被网关拒绝；付款返回后刷新账单和实例；“我的实例”展示待付、开通、调查、人工核验、交付、取消与补偿状态。CDN 允许没有 IP。密码只在归属校验后的凭据接口返回，不进实例列表或任务日志。
 
@@ -166,7 +166,7 @@ REDIS_SERVER=/absolute/path/to/redis-server python3 scripts/test_integration.py
 
 付款事务按原本地到期日自然月/年顺延，单条 renew Outbox 执行实际续费。付款状态和上游确认状态分别显示，不能以本地日期延长或收到渠道跳转代替上游确认。现阶段只自动处理 active 或 billing 暂停，其他暂停交人工；上游自身自动续费需关闭。未知结果只读调查，不重复续费/扣款。
 
-`php artisan renewals:generate` 每小时提前 7 天生成唯一账单；`php artisan renewals:debit` 每 15 分钟扫描自动续费已开启、门禁通过且余额充足的未付单。两个命令独立，代扣只入队不调用上游；充值后下一次扫描可继续原单，秒级事件唤醒延期。仍须部署侧接入 Laravel schedule:run 和独立 outbox:work；本轮不安装系统 cron 或修改生产服务。新增代码加载前重启受管理 Worker，无数据库结构升级。
+`php artisan renewals:generate` 每小时提前 7 天生成唯一账单；`php artisan renewals:debit` 每 15 分钟扫描自动续费已开启、门禁通过且余额充足的未付单。两个命令独立，代扣只入队不调用上游；充值后下一次扫描可继续原单，秒级事件唤醒延期。正式环境仍须部署侧接入 Laravel schedule:run 和独立 outbox:work；M2 验收环境已通过 systemd timer 与 Worker 服务接入，未修改正式环境或共享服务。新增代码加载前重启受管理 Worker，无数据库结构升级。
 
 契约、人工裁决及异常资金边界见 [M2_RENEWAL_CONTRACT.md](docs/M2_RENEWAL_CONTRACT.md)。
 
@@ -176,3 +176,6 @@ REDIS_SERVER=/absolute/path/to/redis-server python3 scripts/test_integration.py
 
 
 续费异常采用管理员核验：扣款成功但上游未成功时保留 paid 账单、款项和原任务，不自动退款或取消资源。首次异常立即写含账单/实例/任务编号的 warning，调查不逐分钟刷屏，人工门禁升级 critical；通过 `outbox:inspect` 查看持久待办。管理员可用 `action=investigate` 保留原上游单号继续只读调查；已续费只回填。当前无邮件/TG推送，日志与列表需值守，规则见 [续费契约](docs/M2_RENEWAL_CONTRACT.md#续费异常通知与人工核验2026-11-08)。
+
+
+运行验收入口：`REDIS_SERVER=/absolute/path/to/redis-server python3 -B scripts/test_integration.py --runtime`（需 root/systemd，使用独立临时单元与数据库）。22 项运行检查通过，覆盖实际分钟 timer、受控时钟的小时/15 分钟调度、SIGKILL 自动重启与只读恢复、日志及人工待办保留。正式环境单独部署；不把加速租约/受控时钟演练当作整机重启或完整小时墙钟验收。

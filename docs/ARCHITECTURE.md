@@ -147,3 +147,6 @@ sequenceDiagram
 
 
 **当前续费异常运营边界**：已扣款而上游未成功时，沿用任务只读调查、告警日志与持久待核验列表通知管理员；不自动退款/回滚权益或取消原资源。管理员可恢复原任务 investigating 继续查询，已续费只回填，邮件/TG推送延期。现有账本/资源归属与插件边界不变，见 [续费契约](M2_RENEWAL_CONTRACT.md#续费异常通知与人工核验2026-11-08)。
+
+
+**当前运行接入**：M2 验收环境以独立 systemd Worker 执行 MySQL Outbox，分钟 timer 调用同一 Laravel schedule:run，业务频率仍只定义在 routes/console.php；日志统一由 journal 采集。独立故障演练验证进程重启后调查原任务，不另建队列、重发任务或释放业务占用。正式环境仍需单独部署，见 [运行部署规程](DEPLOYMENT_RUNTIME.md)。

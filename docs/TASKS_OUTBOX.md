@@ -250,3 +250,6 @@ renew 的人工 retry/fulfill 使用现有 resolve 入口和审计，fulfill 必
 
 
 **续费异常通知策略**：首次执行未确认续费成功在事务提交后记录含账单/实例/任务编号的 warning，只读调查不逐分钟重复 warning，进入人工门禁升级 critical；已提交的 tasks 是待办事实，日志不能证明管理员已读，须配合 outbox:inspect（增加 action 字段）巡检。已扣款续费不自动退款、不撤回本地权益、不派销毁；由管理员处理。人工 action=investigate 仅对已付 renew 的 failed+MANUAL_AUDIT_REQUIRED 开启新只读观察窗口，保留原上游单号、冻结参数和重试计数，递增 token 并写审计；queryRenewal 不再次付款/续费。完整证据与通知边界见 [续费契约](M2_RENEWAL_CONTRACT.md#续费异常通知与人工核验2026-11-08)。
+
+
+**运行部署（2026-11-08）**：现有 M2 验收环境已接入独立 systemd Worker 与每分钟 schedule:run timer，异常日志和调度子命令输出进入 journal，任务列表仍是持久待办事实。22 项独立运行检查覆盖守护重启、租约门禁、原任务只读恢复、日志及待办保留；正式环境另行部署，不改变未知结果/不自动退款策略或业务占用。配置、故障演练及时间验证边界见 [运行部署规程](DEPLOYMENT_RUNTIME.md)。

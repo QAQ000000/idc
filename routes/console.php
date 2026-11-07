@@ -3,6 +3,14 @@ use App\Core\{Database, Request};
 use App\Services\{BillingService, DemoService};
 use Illuminate\Support\Facades\{Artisan, Schedule};
 
+// Laravel otherwise discards scheduled child output. Forward its captured result to the service log.
+$scheduledOutput = static function (\Illuminate\Support\Stringable $output): void {
+    fwrite(STDERR, (string)$output);
+};
+$scheduledFailure = static fn(string $command): \Closure => static function () use ($command): void {
+    logger()->error('Scheduled command failed', ['command' => $command]);
+};
+
 Artisan::command('db:init', function (): void {
     if (Database::getInstance()->query('SHOW TABLES')->fetchColumn() !== false) {
         throw new RuntimeException('db:init requires an empty database; use migrate for an existing MVP');
@@ -23,15 +31,15 @@ Artisan::command('invoices:expire', function (): void {
     }
     $this->info('Processed '.count($rows).' expired invoices.');
 });
-Schedule::command('invoices:expire')->everyMinute();
+Schedule::command('invoices:expire')->everyMinute()->after($scheduledOutput)->onFailure($scheduledFailure('invoices:expire'));
 Artisan::command('renewals:generate', function():void {
     $this->info('Renewal invoices checked: '.app(\App\Services\RenewalService::class)->generateDue());
 })->purpose('Generate unique fixed renewal invoices seven days before expiry; never debit');
 Artisan::command('renewals:debit', function():void {
     $this->info('Renewal invoices paid: '.app(\App\Services\RenewalService::class)->debitDue());
 })->purpose('Settle eligible unpaid renewal invoices using opted-in wallet balance; never call upstream');
-Schedule::command('renewals:generate')->hourly();
-Schedule::command('renewals:debit')->everyFifteenMinutes();
+Schedule::command('renewals:generate')->hourly()->after($scheduledOutput)->onFailure($scheduledFailure('renewals:generate'));
+Schedule::command('renewals:debit')->everyFifteenMinutes()->after($scheduledOutput)->onFailure($scheduledFailure('renewals:debit'));
 
 Artisan::command('outbox:work {--once}', function (): void {
     $worker = 'worker:' . bin2hex(random_bytes(12));

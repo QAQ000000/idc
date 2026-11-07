@@ -149,9 +149,10 @@
 - **请求**：`POST /api/v1/instances/{id}/power`
 - **载荷**：`{ "action": "reboot" }`（支持 `reboot` / `start` / `stop`）
 
-### 4. 在线 Web VNC 访问
+### 4. 在线 Web VNC 访问（规划，尚未实现）
 - **请求**：`GET /api/v1/instances/{id}/vnc`
-- **响应**：`{ "vnc_url": "https://vnc-gateway.example.com/vnc?token=..." }`
+- **响应示意**：`{ "vnc_url": "/instances/10024/vnc" }`，仅返回本站控制台入口；页面路由及短效授权细节在实施时确定，不返回上游原始控制台 URL、密码或 host_token。
+- **访问边界**：本站校验登录态、实例归属与连接授权，页面资源及 WebSocket 也不得直接指向上游供应商域名；完整要求见 [本站域名 VNC 访问要求](FRONTEND.md#本站域名-vnc-访问要求2026-11-08待实现)。本次仅修订规划，不能据此认定现有实例页面已有 VNC 按钮或代理能力。
 
 ### 5. 一键重装系统
 - **请求**：`POST /api/v1/instances/{id}/reinstall`

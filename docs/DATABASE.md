@@ -9,6 +9,10 @@
 
 修改 schema 后运行 `python3 scripts/sync_schema_docs.py --write` 同步摘录；运行 `python3 scripts/sync_schema_docs.py --check` 检查完整 DDL（含 SQL 注释）、表名及重复/缺失表。省略参数同样只检查，不写文件。同步器仅替换各表 SQL 语句，保留正文说明；这些命令不连接数据库，也不执行迁移。
 
+**Laravel 13 适配边界**：已确认 PHP 8.4/Laravel 13 技术基准，当前尚未实现框架迁移；本次不变更 26 表 DDL。框架连接内的 SQL/查询构造器必须保持资金与 Outbox 同连接事务。默认用户、会话、缓存、队列及迁移版本登记表逐项审查，确需新增物理表时先同步领域边界和本字典/权威 schema，不能自动安装第二套模型。完整约束见 [TECH_STACK.md](TECH_STACK.md)。
+
+**旧站数据库备份契约**：外置旧站插件必须按指定简云发布版本的完整 `database/schema.sql`（含初始化设置、外键、唯一键及保护触发器）生成 `schema.sql` 与目标表数据 `data.sql`，并附目标版本、schema 校验和及对账清单。SQL 恢复仅面向独立空库，不携带旧库查询或依赖新旧数据库同机，不默认覆盖或合并已有业务库；不为迁移增加物理表。本节 DDL 摘录不能作为完整恢复脚本。目标版本不匹配时重新导出并演练，细则见 [MIGRATION_RUNBOOK.md](MIGRATION_RUNBOOK.md)。
+
 ---
 
 ## 1. 全库表 DDL（8 张核心业务表 + 18 张支撑业务表）

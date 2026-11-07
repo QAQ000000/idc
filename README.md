@@ -14,11 +14,21 @@
 
 ---
 
+## 已确认技术栈
+
+用户于 **2026-11-07** 确认：**PHP 8.4 + Laravel 13 + MySQL 8.0+ + Redis + 单一 Vue 3 前端 + Element Plus**。HTTP 首版采用普通 PHP-FPM，前端沿用 Vite、TypeScript、Vue Router、Pinia 与 REST API；优先复用成熟布局和组件，按完整业务链路交付。
+
+这是目标技术基准；当前仓库尚未迁入 Laravel，也未建立前端工程。现有领域规则、插件隔离、支付 CAS、同连接事务 Outbox 和 26 表基准继续保留。适配及验收范围见 [技术栈定案](docs/TECH_STACK.md) 和 [路线图](docs/ROADMAP.md)。
+
 ## 当前实现与本地启动
+
+以下描述及命令适用于**现有原生 PHP/PDO MVP**，不是 Laravel 启动或验收流程；目标 PHP 8.4/Laravel 13 环境尚待实施与验证。
 
 第一阶段 API 闭环已实现：图片验证码、注册登录、固定套餐人工交付商品、下单预创建实例、余额付款、资金流水与 Outbox 同事务入库。真实上游驱动、第三方支付、Worker、自动续费、返佣和前端尚未实现。付款后的实例和任务均保持 `pending`，不会实际开机。
 
-运行要求：PHP 8.2+（`pdo_mysql`、`bcmath`、`openssl`、`gd`、`curl`）、MySQL 8.0+、Redis 5+。数据库结构以 `database/schema.sql` 为准。
+旧站数据迁移采用**外置旧站插件 → 简云目标版本 SQL 数据库备份 → 通用 MySQL 工具恢复至独立空库**的交付方式。旧表适配和转换不集成进简云，不提供迁移页面、旧站专用 API 或专用导入命令；导出插件及旧回调过渡桥接均待独立实现和验收，详见 [割接规程](docs/MIGRATION_RUNBOOK.md)。这与本系统自身的 schema 增量升级分别管理。
+
+现有原生 MVP 运行要求：PHP 8.2+（`pdo_mysql`、`bcmath`、`openssl`、`gd`、`curl`）、MySQL 8.0+、Redis 5+。后续实施统一使用已确认的 PHP 8.4；Laravel 所需依赖与扩展在适配时补齐并验证。数据库结构以 `database/schema.sql` 为准。
 
 1. 将 `.env.example` 复制为本地 `.env`，填写独立开发数据库的连接信息与随机 `APP_KEY`。生成密钥：`php -r 'echo "base64:" . base64_encode(random_bytes(32)) . PHP_EOL;'`。
 2. 将配置注入进程环境（当前不自动加载 `.env`；简单配置可在 Bash 使用 `set -a; source .env; set +a`，含空格或特殊字符的值需正确引用）。
@@ -70,6 +80,7 @@ REDIS_SERVER=/absolute/path/to/redis-server python3 scripts/test_integration.py
 ## 架构文档导航
 
 - [协同开发指南与工程宪法](AGENTS.md)
+- [技术栈定案与框架迁移边界](docs/TECH_STACK.md)
 - [系统全景架构设计](docs/ARCHITECTURE.md)
 - [契约一：支付、多收、退款与资金账本协议](docs/PAYMENTS_LEDGER.md)
 - [契约二：Outbox 幂等、执行租约与未知结果恢复协议](docs/TASKS_OUTBOX.md)
@@ -110,6 +121,6 @@ REDIS_SERVER=/absolute/path/to/redis-server python3 scripts/test_integration.py
 │   ├── payments/              # 支付网关插件 (alipay, epay, balance)
 │   └── notifications/         # 消息通道 (mail, sms, tg)
 ├── database/                  # 数据库迁移与初始化 SQL
-├── scripts/                   # 运维工具与旧库迁移导入脚本
+├── scripts/                   # 运维、schema 文档同步与隔离测试工具
 └── config/                    # 系统配置
 ```

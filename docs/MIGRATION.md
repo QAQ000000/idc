@@ -1,148 +1,59 @@
-# JianYun (简云) · 正式站旧数据平滑迁移方案 (Migration Overview)
+# JianYun (简云) · 旧站数据迁入概览 (Migration Overview)
 
-> [!WARNING]
-> **本文档为历史概要草案。生产割接与对账稽核的唯一权威实施契约请严格遵循 [docs/MIGRATION_RUNBOOK.md](MIGRATION_RUNBOOK.md)！**  
-> 绝对严禁使用 `IF(c.id=1, 'admin')` 伪造管理员权限，绝对严禁使用 `COALESCE(..., h.id)` 冒充远端实例 ID。
+> 本文提供范围与交付边界摘要；生产割接、对账与回滚以 [MIGRATION_RUNBOOK.md](MIGRATION_RUNBOOK.md) 为唯一权威。本文不提供新站迁移执行入口。
 
----
+## 一、 工具归属与恢复方式
 
-## 一、 迁移资产盘点与范围界定
+迁移工具是**独立发布、上传到旧系统运行的插件**，由旧站读取并转换自身数据。它不属于简云应用或简云插件目录。简云不提供迁移页面、旧站专用 API、专用导入命令或旧库连接配置，不直连旧库。
 
-通过对导入的 `idc2` 生产库全面审计，迁移实行**“精准提纯、丢弃垃圾”**的原则：
+插件面向指定简云版本生成完整交付包：
 
-| 资产类型 | 旧库来源表 | 原始数量 | 迁移策略与处理方法 |
-| :--- | :--- | :---: | :--- |
-| **客户账户** | `shd_clients` | **3,363 人** | **100% 全量迁移**。保留原始用户 ID，映射邮箱、手机号、钱包余额。 |
-| **客户密码** | `shd_clients.password` | 3,363 条 | **旧 MD5 平滑升级机制**（首次登录成功后静默转为 Bcrypt，客户完全无感）。 |
-| **云实例资产** | `shd_host` | 2,477 台历史 | **仅迁移存活/待处理的 154 台**：<br>• `Active` (正常在跑): **118 台**<br>• `Suspended` (欠费暂停): **22 台**<br>• `Pending` (待处理): **14 台**<br>*(其余 2,323 台已删除/已取消的历史死数据彻底抛弃)* |
-| **上游魔方** | `shd_zjmf_finance_api` | 4 个 | 映射为 `providers` 表中的 `zjmf` 驱动提供方。 |
-| **自营服务节点** | `shd_servers` | 6 台 | 映射为 `providers` 表中的 `easypanel`, `sub2api`, `mcsm` 驱动。 |
-| **历史日志** | `shd_activity_log` 等 | 40+ 万行 (330MB) | **彻底抛弃不迁移**（旧库作为冷备份保留在磁盘，无需搬运垃圾）。 |
+- `schema.sql`：与目标版本权威 DDL 一致的完整结构，包含资金账本与审计保护触发器；不能使用数据库字典中的不完整摘录代替。
+- `data.sql`：已完成字段转换、身份隔离与外键顺序处理的目标数据，不包含自动触发历史开通、续费或其他交付的任务。
+- `manifest.json`：插件版本、旧系统/PHP/MySQL 版本、目标简云版本及 schema 校验和、文件校验和、导出时刻与一致性边界、各表行数及金额对账摘要、排除项与待核办项；不包含明文密钥。
+- 受控旧新 ID/订单映射、逐项对账与异常核办材料；涉及个人信息或支付数据时加密并限制访问。
 
-**存量驱动支持范围**：资产导入与自动运维验收分开进行。DCIM/魔方、Easypanel、宝塔 `skymnbt`、Sub2API 必须逐节点核准真实标识、续费语义与能力声明；驱动缺失或能力不支持时服务端禁用相应自动动作，并按 [MIGRATION_RUNBOOK.md](MIGRATION_RUNBOOK.md) §2.1 明确人工接管人、入口、时限和对账流程。未完成这些前置条件，不能宣称 118 台 Active 均可自动重启/续费。
+操作员在**空白 MySQL 8.0+ 目标库**使用通用 MySQL 客户端依次恢复完整结构与数据，再核验表、外键、唯一键和触发器。不得先执行简云 `db:init` 再叠加完整结构。此交付不承诺向已有简云业务库合并，也不以忽略冲突或覆盖数据代替对账。
 
-**旧支付在途款**：11 笔旧未付订单与旧收银台可能在停写后继续回调。必须先实施 [MIGRATION_RUNBOOK.md](MIGRATION_RUNBOOK.md) §4.0 的持久接收、旧商户验签、受控订单映射、幂等重放和逐笔对账；不能将旧回调 `302` 到新接口，不能把旧账单 ID 直接用作新账单 ID。原始报文加密保存于私有目录，未知映射持续隔离核办，不占用实例 Outbox 或伪造账单。
+旧站插件的 PHP/MySQL 兼容矩阵必须在旧环境核实；简云运行要求不能直接套用到旧站。上游凭证、支付密钥和主机密码须转换为目标格式，并能由目标 `APP_KEY` 解密。密钥通过受控渠道交接，不写入清单或日志；不可解密的旧密文不得当作有效凭证迁入。
 
----
+## 二、 资产盘点与范围
 
-## 二、 核心技术难点解决：旧密码平滑升级 (MD5 $\rightarrow$ Bcrypt)
+以下数量来自历史 `idc2` 审计快照，**每次导出均须重新盘点**，不是未来导出必须凑齐的固定数字。
 
-旧魔方数据库中使用的是 32 位 MD5 哈希，如果强制用户重置密码，会导致大量客户流失。新系统采用**“双重鉴权 + 登录平滑热升级”**架构：
+| 资产 | 历史快照 | 转换规则 |
+| :--- | :--- | :--- |
+| 管理员 / 客户 | 客户 3,363 人 | `shd_user` 仅映射 `admins`；`shd_clients` 仅映射 `users`。保留原 ID 前须核查各自目标唯一键，禁止凭客户 ID 伪造管理员权限。 |
+| 客户密码与余额 | 客户密码 3,363 条 | 保留经核准的旧密码哈希与精确钱包余额；旧哈希兼容及登录后升级由正常认证服务承接，按真实旧哈希样本验证，不能仅凭哈希长度假设算法。 |
+| 实例 | Active 118、Suspended 22、Pending 14 | 按 Runbook 核准实际迁入范围；历史 Pending 中仅 2 台需人工交付或退款，其余按审计结论排除，不能把 14 台全部当存活资产导入。已删除/取消历史实例不迁入。 |
+| Provider 与商品 | 上游魔方 4 个、自营节点 6 台 | 先转换 `providers` / `products`，核准实际驱动类型与远端标识，再关联实例；节点数量不代表已有对应驱动。 |
+| 公告 | 118 篇 | `shd_news_menu`、`shd_news` 与分类字段映射至 `articles`；保留标题、内容、阅读数、发布状态与时间，并按目标内容安全规则处理富文本。 |
+| 下载 | 10 项 | `shd_downloads` 映射至 `downloads`；保留真实文件/外链、访问级别和状态，剔除依赖旧站的动态跳转，核验文件可达性与权限。 |
+| 历史日志 | 40+ 万行，约 330MB | 不导入业务库，旧库保留受控冷备。 |
 
-```mermaid
-flowchart TD
-    UserLogin[用户输入账号密码登录] --> CheckHashType{数据库中密码长度是否为 32 位?<br/>(旧魔方 MD5)}
-    
-    CheckHashType -- "是 (旧 MD5 格式)" --> VerifyMD5{md5(输入密码) === 数据库值 ?}
-    VerifyMD5 -- "匹配成功" --> UpgradeBcrypt[⚡ 触发热升级:<br/>1. 用 Bcrypt 重新计算密码哈希<br/>2. 异步回写覆盖 users.password<br/>3. 签发登录 Token]
-    VerifyMD5 -- "密码错误" --> Reject1[拒绝登录: 账号或密码错误]
+所有时间须按目标 UTC 语义转换，金额保持十进制精度。缺失/重复邮箱、手机号与唯一键冲突应进入异常清单，不能静默丢弃账户或冒用他人身份。
 
-    CheckHashType -- "否 (现代 Bcrypt 格式)" --> VerifyBcrypt{password_verify 校验}
-    VerifyBcrypt -- "校验成功" --> GenToken[签发登录 Token]
-    VerifyBcrypt -- "校验失败" --> Reject2[拒绝登录: 账号或密码错误]
+实例必须使用真实远端 ID，禁止以本地实例 ID 兜底。Suspended 保持暂停锁闭；缺失映射挂起并核办。资产恢复仅证明本地映射，DCIM/魔方、Easypanel、宝塔 `skymnbt`、Sub2API 必须逐节点验收能力。不支持的自动动作服务端禁用，并按 Runbook §2.1 明确人工接管人、入口、时限与对账流程。
 
-    UpgradeBcrypt --> Success[成功进入新控制台]
-    GenToken --> Success
-```
+## 三、 旧支付在途款与外置桥接
 
-**客户体验**：老客户直接输入原有密码即可登录，系统在他点击【登录】的这一毫秒内，自动完成了其账户安全等级由 MD5 升级到高强度 Bcrypt，客户全程零感知。
+历史快照含 11 笔旧未付订单，导出时复核。旧收银台可能在停写后继续回调，须先部署 Runbook §4.0 的**外置**持久接收器与受控适配/重放流程，保持原商户 URL 可达。其私有工作目录属于外置接收器，不属于简云目录。
 
----
+旧商户验签、加密原始报文、订单映射、防重、逐笔对账和唯一结算归属继续有效；不能将旧回调 `302` 到新接口，不能把旧账单 ID 直接用作新账单 ID。外置适配不新增简云旧站专用 API，也不得绕过正常支付结算的验签事实、流水防重、CAS 与账本事务。未知映射持续隔离核办，不占用实例 Outbox 或伪造账单。
 
-## 三、 数据映射规则表
+## 四、 演练、最终恢复与开放门禁
 
-### 1. `shd_clients` $\rightarrow$ `users` (客户导入，管理员来自 shd_user 且导入 admins 表，详见 MIGRATION_RUNBOOK.md)
-```sql
-INSERT INTO jianyun.users (
-    id, email, phone, password, balance, status, created_at
-)
-SELECT 
-    c.id,
-    IF(c.email = '' OR c.email IS NULL, CONCAT('user_', c.id, '@legacy.invalid'), c.email),
-    NULLIF(c.phonenumber, ''),
-    c.password,              -- 保留原始 32 位 MD5 密文
-    c.credit,                -- 余额一分不差对齐
-    IF(c.status = 1, 'active', 'suspended'),
-    FROM_UNIXTIME(c.create_time)
-FROM idc2.shd_clients c;
-```
+1. 备份旧站，确认插件兼容矩阵、目标版本、密钥交接和外置回调接收归属；将演练包恢复到独立空库，校验结构、金额、身份、实例映射及异常清单。
+2. 在授权测试账户及测试资源上验证登录、实例查看和各类 Provider 实际声明能力；资产恢复不能替代驱动验收，未支持能力落实人工接管。
+3. 正式窗口停写旧业务及旧结算，继续持久接收回调，冻结余额与订单映射；由旧插件生成**最终完整包**，恢复到另一个新空库，重新完成对账。不得将演练库当作可增量合并的生产业务库，也不承诺固定导出或维护耗时。
+4. 经批准的最终数据与映射核验后，按稳定网关流水确认各笔收款是否已计入快照；仅受控重放尚未入账的凭证，包含快照前已接收未结算者，不按接收时间遗漏款项。回调桥接、存量能力/人工接管、可靠 Worker 和应急回滚门禁全部通过后才切流并开放支持范围内的业务。
+5. 回滚遵循 Runbook 的外部副作用判定；不能仅凭任务失败或租约过期认定可安全切回旧账本。
 
-### 2. `shd_host` $\rightarrow$ `instances` (存活实例导入，严禁本地ID冒充远端ID)
-```sql
--- 详细映射脚本与缺失映射挂起规则，以 docs/MIGRATION_RUNBOOK.md 第 3 节为唯一标准
--- 严禁任何 COALESCE(..., h.id) 本地 ID 降级操作！
--- 过滤范围: WHERE h.domainstatus IN ('Active', 'Suspended', 'Pending');
-```
+插件、外置桥接和恢复演练均待实现/验收，文档补齐不代表路线图任务 5.4 完成。
 
-### 3. `shd_news` & `shd_news_menu` $\rightarrow$ `articles` (118 篇公告)
-```sql
-INSERT INTO jianyun.articles (
-    id, type, category, title, content, views, status, created_at, updated_at
-)
-SELECT 
-    m.id,
-    'news',
-    COALESCE(t.name, '默认分类'),
-    m.title,
-    n.content,               -- HTML 富文本内容原样导入
-    m.read,
-    IF(m.hidden = '1', 'draft', 'published'),
-    FROM_UNIXTIME(m.create_time),
-    FROM_UNIXTIME(m.update_time)
-FROM idc2.shd_news_menu m
-LEFT JOIN idc2.shd_news n ON m.id = n.relid
-LEFT JOIN idc2.shd_news_type t ON m.parent_id = t.id;
-```
+## 五、 本次契约调整记录
 
-### 4. `shd_downloads` $\rightarrow$ `downloads` (10 个文件/外链导入)
-支持后台动态上传维护与外链安全分发，将旧库 `shd_downloads` 真实外部网盘地址（剔除旧站 `sakuraidc.cc` 动态跳转）规范迁入 `downloads` 表：
-```sql
-INSERT INTO jianyun.downloads (
-    id, category, title, description, source_type, file_path, access_level, downloads_count, status, created_at
-)
-SELECT 
-    d.id,
-    CASE 
-        WHEN d.title LIKE '%JuiceSSH%' OR d.title LIKE '%ConnectBot%' OR d.title LIKE '%远程桌面%' THEN '远程连接'
-        ELSE '网站源码'
-    END,
-    TRIM(d.title),
-    TRIM(d.description),
-    'external',
-    TRIM(d.location),
-    IF(d.clientsonly = 1, 'login_required', 'public'),
-    d.downloads,
-    IF(d.hidden = 1, 0, 1),
-    IF(d.create_time > 0, FROM_UNIXTIME(d.create_time), NOW())
-FROM idc2.shd_downloads d;
-```
-
----
-
-## 四、 迁移实施顺序与生产门禁
-
-以下仅为导航；生产割接、回调接收所有权、最终余额快照和回滚条件以 [MIGRATION_RUNBOOK.md](MIGRATION_RUNBOOK.md) §4 为唯一权威。维护窗口必须保留旧回调持久接收，不能把“停写旧站”解释为关闭全部支付接收入口。
-
-```text
-[准备阶段] 
-1. 新建并初始化 jianyun 数据库结构 (schema.sql)
-2. 确认旧库 idc2 数据正常且已备份
-   部署旧支付持久接收与重放桥接，验收加密存储、映射、幂等和逐笔对账
-      ↓
-[全量静态导入] (耗时约 10 秒)
-3. 运行专用迁移脚本: php scripts/migrate_legacy.php
-4. 执行对账验证: 比对用户总数 (3,363)、钱包总余额、存活主机数 (118台)
-      ↓
-[功能并行灰度验证]
-5. 随机抽取 3~5 个老账户进行免密测试登录与实例查看
-6. 验证一台在跑的 Active 主机执行【重启】和【查看VNC】，确认上游透传无误
-   按每类存量 Provider 验收实际支持能力；不支持项服务端禁用并确认人工接管
-      ↓
-[正式割接切换] (维护窗口 5 分钟)
-7. 停写旧业务及旧结算，保留原商户回调 URL 的持久接收，明确唯一结算归属
-8. 冻结最终余额和旧新订单映射，运行增量迁移，对接收凭证幂等重放并逐笔对账
-9. 将生产域名解析 (DNS / Nginx 反向代理) 指向 JianYun 新系统
-10. 回调桥接/对账、存量能力或人工接管、可靠Worker及应急门禁全部通过后，开放支持范围内的生产服务
-```
-
-本流程和新增协议仍需实现迁移/桥接脚本并通过演练；不得因文档已补齐就将路线图任务 5.4 标记为完成。
+- **原因**：按用户确认，旧站迁移工具独立交付，避免把一次性旧系统适配并入简云内核。
+- **影响**：本概览、Runbook、架构、数据库字典、README、AGENTS 与路线图的工具归属及恢复流程同步；简云业务 API、26 表 schema 与财务安全契约不因此改变。
+- **兼容影响**：废止新站专用迁移脚本及跨库执行指引；改为指定版本完整 SQL 包和空库恢复，不承诺已有业务库合并。旧哈希、凭证、回调与存量能力仍须分别验收。
+- **验证边界**：本次仅修改设计文档，需执行差异、链接与 schema 文档同步静态检查；未实现插件，未运行导出、恢复或割接演练，不构成运行验收。

@@ -78,7 +78,6 @@ CREATE TABLE IF NOT EXISTS `product_categories` (
     `status` TINYINT(1) NOT NULL DEFAULT 1 COMMENT '1启用, 0隐藏',
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    INDEX `idx_slug` (`slug`),
     INDEX `idx_type_status` (`type`, `status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='产品分类与聚合落地页表';
 
@@ -255,8 +254,7 @@ CREATE TABLE IF NOT EXISTS `tasks` (
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX `idx_poll_lease` (`status`, `lease_until`, `next_retry_at`),
-    INDEX `idx_instance_lease` (`instance_id`, `status`, `lease_until`),
-    INDEX `idx_fencing` (`id`, `execution_token`)
+    INDEX `idx_instance_lease` (`instance_id`, `status`, `lease_until`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='事务发件箱与幂等任务队列';
 
 CREATE TABLE IF NOT EXISTS `commissions` (
@@ -433,8 +431,7 @@ CREATE TABLE IF NOT EXISTS `articles` (
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (`related_product_id`) REFERENCES `products` (`id`) ON DELETE SET NULL,
-    INDEX `idx_type_status` (`type`, `status`, `created_at`),
-    INDEX `idx_slug` (`slug`)
+    INDEX `idx_type_status` (`type`, `status`, `created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='文章与帮助文档中心';
 
 CREATE TABLE IF NOT EXISTS `admin_audit_logs` (

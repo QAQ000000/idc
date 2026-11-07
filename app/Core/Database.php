@@ -50,7 +50,8 @@ class Database
     public static function transaction(callable $callback)
     {
         $pdo = self::getInstance();
-        if (self::$transactionDepth === 0) {
+        $depth = self::$transactionDepth;
+        if ($depth === 0) {
             $pdo->beginTransaction();
         } else {
             $pdo->exec('SAVEPOINT sp_' . self::$transactionDepth);
@@ -59,23 +60,23 @@ class Database
 
         try {
             $result = $callback($pdo);
-            self::$transactionDepth--;
-            if (self::$transactionDepth === 0) {
+            if ($depth === 0) {
                 $pdo->commit();
             } else {
-                $pdo->exec('RELEASE SAVEPOINT sp_' . self::$transactionDepth);
+                $pdo->exec('RELEASE SAVEPOINT sp_' . $depth);
             }
             return $result;
         } catch (\Throwable $e) {
-            self::$transactionDepth--;
-            if (self::$transactionDepth === 0) {
+            if ($depth === 0) {
                 if ($pdo->inTransaction()) {
                     $pdo->rollBack();
                 }
             } else {
-                $pdo->exec('ROLLBACK TO SAVEPOINT sp_' . self::$transactionDepth);
+                $pdo->exec('ROLLBACK TO SAVEPOINT sp_' . $depth);
             }
             throw $e;
+        } finally {
+            self::$transactionDepth = $depth;
         }
     }
 }

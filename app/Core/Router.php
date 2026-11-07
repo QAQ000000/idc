@@ -82,28 +82,25 @@ class Router
      */
     private function handleCors(string $requestMethod): void
     {
-        if ($requestMethod === 'OPTIONS') {
-            http_response_code(204);
-            exit;
-        }
-
         $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
-        if ($origin === '') {
-            return; // 同源/无 Origin 请求不涉及 CORS
-        }
 
         $raw = getenv('CORS_ALLOWED_ORIGINS') ?: '';
         $allowed = array_values(array_filter(array_map('trim', explode(',', $raw))));
-        if (in_array($origin, $allowed, true)) {
+        if ($origin !== '' && in_array($origin, $allowed, true)) {
             header('Access-Control-Allow-Origin: ' . $origin);
             header('Vary: Origin', false);
             header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
             header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
         }
+        if ($requestMethod === 'OPTIONS') {
+            http_response_code(204);
+            exit;
+        }
     }
 
     private function convertPathToRegex(string $path): string
     {
-        return '#^' . preg_replace('#\{([a-zA-Z0-9_]+)\}#', '(?P<$1>[^/]+)', $path) . '$#';
+        $quoted = preg_quote($path, '#');
+        return '#^' . preg_replace('/\\\\\{([a-zA-Z0-9_]+)\\\\\}/', '(?P<$1>[^/]+)', $quoted) . '$#D';
     }
 }

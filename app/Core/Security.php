@@ -15,7 +15,11 @@ class Security
             );
         }
         if (str_starts_with($key, 'base64:')) {
-            return base64_decode(substr($key, 7));
+            $decoded = base64_decode(substr($key, 7), true);
+            if ($decoded === false || strlen($decoded) !== 32) {
+                throw new \RuntimeException('APP_KEY must decode to exactly 32 bytes');
+            }
+            return $decoded;
         }
         return hash('sha256', $key, true);
     }
@@ -119,8 +123,11 @@ class Security
             return null;
         }
 
-        $payload = json_decode(base64_decode(strtr($b64Payload, '-_', '+/')), true);
-        if (!is_array($payload) || !isset($payload['exp']) || time() > $payload['exp']) {
+        $header = json_decode(base64_decode(strtr($b64Header, '-_', '+/'), true) ?: '', true);
+        $payload = json_decode(base64_decode(strtr($b64Payload, '-_', '+/'), true) ?: '', true);
+        if (!is_array($header) || ($header['alg'] ?? '') !== 'HS256' || ($header['typ'] ?? '') !== 'JWT'
+            || !is_array($payload) || !is_int($payload['exp'] ?? null) || time() >= $payload['exp']
+            || !is_int($payload['uid'] ?? null) || $payload['uid'] < 1) {
             return null;
         }
 

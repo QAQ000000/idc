@@ -101,15 +101,31 @@ final class BillingService
         return $invoice;
     }
 
-    public function pay(int $userId, int $id): array
+    public static function assertPayable(PDO $db, array $instance, array $invoice): void
     {
-        return Database::transaction(function (PDO $db) use ($userId, $id): array {
+        if ($invoice['status'] !== 'unpaid') { throw new ApiException('Invoice cannot be paid',409,409); }
+        TaskGate::assertClear($db,(int)$instance['id']);
+        if ($invoice['type'] === 'renew') { RenewalService::assertPayable($db,$instance,$invoice); return; }
+        if ($invoice['type'] !== 'new' || $instance['status'] !== 'pending' || !$invoice['quote_expired_at']
+            || strtotime($invoice['quote_expired_at'].' UTC') <= time()) { throw new ApiException('Quote expired or instance unavailable',409,409); }
+    }
+
+    public static function enqueuePaid(PDO $db, array $instance, array $invoice): void
+    {
+        if ($invoice['type'] === 'renew') { RenewalService::applyPayment($db,$instance,$invoice); return; }
+        $db->prepare("INSERT INTO tasks (instance_id, invoice_id, idempotency_key, action, payload) VALUES (?, ?, ?, 'create', ?)")
+            ->execute([$instance['id'],$invoice['id'],'instance_create:inv_'.$invoice['id'],$invoice['price_snapshot']]);
+    }
+
+    public function pay(int $userId, int $id, bool $automatic = false): array
+    {
+        return Database::transaction(function (PDO $db) use ($userId, $id, $automatic): array {
             // 先读取关联，再按统一顺序锁实例、账单，保留后续生命周期互斥边界。
             $invoice = $this->invoice($userId, $id);
-            if ($invoice['type'] !== 'new' || !$invoice['instance_id']) {
-                throw new ApiException('Only new purchase invoices support balance payment in this milestone');
+            if (!in_array($invoice['type'], ['new','renew'],true) || !$invoice['instance_id']) {
+                throw new ApiException('Only new purchase and renewal invoices support balance payment');
             }
-            $stmt = $db->prepare('SELECT id, status, user_id FROM instances WHERE id = ? FOR UPDATE');
+            $stmt = $db->prepare('SELECT * FROM instances WHERE id = ? FOR UPDATE');
             $stmt->execute([$invoice['instance_id']]);
             $instance = $stmt->fetch();
             $stmt = $db->prepare('SELECT *, quote_expired_at <= UTC_TIMESTAMP() AS expired FROM invoices WHERE id = ? FOR UPDATE');
@@ -122,13 +138,13 @@ final class BillingService
                 $invoice['paid_at'] = $locked['paid_at'];
                 return $invoice;
             }
-            TaskGate::assertClear($db, (int)$invoice['instance_id']);
-            if (!$instance || (int)$instance['user_id'] !== $userId || $instance['status'] !== 'pending' || $locked['status'] !== 'unpaid') {
+            if (!$instance || (int)$instance['user_id'] !== $userId) {
                 throw new ApiException('Invoice cannot be paid', 409, 409);
             }
-            if (!$locked['quote_expired_at'] || $locked['expired']) {
-                throw new ApiException('Quote expired; cancel and place a new order', 409, 409);
+            if ($automatic && ($locked['type']!=='renew' || !(bool)$instance['auto_renew'] || strtotime($instance['due_date'].' UTC')>time()+7*86400)) {
+                throw new ApiException('Automatic renewal is disabled or outside billing window',409,409);
             }
+            self::assertPayable($db,$instance,$locked);
             $amount = Money::positive($locked['total']);
             $stmt = $db->prepare("UPDATE invoices SET status = 'paid', payment_method = 'balance', paid_at = UTC_TIMESTAMP() WHERE id = ? AND status = 'unpaid'");
             $stmt->execute([$id]);
@@ -139,8 +155,7 @@ final class BillingService
             $db->prepare('UPDATE users SET total_spent = total_spent + ? WHERE id = ?')->execute([$amount, $userId]);
             $db->prepare("INSERT INTO payment_records (invoice_id, user_id, channel, trade_no, amount, status, paid_at, payload) VALUES (?, ?, 'balance', ?, ?, 'success', UTC_TIMESTAMP(), '{\"settlement_purpose\":\"cloud_consumption\"}')")
                 ->execute([$id, $userId, "balance:inv_{$id}", $amount]);
-            $db->prepare("INSERT INTO tasks (instance_id, invoice_id, idempotency_key, action, payload) VALUES (?, ?, ?, 'create', ?)")
-                ->execute([$instance['id'], $id, "instance_create:inv_{$id}", $locked['price_snapshot']]);
+            self::enqueuePaid($db,$instance,$locked);
             return $this->invoice($userId, $id);
         });
     }
@@ -149,8 +164,8 @@ final class BillingService
     {
         return Database::transaction(function (PDO $db) use ($userId, $id, $onlyExpired): array {
             $invoice = $this->invoice($userId, $id);
-            if ($invoice['type'] !== 'new' || !$invoice['instance_id']) {
-                throw new ApiException('Only new purchase invoices can be cancelled');
+            if (!in_array($invoice['type'],['new','renew'],true) || !$invoice['instance_id']) {
+                throw new ApiException('Only purchase or renewal invoices can be cancelled');
             }
             $stmt = $db->prepare('SELECT id, product_id, status FROM instances WHERE id = ? FOR UPDATE');
             $stmt->execute([$invoice['instance_id']]);
@@ -164,10 +179,11 @@ final class BillingService
                 $invoice['paid_at'] = $locked['paid_at'];
                 return $invoice;
             }
-            if ($locked['status'] !== 'unpaid' || !$instance || $instance['status'] !== 'pending') {
+            if ($locked['status'] !== 'unpaid' || !$instance || ($locked['type']==='new' && $instance['status'] !== 'pending')) {
                 throw new ApiException('Invoice cannot be cancelled', 409, 409);
             }
-            $db->prepare("UPDATE invoices SET status = 'cancelled' WHERE id = ? AND status = 'unpaid'")->execute([$id]);
+            $db->prepare("UPDATE invoices SET status = 'cancelled',cycle_marker=NULL WHERE id = ? AND status = 'unpaid'")->execute([$id]);
+            if ($locked['type']==='renew') { return $this->invoice($userId,$id); }
             $db->prepare("UPDATE instances SET status = 'terminated' WHERE id = ?")->execute([$instance['id']]);
             $snapshot = json_decode($locked['price_snapshot'], true, 32, JSON_THROW_ON_ERROR);
             if ($snapshot['stock_reserved'] ?? false) {

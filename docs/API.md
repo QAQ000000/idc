@@ -156,9 +156,9 @@
 - **请求**：`POST /api/v1/instances/{id}/reinstall`
 - **载荷**：`{ "os_id": "ubuntu_24_04", "new_password": "NewRootPass123!" }`
 
-### 6. 实例自主续费 (支持多周期与余额一键代扣)
+### 6. 实例自主续费（当前一个原账期，余额或现有渠道付款）
 - **请求**：`POST /api/v1/instances/{id}/renew`
-- **载荷**：`{ "months": 1, "use_balance": true }`
+- **当前载荷**：`{ "base_due_date": "2026-12-07 15:33:12", "use_balance": true }`。base_due_date 为实例当前到期日（UTC 秒精度），同原周期重放返回原账单；仅续一个原账期，任意月份/周期切换待实现。省略 use_balance 只出未付账单，可用现有余额/易支付入口付款。
 
 ### 7. 弹性云变配升降级询价与变更
 - **请求**：`POST /api/v1/instances/{id}/upgrade/calculate`
@@ -303,4 +303,13 @@
 | GET /instances/{id}/credentials | 当前所有者且 active；返回远端 username/password，仅独立点击加载，所有响应 no-store。 |
 | POST /admin/tasks/{id}/resolve | admin Token 且数据库中启用的 super_admin；动作/材料/旧 token 规则见 Outbox 契约。 |
 
-CDN 交付可没有 IP，不以缺 IP 判定失败。不包含 M4 电源、续费、重装等未实现接口。详情与凭据对非所有者均返回 404。
+CDN 交付可没有 IP，不以缺 IP 判定失败。不包含 M4 电源、重装等未实现接口。详情与凭据对非所有者均返回 404。
+
+## 固定套餐续费当前接口补充
+
+- `POST /instances/{id}/renew`：仅资源所有者、已交付且驱动支持续费，载荷见 §6；不能自动绕过 compliance/abuse/manual 暂停。返回与现有账单相同结构，续费无 30 分钟过期。
+- `PATCH /instances/{id}/auto-renew`：所有者提交 `{ "enabled": false }`，必须为 JSON boolean。仅改变代扣策略；既有已付任务继续调查/履约，手动付款不受此开关限制。
+- 实例列表/详情增加 suspend_type、auto_renew、renewal_eligible、renewal_invoice_id、renewal_status（none/awaiting_payment/provisioning/investigating/needs_review/renewed）。renewal_eligible 仅表示当前状态与驱动具备能力，实际付款仍须在事务内核验所有门禁。
+- `/invoices/{id}/pay` 与 cancel 增加 renew：付款原子延长一次本地权益及投 Outbox，不直接恢复暂停；取消未付续费只取消该账单，不终止实例。
+
+运行与异常资金规则见 [续费契约](M2_RENEWAL_CONTRACT.md)。

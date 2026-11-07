@@ -24,6 +24,14 @@ Artisan::command('invoices:expire', function (): void {
     $this->info('Processed '.count($rows).' expired invoices.');
 });
 Schedule::command('invoices:expire')->everyMinute();
+Artisan::command('renewals:generate', function():void {
+    $this->info('Renewal invoices checked: '.app(\App\Services\RenewalService::class)->generateDue());
+})->purpose('Generate unique fixed renewal invoices seven days before expiry; never debit');
+Artisan::command('renewals:debit', function():void {
+    $this->info('Renewal invoices paid: '.app(\App\Services\RenewalService::class)->debitDue());
+})->purpose('Settle eligible unpaid renewal invoices using opted-in wallet balance; never call upstream');
+Schedule::command('renewals:generate')->hourly();
+Schedule::command('renewals:debit')->everyFifteenMinutes();
 
 Artisan::command('outbox:work {--once}', function (): void {
     $worker = 'worker:' . bin2hex(random_bytes(12));

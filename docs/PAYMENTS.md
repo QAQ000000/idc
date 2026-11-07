@@ -102,8 +102,10 @@ Database::transaction(static function (PDO $db) use ($flow, $notice): void {
 
 ## M2 当前收单边界
 
-已实现 balance 与 epay 新购付款。易支付通知支持 GET/POST `/api/v1/payments/epay/notify`；渠道表单由已登录账单所有者 `POST /api/v1/invoices/{id}/pay {gateway: epay}` 取得。页面返回不结算，签名正确但非 TRADE_SUCCESS 不结算。
+已实现 balance 与 epay 新购及固定套餐续费付款。易支付通知支持 GET/POST `/api/v1/payments/epay/notify`；渠道表单由已登录账单所有者 `POST /api/v1/invoices/{id}/pay {gateway: epay}` 取得。页面返回不结算，签名正确但非 TRADE_SUCCESS 不结算。
 
 外部直付不改变钱包，payment_records 是实收凭证，账单、累计消费与 create Outbox 同事务落库；transactions 只记真实钱包/佣金变化。重复回调不重复履约。迟到、取消后付款、金额不符与额外真实付款，在归属、币种可确认时按独立凭证幂等入钱包，不改原账单/实例/消费累计；不支持的币种和无法归属的通知返回 fail 留待网关重试/人工对账，绝不猜测归属。
 
 未交付永久取消的钱包补偿见 [TASKS_OUTBOX.md](TASKS_OUTBOX.md#m2-运行与永久取消)，这是退到钱包，原路退款仍延期。未知上游结果必须先核验，不允许为退款直接解除实例占用。
+
+固定套餐续费沿用同一验签与实收幂等入口。正常支付原子顺延本地原到期日并投 renew；不可逆/主动销毁时，真实实收按 SC-L02 一次 refund_to_balance、账单转 refunded 及清周期标记。其他 blocker/退款冻结/非财务暂停导致不能正常履约时，实收只入钱包且保留未付续费单，余额/自动代扣则不扣钱。重复回调不再顺延；具体接口与当前限制见 [续费契约](M2_RENEWAL_CONTRACT.md)。

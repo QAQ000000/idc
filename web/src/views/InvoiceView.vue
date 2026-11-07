@@ -90,6 +90,7 @@ onMounted(load);
       role="alert"
     /><el-card v-if="invoice" v-loading="busy">
       <el-descriptions :column="1" border>
+        <el-descriptions-item label="账单类型">{{ invoice.type === 'renew' ? '实例续费' : '新购' }}</el-descriptions-item>
         <el-descriptions-item label="账单编号">
           {{ invoice.invoice_id }}
 </el-descriptions-item
@@ -113,7 +114,7 @@ onMounted(load);
         </el-descriptions-item>
       </el-descriptions>
       <p v-if="invoice.status === 'paid'" class="muted">
-        付款成功，请等待交付。付款状态不代表资源已经开通。
+        {{ invoice.type === 'renew' ? '续费权益已记账，请查看实例的上游确认状态。欠费暂停不会仅凭付款解除。' : '付款成功，请等待交付。付款状态不代表资源已经开通。' }}
       </p>
       <div class="actions">
         <RouterLink :to="'/instances/' + invoice.instance_id"

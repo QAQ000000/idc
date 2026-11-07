@@ -85,4 +85,9 @@ export interface Instance {
   start_date: string | null;
   due_date: string | null;
   invoice_id: number | null;
+  suspend_type: "billing" | "compliance" | "abuse" | "manual";
+  auto_renew: number;
+  renewal_invoice_id: number | null;
+  renewal_status: string;
+  renewal_eligible: boolean;
 }

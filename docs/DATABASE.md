@@ -735,3 +735,7 @@ CREATE TABLE IF NOT EXISTS `migrations` (
     `batch` INT NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='框架 schema 迁移版本登记表';
 ```
+
+## 固定套餐续费实现说明
+
+本批复用 instances 的 auto_renew、due_date、recurring_price/override_price、suspend_type，invoices 的 cycle_marker/price_snapshot 及 tasks 的 renew 枚举；仍为 27 张物理表，无新增 schema 迁移。周期标记为 `r:{instance_id}:{原到期日YYYYmmddHHMMSS}`，已付周期保留唯一凭证；取消/销毁保护退款清空标记。续费 price_snapshot 固化原/目标本地日期和独立上游原/目标日期，任务再冻结 needs_unsuspend；不把驱动凭据复制到快照。完整语义见 [续费契约](M2_RENEWAL_CONTRACT.md)。

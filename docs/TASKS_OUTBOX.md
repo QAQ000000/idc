@@ -229,7 +229,7 @@ flowchart TD
 
 ## M2 运行与永久取消
 
-当前 Worker 只执行 create；五分钟租约，网络调用总时长受驱动请求超时限制，空闲 500ms 扫描，每次最多看 100 候选，实例锁使用 SKIP LOCKED。长耗时生命周期/公平调度仍延期。心跳同样要求有效旧租约与 token，不能复活失效执行权。结果回写失败保留原状态，由过期接管调查；严禁重新投 pending。
+当前 Worker 执行 create 和 renew；五分钟租约，网络调用总时长受驱动请求超时限制，空闲 500ms 扫描，每次最多看 100 候选，实例锁使用 SKIP LOCKED。长耗时生命周期/公平调度仍延期。心跳同样要求有效旧租约与 token，不能复活失效执行权。结果回写失败保留原状态，由过期接管调查；严禁重新投 pending。
 
 未知结果每分钟只读调查，一小时仍未知或 NON_QUERYABLE 转 `failed + MANUAL_AUDIT_REQUIRED:`，记 critical 事件（只含 task_id）；必须配合日志监控和 `outbox:inspect` 人工值守。证明未执行的退避为 5/15/30 分钟，达到重试上限转人工。Provider 禁用、查询失败与最终一致性查无不释放占用。
 
@@ -241,3 +241,9 @@ flowchart TD
 
 
 魔方首链主机名兼容：新订单将驱动预检返回的 `driver_context.hostname_rule=alnum8` 随 price_snapshot 固化，按原始订单键稳定生成 8 位、含数字及大小写字母的远端名。已提交且没有此规则标识的旧任务继续使用原身份调查；不能为适应新规则重算旧任务身份后盲目创建。已取得账号范围稳定远端 ID 的任务，按 ID、PID、账期和首付金额调查，不因上游改名失去身份；必须核对响应 ID 正好等于已记录 ID。没有已知 ID 且名称不再匹配时保留人工核验门禁，不猜测绑定。
+
+## 当前固定套餐续费扩展
+
+续费支付以 `instance_renew:inv_{invoice_id}` 唯一键投递单条 renew，沿用同一认领、token、租约、退款冻结与人工核验机制。付款事务已按原本地到期日顺延权益；Worker 不再累加日期，只确认上游目标日期，并仅在需要且仍为 billing 暂停时恢复 active。魔方组合执行由支付后观察上游恢复承接，不拆分另一条 unsuspend，也不对未知结果重发解挂。
+
+renew 的人工 retry/fulfill 使用现有 resolve 入口和审计，fulfill 必须保留原资源 ID，调用续费完成处理器；不能调用新购起租方法。cancel_compensate 仅适用新购，不能拿它销毁原续费实例。完整边界及兼容证据见 [M2_RENEWAL_CONTRACT.md](M2_RENEWAL_CONTRACT.md)。

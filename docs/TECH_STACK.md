@@ -15,7 +15,7 @@
 
 Laravel 13 官方要求 PHP 至少 8.3，本项目统一选择 8.4；版本依据见 [Laravel 13 发布说明](https://laravel.com/framework/docs/13.x/releases)。依赖精确版本在实施时写入 Composer 与前端锁文件。
 
-**实现状态**：M0 已接入 Laravel 13/PHP 8.4、框架同连接事务、标准 schema 升级与单一 Vue/Element Plus 前端。已验证范围是现有模拟余额交易闭环；M2 已实现最小可靠 Worker、魔方财务固定商品驱动、易支付收单与实例页面；已取得真实支付成功凭证并完成首个固定 CDN 商品的实际交付回填，边界及证据见路线图。未切换生产部署或业务数据库。当前启动及测试方式见 [README](../README.md)，待实现任务见 [ROADMAP.md](ROADMAP.md)。
+**实现状态**：M0 已接入 Laravel 13/PHP 8.4、框架同连接事务、标准 schema 升级与单一 Vue/Element Plus 前端。已验证范围是现有模拟余额交易闭环；M2 已实现最小可靠 Worker、魔方财务固定商品新购/续费驱动、易支付收单与实例页面；已取得真实支付成功凭证并完成首个固定 CDN 商品的实际交付回填，边界及证据见路线图。未切换生产部署或业务数据库。当前启动及测试方式见 [README](../README.md)，待实现任务见 [ROADMAP.md](ROADMAP.md)。
 
 ## 2. 框架与领域职责
 

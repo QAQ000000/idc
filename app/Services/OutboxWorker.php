@@ -3,7 +3,7 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Core\{ApiException, Database, Security};
-use App\Plugins\Providers\DriverExecutionResult;
+use App\Plugins\Providers\{DriverExecutionResult, RenewalDriverInterface};
 use PDO;
 
 final class OutboxWorker
@@ -14,7 +14,7 @@ final class OutboxWorker
     public function claim(string $worker): ?array
     {
         if (!preg_match('/^[a-zA-Z0-9:_-]{1,50}$/D', $worker)) { throw new \InvalidArgumentException('Invalid worker id'); }
-        $candidates = Database::getInstance()->query("SELECT id, instance_id FROM tasks WHERE action = 'create' AND
+        $candidates = Database::getInstance()->query("SELECT id, instance_id, action FROM tasks WHERE action IN ('create','renew') AND
             ((status = 'pending' AND (next_retry_at IS NULL OR next_retry_at <= UTC_TIMESTAMP()))
             OR (status IN ('running','investigating') AND (lease_until IS NULL OR lease_until <= UTC_TIMESTAMP())
             AND (next_retry_at IS NULL OR next_retry_at <= UTC_TIMESTAMP()))) ORDER BY id LIMIT 100")->fetchAll();
@@ -23,14 +23,15 @@ final class OutboxWorker
                 $task = Database::transaction(static function (PDO $db) use ($c, $worker): ?array {
                     $s = $db->prepare('SELECT * FROM instances WHERE id = ? FOR UPDATE SKIP LOCKED');
                     $s->execute([$c['instance_id']]); $instance = $s->fetch();
-                    if (!$instance || $instance['status'] !== 'pending' || $instance['remote_instance_id'] !== null) { return null; }
+                    if (!$instance || ($c['action']==='create' && ($instance['status'] !== 'pending' || $instance['remote_instance_id'] !== null))
+                        || ($c['action']==='renew' && (!in_array($instance['status'],['active','suspended'],true) || !$instance['remote_instance_id']))) { return null; }
                     TaskGate::assertClear($db, (int)$instance['id'], (int)$c['id']);
                     $s = $db->prepare("SELECT *, lease_until > UTC_TIMESTAMP() AS leased, next_retry_at > UTC_TIMESTAMP() AS retry_delayed FROM tasks WHERE id = ? FOR UPDATE");
                     $s->execute([$c['id']]); $t = $s->fetch();
                     if (!$t || !in_array($t['status'], ['pending','running','investigating'], true) || $t['retry_delayed']
                         || ($t['status'] !== 'pending' && $t['leased'])) { return null; }
-                    $s = $db->prepare("SELECT status FROM invoices WHERE id = ? AND instance_id = ? AND user_id = ? AND type = 'new' FOR UPDATE");
-                    $s->execute([$t['invoice_id'], $instance['id'], $instance['user_id']]);
+                    $s = $db->prepare("SELECT status FROM invoices WHERE id = ? AND instance_id = ? AND user_id = ? AND type = ? FOR UPDATE");
+                    $s->execute([$t['invoice_id'], $instance['id'], $instance['user_id'], $t['action']==='renew'?'renew':'new']);
                     if ($s->fetchColumn() !== 'paid') { return null; }
                     $mode = $t['status'] === 'pending' ? 'running' : 'investigating';
                     $payload = json_decode($t['payload'] ?? '{}', true, 32, JSON_THROW_ON_ERROR);
@@ -52,7 +53,7 @@ final class OutboxWorker
     {
         $t = $this->claim($worker);
         if (!$t) { return false; }
-        if (!($t['payload']['is_auto_setup'] ?? false)) {
+        if ($t['action']==='create' && !($t['payload']['is_auto_setup'] ?? false)) {
             $this->finish($t, new DriverExecutionResult('unknown', code: 'NON_QUERYABLE'));
             return true;
         }
@@ -63,7 +64,12 @@ final class OutboxWorker
                 'hostname' => $t['instance']['name'], 'billing_cycle' => $t['instance']['billing_cycle'],
                 'operation_id' => $t['upstream_task_id'],
             ];
-            if ($t['status'] === 'investigating') {
+            if ($t['action']==='renew') {
+                if (!$driver instanceof RenewalDriverInterface) { $result=new DriverExecutionResult('unknown',code:'NON_QUERYABLE'); }
+                elseif ($t['status']==='investigating') { $result=$driver->queryRenewal($order,$credentials); }
+                elseif ($t['instance']['status']==='suspended' && $t['instance']['suspend_type']!=='billing') { $result=new DriverExecutionResult('rejected',code:'NONBILLING_SUSPENSION'); }
+                else { $result=$driver->renew($order,$credentials); }
+            } elseif ($t['status'] === 'investigating') {
                 $result = $driver->getQueryAuthority() === 'NON_QUERYABLE'
                     ? new DriverExecutionResult('unknown', code: 'NON_QUERYABLE') : $driver->queryOrder($order, $credentials);
             } else {
@@ -75,9 +81,9 @@ final class OutboxWorker
             $result = new DriverExecutionResult('unknown', code: 'DRIVER_OR_TRANSPORT_ERROR');
         }
         try { $this->finish($t, $result); }
-        catch (\Throwable) {
+        catch (\Throwable $e) {
             // Preserve the claim for crash recovery. Never put a possibly executed task back in pending.
-            logger()->error('Outbox result requires recovery', ['task_id' => (int)$t['id']]);
+            logger()->error('Outbox result requires recovery', ['task_id' => (int)$t['id'], 'exception_type'=>$e::class]);
         }
         return true;
     }
@@ -111,6 +117,13 @@ final class OutboxWorker
         Database::transaction(static function (PDO $db) use ($claim, $result): void {
             $t = self::lockOwned($db, (int)$claim['id'], $claim['worker_id'], (int)$claim['execution_token']);
             if ($result->status === 'succeeded') {
+                if ($t['action']==='renew') {
+                    $p=json_decode($t['payload'],true,32,JSON_THROW_ON_ERROR);
+                    if ($result->remoteInstanceId!==($p['remote_instance_id']??null)) { throw new ApiException('Renewal delivery resource mismatch',409,409); }
+                    RenewalService::complete($db,$t);
+                    $db->prepare("UPDATE tasks SET status='success',lease_until=NULL,worker_id=NULL,next_retry_at=NULL,last_error=NULL,upstream_task_id=COALESCE(?,upstream_task_id) WHERE id=?")->execute([$result->operationId,$t['id']]);
+                    return;
+                }
                 if ($result->username !== null || $result->password !== null) {
                     $s = $db->prepare('SELECT config_snapshot FROM instances WHERE id = ?'); $s->execute([$t['instance_id']]);
                     $snapshot = json_decode($s->fetchColumn() ?: '{}', true, 32, JSON_THROW_ON_ERROR);

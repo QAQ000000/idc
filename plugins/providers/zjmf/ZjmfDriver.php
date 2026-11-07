@@ -2,10 +2,10 @@
 declare(strict_types=1);
 namespace Plugins\providers\zjmf;
 use App\Core\Money;
-use App\Plugins\Providers\{UpstreamDriverInterface, DriverExecutionResult as R, PreflightResult};
+use App\Plugins\Providers\{UpstreamDriverInterface, RenewalDriverInterface, DriverExecutionResult as R, PreflightResult};
 
 /** Magic Finance agent API. Stateless cart_data avoids clearing or sharing the upstream account's cart. */
-final class ZjmfDriver implements UpstreamDriverInterface
+final class ZjmfDriver implements UpstreamDriverInterface, RenewalDriverInterface
 {
     public function getDriverId(): string { return 'zjmf'; }
     public function getQueryAuthority(): string { return 'EVENTUAL_CONSISTENCY'; }
@@ -133,5 +133,80 @@ final class ZjmfDriver implements UpstreamDriverInterface
             $hostId = is_string($op) && preg_match('/^host:([0-9]+)$/D', $op, $m) ? $m[1] : null;
             return $this->inspect($orderData, $credentials, $this->token($credentials), $hostId, $op);
         } catch (\Throwable) { return new R('unknown', operationId: $op, code: 'QUERY_UNAVAILABLE'); }
+    }
+
+    private function renewalHost(array $o, array $c, string $token): array
+    {
+        if (!preg_match('/^host:([0-9]+)$/D',$o['remote_instance_id']??'', $m)) { throw new \RuntimeException('Invalid renewal resource'); }
+        $r=$this->request($c,'/cart/hostinfo',['hostid'=>[$m[1]]],token:$token);
+        $hosts=$r['data']['hosts']??[];
+        if (($r['status']??0)!==200 || count($hosts)!==1 || (string)($hosts[0]['id']??'')!==$m[1]
+            || (int)($hosts[0]['productid']??0)!==(int)$o['remote_pid'] || ($hosts[0]['billingcycle']??'')!==$o['billing_cycle']
+            || !is_numeric($hosts[0]['nextduedate']??null) || (int)$hosts[0]['nextduedate']<1) {
+            throw new \RuntimeException('Renewal resource ownership or billing identity mismatch');
+        }
+        return $hosts[0];
+    }
+
+    public function preflightRenewal(array $instance, array $credentials): PreflightResult
+    {
+        $token=$this->token($credentials);$host=$this->renewalHost($instance,$credentials,$token);
+        if (!in_array($host['domainstatus']??'', ['Active','Suspended'],true)) { throw new \RuntimeException('Resource cannot renew'); }
+        if ((int)($host['initiative_renew']??0)!==0) { throw new \RuntimeException('Upstream automatic renewal must be disabled before local orchestration'); }
+        $r=$this->request($credentials,'/host/renewpage',['hostid'=>$host['id'],'billingcycles'=>$instance['billing_cycle']],token:$token);
+        $data=$r['data']??[];$h=$data['host']??[];
+        $cycles=array_values(array_filter($data['cycle']??[],fn($cycle)=>($cycle['billingcycle']??'')===$instance['billing_cycle']));
+        if (($r['status']??0)!==200 || ($data['currency']['code']??'')!=='CNY' || count($cycles)!==1
+            || (int)($h['productid']??0)!==(int)$instance['remote_pid'] || ($h['billingcycle']??'')!==$instance['billing_cycle']
+            || (int)($h['nextduedate']??0)!==(int)$host['nextduedate'] || (int)($cycles[0]['duration']??0)<=0
+            || bccomp(Money::positive((string)($h['amount']??'')),Money::positive((string)$host['amount']),2)!==0) {
+            throw new \RuntimeException('Renewal quote unavailable');
+        }
+        return new PreflightResult(Money::positive((string)$h['amount']),[],context:[
+            'remote_base_due'=>(int)$host['nextduedate'],'remote_target_due'=>(int)$host['nextduedate']+(int)$cycles[0]['duration'],
+        ]);
+    }
+
+    private function inspectRenewal(array $o,array $c,string $token,?string $operation): R
+    {
+        $h=$this->renewalHost($o,$c,$token);$context=$o['renewal_context']??[];
+        if ((int)$h['nextduedate']!==($context['remote_target_due']??null)) {
+            return new R('unknown',operationId:$operation,code:'RENEWAL_DATE_UNCONFIRMED');
+        }
+        // Epay/credit settlement on Magic Finance may also schedule unsuspension. We only observe it.
+        if (($h['domainstatus']??'')!=='Active') { return new R('pending',operationId:$operation,code:'AWAITING_REMOTE_RESTORE'); }
+        return new R('succeeded',$o['remote_instance_id'],operationId:$operation,code:'RENEWED');
+    }
+
+    public function renew(array $order,array $credentials): R
+    {
+        $submitted=false;$operation=null;
+        try {
+            $token=$this->token($credentials);$h=$this->renewalHost($order,$credentials,$token);$context=$order['renewal_context']??[];
+            if ((int)$h['nextduedate']===($context['remote_target_due']??null)) { return $this->inspectRenewal($order,$credentials,$token,null); }
+            $quote=$this->preflightRenewal($order,$credentials);
+            if ($quote->context!==$context || bccomp($quote->amount,$order['upstream_total'],2)!==0) { return new R('rejected',code:'RENEWAL_QUOTE_CHANGED'); }
+            // No second submission/payment after timeout, including a lost invoice creation response.
+            $submitted=true;
+            $r=$this->request($credentials,'/host/renew',['hostid'=>$h['id'],'billingcycles'=>$order['billing_cycle']],'POST',$token);
+            $invoiceId=(int)($r['data']['invoiceid']??0);
+            if (($r['status']??0)!==200 || $invoiceId<1) { return new R('unknown',code:'RENEWAL_SUBMISSION_UNCONFIRMED'); }
+            $operation='invoice:'.$invoiceId;
+            $invoice=$this->request($credentials,'/invoice_page',['invoiceid'=>$invoiceId],'POST',$token);
+            if (($invoice['status']??0)!==200 || bccomp((string)($invoice['data']['invoice_total']??'-1'),$order['upstream_total'],2)!==0
+                || bccomp((string)($invoice['data']['invoice_subtotal']??'-1'),$order['upstream_total'],2)!==0) {
+                return new R('unknown',operationId:$operation,code:'REMOTE_RENEWAL_AMOUNT_REQUIRES_REVIEW');
+            }
+            $r=$this->request($credentials,'/apply_credit',['invoiceid'=>$invoiceId,'use_credit'=>1,'enough'=>1],'POST',$token);
+            if (($r['status']??0)!==1001) { return new R('unknown',operationId:$operation,code:'RENEWAL_PAYMENT_UNCONFIRMED'); }
+            return $this->inspectRenewal($order,$credentials,$token,$operation);
+        } catch(\Throwable) { return new R($submitted?'unknown':'not_executed',operationId:$operation,code:$submitted?'RENEWAL_RESULT_UNKNOWN':'RENEWAL_PREFLIGHT_NO_REQUEST_SENT'); }
+    }
+
+    public function queryRenewal(array $order,array $credentials): R
+    {
+        $operation=$order['operation_id']??null;
+        try{return $this->inspectRenewal($order,$credentials,$this->token($credentials),$operation);}
+        catch(\Throwable){return new R('unknown',operationId:$operation,code:'RENEWAL_QUERY_UNAVAILABLE');}
     }
 }

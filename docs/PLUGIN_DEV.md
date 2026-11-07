@@ -106,7 +106,7 @@ interface UpstreamDriverInterface
 }
 ```
 
-M2 已实现以上最小接口。续费、电源、变配、重装与快照仍为后续能力，不强迫首条 CDN 驱动编写空实现。变更原因及兼容边界见 [M2_CONTRACT_CHANGE.md](M2_CONTRACT_CHANGE.md)。
+M2 已实现以上最小接口。电源、变配、重装与快照仍为后续能力，续费通过下述可选接口启用，不强迫首条 CDN 驱动编写空实现。变更原因及兼容边界见 [M2_CONTRACT_CHANGE.md](M2_CONTRACT_CHANGE.md)。
 
 | DTO | 当前字段与语义 |
 |---|---|
@@ -122,6 +122,21 @@ Provider 行固定表示一个上游账户/资源命名空间，不允许原地�
 `plugins/providers/zjmf` 使用 `/zjmf_api_login`、`/cart/get_product_config`、`/cart/get_total`、带独立 `cart_data` 的 `/cart/settle`、`/invoice_page`、`/apply_credit`。不清空或修改共享购物车，不默认上游支持请求键幂等。付款前校验远端账单实付与小计均等于冻结金额；结果未知不再支付。
 
 按部署生成的 `order_namespace` 与原任务键生成固定 8 位数字/大小写字母的资源名称（含三类字符，不带前缀或连字符），规则写入 `driver_context.hostname_rule=alnum8` 随订单冻结；已提交的旧订单保留原命名规则用于调查，不因升级改名或重购。未知资源 ID 时，调查 `/host/list` 必须严格匹配冻结名称、PID、账期与首付金额，再用账户范围 `/cart/hostinfo` 核对候选 ID；已由结算/支付响应或上述调查取得的稳定资源 ID，以 ID、PID、账期与首付金额核验，允许上游改名，但不接受接口返回另一个 ID。仅 Active 回填。查无/多匹配均保留调查；一小时仍未知转人工。当前首链只允许无配置/无自定义字段的固定月/年商品；配置变化即暂停销售，不冒称通用 Schema 渲染已完成。上游待付款订单也可能迟后执行，不能因为本地没有 Active 资产就直接退款。
+
+### 可选续费能力（当前已实现）
+
+```php
+interface RenewalDriverInterface
+{
+    public function preflightRenewal(array $instance, array $credentials): PreflightResult;
+    public function renew(array $order, array $credentials): DriverExecutionResult;
+    public function queryRenewal(array $order, array $credentials): DriverExecutionResult;
+}
+```
+
+接口位于 `app/Plugins/Providers`。新购驱动不实现本接口时，不能销售自动续费。预检只读，返回 CNY 成本及不含秘密的 `context.remote_base_due/remote_target_due`；本地售价仍取实例固定价。`order` 固化账号范围 remote_instance_id、remote_pid、账期、上游金额、renewal_context、本地 base_due_date/target_due_date 和 needs_unsuspend，执行结果继续使用原 DTO。
+
+魔方实现用账户范围 `/cart/hostinfo` 与 `/host/renewpage` 校验身份、账期、金额及单周期 duration，上游 initiative_renew 必须关闭。执行一次 `POST /host/renew`，核对 `/invoice_page` 后一次 `/apply_credit`，再观察原 ID 的目标到期日和 Active。未知后只读调查，绝不补发 renew/支付/解挂；没有原路退款或不可查询取消的保证。魔方可能在收款后自行解除暂停，故当前核心仅准入 active 或 billing 暂停，其他暂停转人工。已购买权益的日期顺延、退款/销毁门禁与人工裁决见 [续费契约](M2_RENEWAL_CONTRACT.md)。
 
 ### 1.1 可选快照与备份能力 (`SnapshotDriverInterface`)
 

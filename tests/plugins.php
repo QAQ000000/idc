@@ -117,6 +117,8 @@ pluginCheck(true, 'business services, middlewares and HTTP entry depend on plugi
 
 pluginCheck(\App\Plugins\Providers\ProviderRegistry::installed()->get('zjmf')->getQueryAuthority() === 'EVENTUAL_CONSISTENCY', 'provider manifest resolves without core concrete dependency');
 pluginCheck(\App\Plugins\Providers\ProviderRegistry::installed()->get('manual')->create([], [])->code === 'NON_QUERYABLE', 'manual driver never pretends external delivery succeeded');
+pluginCheck(\App\Plugins\Providers\ProviderRegistry::installed()->get('zjmf') instanceof \App\Plugins\Providers\RenewalDriverInterface
+    && !(\App\Plugins\Providers\ProviderRegistry::installed()->get('manual') instanceof \App\Plugins\Providers\RenewalDriverInterface), 'renewal is an explicit optional capability, never implied by create support');
 $gateway = \App\Plugins\Payments\PaymentRegistry::installed()->get('epay');
 pluginCheck($gateway->getDriverId() === 'epay', 'payment manifest resolves its interface');
 $root = sys_get_temp_dir() . '/jianyun-loader-' . bin2hex(random_bytes(8));

@@ -12,7 +12,7 @@ final class InstanceService
     public function detail(int $user, int $id): array
     {
         $db=Database::getInstance();
-        $s=$db->prepare('SELECT i.id,i.name,i.status,i.remote_instance_id,i.ip_address,i.billing_cycle,i.recurring_price,i.start_date,i.due_date,p.name AS product_name,p.type FROM instances i JOIN products p ON p.id=i.product_id WHERE i.id=? AND i.user_id=?');$s->execute([$id,$user]);$i=$s->fetch();
+        $s=$db->prepare('SELECT i.id,i.name,i.status,i.suspend_type,i.remote_instance_id,i.ip_address,i.billing_cycle,i.auto_renew,COALESCE(i.override_price,i.recurring_price) AS recurring_price,i.start_date,i.due_date,p.name AS product_name,p.type,r.driver,r.status AS provider_status FROM instances i JOIN products p ON p.id=i.product_id JOIN providers r ON r.id=i.provider_id WHERE i.id=? AND i.user_id=?');$s->execute([$id,$user]);$i=$s->fetch();
         if (!$i) { throw new ApiException('Instance not found',404,404); }
         $s=$db->prepare("SELECT id,status FROM invoices WHERE instance_id=? AND type='new' ORDER BY id DESC LIMIT 1");$s->execute([$id]);$invoice=$s->fetch();
         $s=$db->prepare("SELECT status,last_error FROM tasks WHERE instance_id=? AND action='create' ORDER BY id DESC LIMIT 1");$s->execute([$id]);$task=$s->fetch();
@@ -26,6 +26,19 @@ final class InstanceService
             $task && $task['status']==='investigating'=>'investigating',
             default=>'provisioning',
         };
+        $s=$db->prepare("SELECT id,status FROM invoices WHERE instance_id=? AND type='renew' ORDER BY id DESC LIMIT 1");$s->execute([$id]);$renewal=$s->fetch();
+        $i['renewal_invoice_id']=$renewal?(int)$renewal['id']:null;
+        $i['renewal_status']='none';
+        if($renewal && $renewal['status']==='unpaid'){$i['renewal_status']='awaiting_payment';}
+        elseif($renewal && $renewal['status']==='paid'){
+            $s=$db->prepare("SELECT status FROM tasks WHERE invoice_id=? AND action='renew' ORDER BY id DESC LIMIT 1");$s->execute([$renewal['id']]);$status=$s->fetchColumn();
+            $i['renewal_status']=match($status){'success'=>'renewed','investigating'=>'investigating','failed'=>'needs_review',default=>'provisioning'};
+        }
+        try{$supported=\App\Plugins\Providers\ProviderRegistry::installed()->get($i['driver']) instanceof \App\Plugins\Providers\RenewalDriverInterface;}
+        catch(\Throwable){$supported=false;}
+        $i['renewal_eligible']=$supported && (int)$i['provider_status']===1 && in_array($i['status'],['active','suspended'],true)
+            && ($i['status']!=='suspended' || $i['suspend_type']==='billing') && $i['due_date']!==null;
+        unset($i['driver'],$i['provider_status']);
         return $i;
     }
     public function credentials(int $user,int $id): array

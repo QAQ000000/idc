@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
-import { useRoute } from "vue-router";
-import { api, message, type Instance } from "../api/request";
+import { useRoute, useRouter } from "vue-router";
+import { api, message, type Instance, type Invoice } from "../api/request";
 const route = useRoute(),
+  router = useRouter(),
   instance = ref<Instance | null>(null),
   busy = ref(false),
   error = ref("");
@@ -49,6 +50,28 @@ async function reveal() {
     busy.value = false;
   }
 }
+async function renew() {
+  if (busy.value || !instance.value?.due_date) return;
+  busy.value = true;
+  error.value = "";
+  try {
+    const invoice = await api<Invoice>("/instances/" + route.params.id + "/renew", {
+      method: "POST", body: { base_due_date: instance.value.due_date },
+    });
+    await router.push("/invoices/" + invoice.invoice_id);
+  } catch (e) { error.value = message(e); }
+  finally { busy.value = false; }
+}
+async function setAutomatic(enabled: boolean) {
+  if (busy.value || !instance.value) return;
+  busy.value = true;
+  error.value = "";
+  try {
+    await api("/instances/" + route.params.id + "/auto-renew", { method: "PATCH", body: { enabled } });
+    instance.value.auto_renew = enabled ? 1 : 0;
+  } catch (e) { error.value = message(e); }
+  finally { busy.value = false; }
+}
 onMounted(load);
 </script>
 <template>
@@ -62,6 +85,14 @@ onMounted(load);
       role="alert"
     />
     <el-card v-if="instance" v-loading="busy">
+      <el-alert
+v-if="['provisioning','investigating','needs_review'].includes(instance.renewal_status)"
+        title="续费权益已记账，上游结果仍待确认，请勿重复续费。欠费暂停仅在上游确认恢复后解除。"
+        type="warning" :closable="false" />
+      <el-alert
+v-if="instance.status === 'suspended' && instance.suspend_type !== 'billing'"
+        title="当前为合规、安全或人工暂停，请联系客服核验；付款不能解除此类暂停。"
+        type="warning" :closable="false" />
       <el-alert
         v-if="
           ['investigating', 'needs_review'].includes(instance.delivery_status)
@@ -117,8 +148,16 @@ onMounted(load);
           instance.billing_cycle === "monthly" ? "月付" : "年付"
         }}
 </el-descriptions-item>
+        <el-descriptions-item label="每期续费价格">¥{{ instance.recurring_price }}</el-descriptions-item>
+        <el-descriptions-item label="续费状态">{{ instance.renewal_status === 'renewed' ? '上游已确认' : instance.renewal_status === 'awaiting_payment' ? '续费账单待付款' : ['investigating','needs_review','provisioning'].includes(instance.renewal_status) ? '等待确认' : '暂无续费' }}</el-descriptions-item>
+        <el-descriptions-item label="余额自动续费">
+          <el-switch :model-value="Boolean(instance.auto_renew)" :disabled="busy" aria-label="余额自动续费" @change="setAutomatic(Boolean($event))" />
+          <p class="muted">到期前 7 天出账，开启后每 15 分钟检查余额并尝试付款；余额不足保留未付账单。</p>
+        </el-descriptions-item>
       </el-descriptions>
       <div class="actions">
+        <el-button v-if="instance.renewal_eligible" :disabled="busy || ['provisioning','investigating','needs_review'].includes(instance.renewal_status)" type="primary" @click="renew">续费一个账期</el-button>
+        <RouterLink v-if="instance.renewal_invoice_id" :to="'/invoices/' + instance.renewal_invoice_id">查看续费账单</RouterLink>
         <el-button :disabled="busy" @click="load">刷新状态</el-button
         ><RouterLink
           v-if="instance.invoice_id"

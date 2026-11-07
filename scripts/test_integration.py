@@ -111,6 +111,7 @@ def main():
                         raise RuntimeError('Upstream test fixture not ready')
                     time.sleep(0.1)
             subprocess.run([php, 'tests/m2.php'], cwd=ROOT, env=env, check=True)
+            subprocess.run([php, 'tests/renewal.php'], cwd=ROOT, env=env, check=True)
             subprocess.run([php, 'artisan', 'migrate', '--force'], cwd=ROOT, env=env, check=True)
             subprocess.run([php, 'tests/browser_fixture.php'], cwd=ROOT, env=env, check=True)
             fpm_socket = directory / 'fpm.sock'

@@ -24,17 +24,19 @@ final class TaskResolutionService
             TaskGate::assertClear($db, (int)$iid, $taskId);
             $s = $db->prepare('SELECT * FROM tasks WHERE id = ? FOR UPDATE'); $s->execute([$taskId]); $t = $s->fetch();
             if ($t['status'] !== 'failed' || !str_starts_with($t['last_error'] ?? '', 'MANUAL_AUDIT_REQUIRED:')
-                || (int)$t['execution_token'] !== $token || $t['action'] !== 'create'
-                || $instance['status'] !== 'pending' || $instance['remote_instance_id'] !== null) {
+                || (int)$t['execution_token'] !== $token || !in_array($t['action'],['create','renew'],true)
+                || ($t['action']==='create' && ($instance['status'] !== 'pending' || $instance['remote_instance_id'] !== null))
+                || ($t['action']==='renew' && (!in_array($instance['status'],['active','suspended'],true) || !$instance['remote_instance_id']))) {
                 throw new ApiException('Task no longer eligible for this resolution', 409, 409);
             }
-            $s = $db->prepare("SELECT * FROM invoices WHERE id = ? AND instance_id = ? AND user_id = ? AND type = 'new' FOR UPDATE");
-            $s->execute([$t['invoice_id'], $iid, $instance['user_id']]); $inv = $s->fetch();
+            $s = $db->prepare("SELECT * FROM invoices WHERE id = ? AND instance_id = ? AND user_id = ? AND type = ? FOR UPDATE");
+            $s->execute([$t['invoice_id'], $iid, $instance['user_id'], $t['action']==='renew'?'renew':'new']); $inv = $s->fetch();
             if (!$inv || $inv['status'] !== 'paid') { throw new ApiException('Resolution requires a paid purchase', 409, 409); }
             $s = $db->prepare("SELECT id FROM admins WHERE id = ? AND role = 'super_admin' AND status = 'active' FOR UPDATE"); $s->execute([$adminId]);
             if (!$s->fetch()) { throw new ApiException('Active super_admin required', 403, 403); }
             $context = ['evidence' => $evidence, 'previous_execution_token' => $token];
             if ($action === 'cancel_compensate') {
+                if ($t['action']==='renew') { throw new ApiException('Renewal compensation requires separate reviewed reconciliation; never terminate the original resource',409,409); }
                 $s = $db->prepare('SELECT id FROM commissions WHERE invoice_id = ? FOR UPDATE'); $s->execute([$inv['id']]);
                 if ($s->fetch()) { throw new ApiException('Existing commission requires a reviewed reversal before cancellation', 409, 409); }
                 $s = $db->prepare("SELECT * FROM payment_records WHERE invoice_id = ? AND status = 'success' ORDER BY id FOR UPDATE"); $s->execute([$inv['id']]);
@@ -62,7 +64,10 @@ final class TaskResolutionService
             } elseif ($action === 'fulfill') {
                 $remote = Request::text($input, 'remote_instance_id', 1, 100);
                 $ip = $input['ip_address'] ?? null;
-                InstanceActivationService::applyDelivery($db, $instance, $remote, $ip);
+                if($t['action']==='renew') {
+                    if($remote!==$instance['remote_instance_id']){throw new ApiException('Renewal must retain its original resource',409,409);}
+                    RenewalService::complete($db,$t);
+                } else { InstanceActivationService::applyDelivery($db, $instance, $remote, $ip); }
                 $db->prepare("UPDATE tasks SET status = 'success', execution_token = execution_token + 1, worker_id = NULL, lease_until = NULL, next_retry_at = NULL, last_error = NULL WHERE id = ?")->execute([$taskId]);
                 $context['remote_instance_id'] = $remote;
             } else {

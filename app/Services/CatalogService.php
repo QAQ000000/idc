@@ -3,7 +3,7 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Core\{ApiException, Database, Money, Security};
-use App\Plugins\Providers\{ProviderRegistry, ConfigurableDriverInterface, ConfigOptions};
+use App\Plugins\Providers\{ProviderRegistry, ConfigurableDriverInterface, ConfigOptions, PasswordPolicy};
 use PDO;
 
 final class CatalogService
@@ -65,7 +65,8 @@ final class CatalogService
         }
         $total = $preflight ? Money::markup($preflight['amount'],$product['markup_type'],$product['markup_value']) : Money::positive($cache['prices'][$cycle]);
         $recurring = $preflight ? Money::markup($preflight['recurring'],$product['markup_type'],$product['markup_value']) : $total;
-        return ['product'=>$product,'total'=>$total,'recurring_price'=>$recurring,'billing_cycle'=>$cycle,'config_options'=>$config,'configuration'=>$summary];
+        return ['product'=>$product,'total'=>$total,'recurring_price'=>$recurring,'billing_cycle'=>$cycle,'config_options'=>$config,'configuration'=>$summary,
+            'password_policy'=>PasswordPolicy::bounds($preflight['context']??[])];
     }
     private static function fingerprint(array $product): string
     {

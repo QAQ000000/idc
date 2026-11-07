@@ -8,16 +8,29 @@ import pwd
 import os
 from pathlib import Path
 import secrets
+import re
 import shutil
 import signal
 import socket
 import subprocess
+import sys
 import tempfile
 import time
 import urllib.request
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def run_checks(php, path, env, summary):
+    # Laravel's standalone bootstrap can render an uncaught exception with exit status 0.
+    # A suite must reach its final summary as well as exit successfully.
+    result = subprocess.run([php, path], cwd=ROOT, env=env, text=True, capture_output=True)
+    print(result.stdout, end='', flush=True)
+    if result.stderr:
+        print(result.stderr, end='', file=sys.stderr, flush=True)
+    if result.returncode or not re.search(r'(?m)^' + summary + r'$', result.stdout):
+        raise RuntimeError('Incomplete or failed test suite: ' + str(path))
 
 
 def free_port():
@@ -82,8 +95,8 @@ def main():
                     raise RuntimeError("Isolated MySQL did not become ready")
                 time.sleep(0.3)
             subprocess.run([php, "scripts/console.php", "db:init"], cwd=ROOT, env=env, check=True)
-            subprocess.run([php, "tests/unit.php"], cwd=ROOT, env=env, check=True)
-            subprocess.run([php, "tests/plugins.php"], cwd=ROOT, env=env, check=True)
+            run_checks(php, 'tests/unit.php', env, r'\d+ unit checks passed\.')
+            run_checks(php, 'tests/plugins.php', env, r'\d+ plugin checks passed\.')
             with (directory / "http.log").open("w") as log:
                 processes.append(subprocess.Popen([php, "-S", f"127.0.0.1:{http_port}", "-t", "public", "public/index.php"], cwd=ROOT, env=env, stdout=log, stderr=log, start_new_session=True))
             deadline = time.monotonic() + 10
@@ -97,9 +110,7 @@ def main():
                 if time.monotonic() > deadline:
                     raise RuntimeError("Isolated HTTP server did not become ready")
                 time.sleep(0.1)
-            result = subprocess.run([php, "tests/integration.php"], cwd=ROOT, env=env)
-            if result.returncode:
-                raise RuntimeError("Integration checks failed")
+            run_checks(php, 'tests/integration.php', env, r'\d+ checks passed\.')
             upstream_port = free_port()
             env['UPSTREAM_TEST_URL'] = f'http://127.0.0.1:{upstream_port}'
             with (directory / 'upstream.log').open('w') as log:
@@ -113,9 +124,9 @@ def main():
                     if time.monotonic() > deadline:
                         raise RuntimeError('Upstream test fixture not ready')
                     time.sleep(0.1)
-            subprocess.run([php, 'tests/m2.php'], cwd=ROOT, env=env, check=True)
-            subprocess.run([php, 'tests/renewal.php'], cwd=ROOT, env=env, check=True)
-            subprocess.run([php, 'tests/configurable.php'], cwd=ROOT, env=env, check=True)
+            run_checks(php, 'tests/m2.php', env, r'M2 checks: \d+')
+            run_checks(php, 'tests/renewal.php', env, r'Renewal checks: \d+')
+            run_checks(php, 'tests/configurable.php', env, r'\d+ configurable checks passed\.')
             subprocess.run([php, 'artisan', 'migrate', '--force'], cwd=ROOT, env=env, check=True)
             subprocess.run([php, 'tests/browser_fixture.php'], cwd=ROOT, env=env, check=True)
             fpm_socket = directory / 'fpm.sock'

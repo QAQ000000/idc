@@ -72,6 +72,8 @@ class Handler(BaseHTTPRequestHandler):
                 data = copy.deepcopy(CONFIG_SCHEMA)
                 if state['config_mode'] == 'schema':
                     data['config_groups'][0]['options'][0]['sub'][0]['option_name'] += ' changed'
+                if state['config_mode'] == 'input_rules':
+                    data['products']['password']['rule']['len_num'] = 16
             r = {'status': 200, 'data': data}
         elif path == '/cart/get_total':
             total, recurring = '0.01', '0.01'
@@ -88,9 +90,15 @@ class Handler(BaseHTTPRequestHandler):
             r = {'status': 200, 'currency': {'code': 'CNY'}, 'products': {'billingcycle': p['billingcycle'][0], 'stock_control': 0, 'qty': 81, 'total': total, 'signal_price': recurring}}
         elif path == '/cart/settle':
             hostname = p['cart_data[host]'][0]
-            if not re.fullmatch(r'[0-9A-Za-z]{8}', hostname) or not all(re.search(x, hostname) for x in [r'[a-z]',r'[A-Z]',r'[0-9]']):
+            expected_name = r'ser[0-9]{12}' if p['cart_data[pid]'] == ['14'] else r'[0-9A-Za-z]{8}'
+            if not re.fullmatch(expected_name, hostname):
                 self.send_error(422, 'Invalid upstream hostname')
                 return
+            if p['cart_data[pid]'] == ['14']:
+                password = p['cart_data[password]'][0]
+                if not re.fullmatch(r'[A-Za-z0-9]{12,20}', password) or not all(re.search(x, password) for x in [r'[a-z]',r'[A-Z]',r'[0-9]']):
+                    self.send_error(422, 'Invalid upstream password')
+                    return
             with lock:
                 state['last_config'] = {k[25:-1]: v[0] for k, v in p.items() if k.startswith('cart_data[configoptions][')}
                 total, recurring = ('0.01', '0.01')

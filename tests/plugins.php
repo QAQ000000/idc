@@ -143,4 +143,27 @@ try {
     }
     rmdir($root);
 }
+$passwordPolicy = \App\Plugins\Providers\PasswordPolicy::class;
+pluginCheck($passwordPolicy::bounds([]) === ['min_length'=>12,'max_length'=>72], 'drivers without a password policy retain existing limits');
+$passwordPolicy::validate(str_repeat('A',72), []);
+$policy = ['password_policy'=>['min_length'=>12,'max_length'=>20]];
+$passwordPolicy::validate(str_repeat('A',12), $policy);
+$passwordPolicy::validate(str_repeat('A',20), $policy);
+pluginCheck(true, 'password policy accepts both inclusive boundaries');
+pluginRejects(static fn() => $passwordPolicy::validate(str_repeat('A',21), $policy), 'password policy rejects 21 bytes');
+pluginRejects(static fn() => $passwordPolicy::validate(str_repeat('密',7), $policy), 'password limit measures UTF-8 bytes like upstream');
+pluginRejects(static fn() => $passwordPolicy::bounds(['password_policy'=>['min_length'=>12,'max_length'=>'20']]), 'malformed policy fails closed');
+$driver=\App\Plugins\Providers\ProviderRegistry::installed()->get('zjmf');
+$contextMethod=new ReflectionMethod($driver,'inputContext');$nameMethod=new ReflectionMethod($driver,'hostname');
+$schema=json_decode(file_get_contents(__DIR__.'/fixtures/zjmf-product-14.json'),true,64,JSON_THROW_ON_ERROR);
+$context=$contextMethod->invoke($driver,$schema);
+$identity=['order_namespace'=>'isolated-policy-test','idempotency_key'=>'instance_create:inv_1'];
+$name=$nameMethod->invoke($driver,$identity+['driver_context'=>$context]);
+pluginCheck(preg_match('/^ser[0-9]{12}$/D',$name)===1 && $name===$nameMethod->invoke($driver,$identity+['driver_context'=>$context]), 'schema hostname generation remains deterministic for lost-response recovery');
+$oldName=$nameMethod->invoke($driver,$identity+['driver_context'=>['hostname_rule'=>'alnum8']]);
+pluginCheck(preg_match('/^[0-9A-Za-z]{8}$/D',$oldName)===1, 'already submitted alnum8 hostname remains unchanged');
+pluginCheck(str_starts_with($nameMethod->invoke($driver,$identity),'jy-'), 'original pre-rule task identities remain unchanged');
+$schema['products']['host']=json_encode($schema['products']['host']);$schema['products']['password']=json_encode($schema['products']['password']);
+pluginCheck($contextMethod->invoke($driver,$schema)===$context, 'upstream string JSON and decoded generation rules have equal semantics');
+pluginRejects(static fn() => $passwordPolicy::validate('ValidPassword12!', $context), 'upstream alphanumeric generation policy rejects extra symbols');
 echo "{$checks} plugin checks passed.\n";

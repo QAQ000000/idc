@@ -61,6 +61,7 @@ final class BillingService
             }
             $quote = (new CatalogService())->quote($db, $productId, $cycle, $options, true, $preflight);
             (new CatalogService())->assertConfirmed($quote, $preflight, $input['quote_token'] ?? null);
+            \App\Plugins\Providers\PasswordPolicy::validate($password, $preflight['context']??[]);
             $product = $quote['product'];
             $snapshot = json_encode([
                 'product_id'=>$productId, 'remote_pid'=>(int)$product['remote_pid'],

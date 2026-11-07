@@ -322,3 +322,5 @@ CDN 交付可没有 IP，不以缺 IP 判定失败。不包含 M4 电源、重�
 ### M2 配置销售 API 增量
 
 上述选配示例省略其余字段，仅说明 ID 结构；必须以 `/config` 返回的全部字段为准。配置 ID/值规范化后计算 checkout_hash，键顺序及整数/字符串表达不产生新意图。选配订单必须携带确认令牌，下单前的首期价、续费价、Schema 或本地加价变化返回 409；原成功请求重放在预检与令牌检查前返回。新购账单响应增加 recurring_price、config_options 与可读 configuration，实例详情/列表增加 configuration；不公开上游成本或原始 Schema。30 分钟账单付款期限仍有效。旧固定商品可不传令牌，传入则校验。完整行为见 [配置销售契约](M2_CONFIG_SALES.md)。
+
+后续真实验收修正：calculate 响应增加 `password_policy`，含整数 min_length/max_length（UTF-8 字节），可选 character_sets 与 generation_length。字符集名 upper/lower/digit/special 对应 ASCII 大写、小写、数字及 `~@#$&*(){}[]|`，须包含每个指定集合且只使用其并集；前端可按默认长度安全生成。魔方为 12–20 字节并跟随当前 Schema 的生成字符集；未声明策略的驱动保留 12–72 字节。checkout 在入库/扣款前按实时预检策略校验；不能绕过 UI 提交超限密码。报价确认绑定策略，变化需重新确认；成功同键重放仍先返回原单。历史已提交任务的调查不受新校验阻断。

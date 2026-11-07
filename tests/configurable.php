@@ -22,6 +22,7 @@ check(count($form['fields'])===13 && $saved['prices']['monthly']==='17.60','real
 check(!str_contains(json_encode($form),'upstream_id') && !str_contains(json_encode($form),'pricings'),'public form projects only renderable data');
 $q=$catalog->calculate($pid,'monthly',$options);
 check($q['total']==='17.60' && $q['recurring_price']==='15.40','setup fee is excluded from recurring price before markup');
+check($q['password_policy']===['min_length'=>12,'max_length'=>20,'character_sets'=>['upper','lower','digit'],'generation_length'=>12],'quote exposes upstream password generation rules before payment');
 $changed=$options;$changed['276853']='1173031';$changedQuote=$catalog->calculate($pid,'monthly',$changed);
 check($changedQuote['total']==='26.40' && $changedQuote['recurring_price']==='24.20','selected CPU changes server-calculated prices');
 reject(fn()=>$catalog->calculate($pid,'monthly',$options+['999'=>'1']),'unknown option cannot be silently ignored');
@@ -31,14 +32,26 @@ $bad=$options;$bad['276851']='1173031';reject(fn()=>$catalog->calculate($pid,'mo
 $driver=ProviderRegistry::installed()->get('zjmf');$raw=json_decode(file_get_contents(__DIR__.'/fixtures/zjmf-product-14.json'),true);
 foreach (['advanced','customfields'] as $field) { $unsupported=$raw;$unsupported[$field]=[['id'=>1]];try{$driver->describeForm($unsupported);throw new LogicException('Unsupported accepted');}catch(RuntimeException){check(true,'unsupported '.$field.' fails closed');} }
 $db->prepare('INSERT INTO users(email,password,balance) VALUES(?,?,1000)')->execute(['config@example.test',Security::hashPassword('ConfigPassword!22')]);$user=(int)$db->lastInsertId();
-$order=['product_id'=>$pid,'billing_cycle'=>'monthly','hostname'=>'config-host','password'=>'ConfigPassword!22','config_options'=>$options,'checkout_key'=>'config-checkout-0001','use_balance'=>true];
+$order=['product_id'=>$pid,'billing_cycle'=>'monthly','hostname'=>'config-host','password'=>'ConfigPassword22','config_options'=>$options,'checkout_key'=>'config-checkout-0001','use_balance'=>true];
 $before=configValue('SELECT balance FROM users WHERE id=?',[$user]);
+foreach ([21,28] as $length) {
+    $tooLong=$order;$tooLong['password']=str_repeat('A',$length);$tooLong['quote_token']=$q['quote_token'];
+    reject(fn()=>$billing->checkout($user,$tooLong),'overlong password rejected before checkout at '.$length.' bytes');
+}
+foreach (['ConfigPassword!22','configpassword22','CONFIGPASSWORD22','ConfigPasswordxx'] as $password) {
+    $invalid=$order;$invalid['password']=$password;$invalid['quote_token']=$q['quote_token'];
+    reject(fn()=>$billing->checkout($user,$invalid),'password must follow upstream character sets without silently changing input');
+}
+check(configValue('SELECT balance FROM users WHERE id=?',[$user])===$before
+    && (int)configValue('SELECT COUNT(*) FROM invoices WHERE user_id=?',[$user])===0
+    && (int)configValue('SELECT COUNT(*) FROM instances WHERE user_id=?',[$user])===0,'password rejection creates no instance, invoice, debit or Outbox');
 reject(fn()=>$billing->checkout($user,$order),'configurable checkout requires confirmed quote');
 $badToken=$order+['quote_token'=>$q['quote_token'].'0'];reject(fn()=>$billing->checkout($user,$badToken),'tampered quote rejected');
 mode('price');reject(fn()=>$billing->checkout($user,$order+['quote_token'=>$q['quote_token']]),'price change between calculate and checkout requires confirmation');
 check(configValue('SELECT balance FROM users WHERE id=?',[$user])===$before && (int)configValue('SELECT COUNT(*) FROM invoices WHERE user_id=?',[$user])===0,'stale price creates no invoice, debit or Outbox');
 mode('recurring');reject(fn()=>$billing->checkout($user,$order+['quote_token'=>$q['quote_token']]),'renewal price change also invalidates confirmed quote');
 mode('schema');reject(fn()=>$catalog->calculate($pid,'monthly',$options),'changed upstream form requires snapshot refresh');
+mode('input_rules');reject(fn()=>$billing->checkout($user,$order+['quote_token'=>$q['quote_token']]),'generation rule changes invalidate the confirmed quote');
 mode('normal');
 $pf=$catalog->preflight($pid,'monthly',$options);$db->prepare('UPDATE products SET markup_value=11 WHERE id=?')->execute([$pid]);
 reject(fn()=>$catalog->quote($db,$pid,'monthly',$options,true,$pf),'row-lock phase detects local price policy change');
@@ -47,6 +60,7 @@ $order['quote_token']=$catalog->calculate($pid,'monthly',$options)['quote_token'
 check($invoice['status']==='paid' && $invoice['total']==='17.60' && $invoice['recurring_price']==='15.40','paid checkout freezes first and renewal prices independently');
 $snapshot=json_decode(configValue('SELECT config_snapshot FROM instances WHERE id=?',[$invoice['instance_id']]),true);
 check($snapshot['upstream_total']==='16.00' && $snapshot['upstream_recurring']==='14.00' && $snapshot['config_options']===ConfigOptions::canonical($options),'server freezes upstream costs and canonical configuration');
+check($snapshot['driver_context']['hostname_policy']==['prefix'=>'ser','length'=>12,'character_sets'=>['digit']],'hostname generation rules freeze from upstream product schema independent of MySQL JSON key order');
 check(configValue('SELECT recurring_price FROM instances WHERE id=?',[$invoice['instance_id']])==='15.40','renewal service will bill instance recurring price');
 mode('unavailable');$replay=$order;$replay['config_options']=array_reverse($options,true);$replay['quote_token']='expired';
 check($billing->checkout($user,$replay)['invoice_id']===$invoice['invoice_id'],'semantic duplicate replays before quote/upstream checks');
@@ -68,10 +82,13 @@ check(configValue('SELECT status FROM tasks WHERE invoice_id=?',[$renewal['invoi
 $input['remote_pid']=391;reject(fn()=>(new ProductSnapshotService)->save($input),'refresh cannot replace resource ownership');
 // Configuration identity must survive a lost create response without a second purchase.
 $q=$catalog->calculate($pid,'monthly',$changed);$lost=$order;$lost['config_options']=$changed;$lost['checkout_key']='config-lost-response-0001';$lost['quote_token']=$q['quote_token'];
+$lost['password']='BoundaryPassword1234'; // exactly 20 bytes
 $lostInvoice=$billing->checkout($user,$lost);$creates=state()['creates'];
 file_get_contents($upstream.'/__mode?mode=drop_after_create');
 (new OutboxWorker)->runOnce('config-drop-response');
 check(configValue('SELECT status FROM tasks WHERE invoice_id=?',[$lostInvoice['invoice_id']])==='investigating','configurable create response loss enters investigation');
+// A submitted historical order must still be investigated, even if its stored password is now invalid.
+$db->prepare('UPDATE instances SET encrypted_password=? WHERE id=?')->execute([Security::encrypt(str_repeat('X',28)),$lostInvoice['instance_id']]);
 $db->prepare('UPDATE tasks SET next_retry_at=NULL WHERE invoice_id=?')->execute([$lostInvoice['invoice_id']]);
 (new OutboxWorker)->runOnce('config-recover-response');
 check(state()['creates']===1 && configValue('SELECT status FROM instances WHERE id=?',[$lostInvoice['instance_id']])==='active','lost configurable create recovers exact resource without repurchase');
@@ -105,4 +122,16 @@ check(count($public['configuration'])===13 && !isset($public['config_snapshot'])
 
 (new OutboxWorker)->runOnce('config-concurrent-delivery');
 check(configValue('SELECT status FROM tasks WHERE invoice_id=?',[$ids[0]])==='success','concurrent purchase remains deliverable as one task');
+// Historical paid-but-unsubmitted work must be stopped before settle, never truncated or repurchased.
+$legacy=$order;$legacy['checkout_key']='config-legacy-password-0004';$legacy['quote_token']=$catalog->calculate($pid,'monthly',$options)['quote_token'];
+$legacyInvoice=$billing->checkout($user,$legacy);$creates=state()['creates'];
+$db->prepare('UPDATE instances SET encrypted_password=? WHERE id=?')->execute([Security::encrypt(str_repeat('X',28)),$legacyInvoice['instance_id']]);
+(new OutboxWorker)->runOnce('config-legacy-password');
+check(state()['creates']===$creates && str_contains((string)configValue('SELECT last_error FROM tasks WHERE invoice_id=?',[$legacyInvoice['invoice_id']]),'INVALID_INITIAL_PASSWORD'),'worker stops historical overlong password before upstream mutation');
+check(configValue('SELECT status FROM invoices WHERE id=?',[$legacyInvoice['invoice_id']])==='paid' && configValue('SELECT status FROM instances WHERE id=?',[$legacyInvoice['instance_id']])==='pending','password rejection preserves paid funds and pending resource for administrator review');
+$changedRules=$order;$changedRules['checkout_key']='config-changed-input-rules-0005';$changedRules['quote_token']=$catalog->calculate($pid,'monthly',$options)['quote_token'];
+$changedRulesInvoice=$billing->checkout($user,$changedRules);$creates=state()['creates'];mode('input_rules');
+(new OutboxWorker)->runOnce('config-changed-input-rules');
+check(state()['creates']===$creates && str_contains((string)configValue('SELECT last_error FROM tasks WHERE invoice_id=?',[$changedRulesInvoice['invoice_id']]),'INPUT_RULES_CHANGED_BEFORE_EXECUTION'),'rule change after payment stops before remote order or payment');
+mode('normal');
 echo "$checks configurable checks passed.\n";

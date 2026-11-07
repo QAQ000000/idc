@@ -1,4 +1,9 @@
 {
+  "products": {
+    "type": "dcimcloud",
+    "host": {"show":"0","modify":0,"prefix":"ser","rule":{"upper":"0","lower":"0","num":"1","len_num":12}},
+    "password": {"show":"1","modify":0,"rule":{"len_num":"12","upper":"1","lower":"1","num":"1","special":"0"}}
+  },
   "config_groups": [
     {
       "id": 29205,

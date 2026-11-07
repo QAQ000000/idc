@@ -2,7 +2,7 @@
 declare(strict_types=1);
 namespace Plugins\providers\zjmf;
 use App\Core\Money;
-use App\Plugins\Providers\{UpstreamDriverInterface, RenewalDriverInterface, DriverExecutionResult as R, PreflightResult, ConfigurableDriverInterface, ConfigOptions};
+use App\Plugins\Providers\{UpstreamDriverInterface, RenewalDriverInterface, DriverExecutionResult as R, PreflightResult, ConfigurableDriverInterface, ConfigOptions, PasswordPolicy};
 
 /** Magic Finance agent API. Stateless cart_data avoids clearing or sharing the upstream account's cart. */
 final class ZjmfDriver implements UpstreamDriverInterface, RenewalDriverInterface, ConfigurableDriverInterface
@@ -66,6 +66,46 @@ final class ZjmfDriver implements UpstreamDriverInterface, RenewalDriverInterfac
         if (count($form)>100) { throw new \RuntimeException('Too many configuration options'); }
         return array_values($form);
     }
+    /** Product JSON uses generation flags, not merely optional password complexity hints. */
+    private function inputContext(array $schema): array
+    {
+        $context = ['hostname_rule'=>'alnum8', 'password_policy'=>['min_length'=>12,'max_length'=>20]];
+        $product = $schema['products'] ?? [];
+        $decode = static function (mixed $value): array {
+            $rule = is_string($value) ? json_decode($value,true,32,JSON_THROW_ON_ERROR) : $value;
+            if (!is_array($rule) || !is_array($rule['rule']??null)) { throw new \RuntimeException('Invalid upstream generation rules'); }
+            return $rule;
+        };
+        if (isset($product['password'])) {
+            $settings = $decode($product['password']); $rule = $settings['rule']; $sets = [];
+            foreach (['upper'=>'upper','lower'=>'lower','num'=>'digit','special'=>'special'] as $key=>$name) {
+                $flag = $rule[$key]??($key==='special'?0:1);
+                if (!in_array($flag,[0,1,'0','1'],true)) { throw new \RuntimeException('Invalid password generation flag'); }
+                if ((int)$flag===1 && !($key==='special' && ($product['type']??'')==='dcimcloud')) { $sets[]=$name; }
+            }
+            $length = $rule['len_num']??12;
+            if (!is_scalar($length) || !preg_match('/^[0-9]{1,3}$/D',(string)$length)) { throw new \RuntimeException('Invalid password generation length'); }
+            $context['password_policy'] += ['character_sets'=>$sets,'generation_length'=>max(12,min(20,(int)$length))];
+            PasswordPolicy::bounds($context);
+        }
+        if (isset($product['host'])) {
+            $settings = $decode($product['host']); $rule = $settings['rule']; $sets=[];
+            foreach (['upper','lower','num'] as $key) {
+                $flag=$rule[$key]??0;
+                if (!in_array($flag,[0,1,'0','1'],true)) { throw new \RuntimeException('Invalid hostname generation flag'); }
+                if ((int)$flag===1) { $sets[]=$key==='num'?'digit':$key; }
+            }
+            if (!$sets) { $sets=['lower','upper','digit']; }
+            $prefix = (int)($settings['show']??0)===0 ? 'ser' : ($settings['prefix']??'cloud');
+            $length = $rule['len_num']??12;
+            if (!is_string($prefix) || !preg_match('/^[a-zA-Z0-9_-]{0,10}$/D',$prefix)
+                || !is_scalar($length) || !preg_match('/^[0-9]{1,3}$/D',(string)$length)) { throw new \RuntimeException('Invalid hostname generation rule'); }
+            $length=(int)$length; $length=$length<4?12:min(20,$length);
+            $context['hostname_rule']='schema_v1';
+            $context['hostname_policy']=['prefix'=>$prefix,'length'=>$length,'character_sets'=>$sets];
+        }
+        return $context;
+    }
     public function preflightPrice(int $remotePid, string $billingCycle, array $selectedConfig, array $credentials): PreflightResult
     {
         if (!in_array($billingCycle, ['monthly','annually'], true)) { throw new \RuntimeException('Unsupported billing cycle'); }
@@ -84,13 +124,22 @@ final class ZjmfDriver implements UpstreamDriverInterface, RenewalDriverInterfac
         // Legacy fixed snapshots retain their historical equal first/renewal price fallback.
         if ($form && !isset($p['signal_price'])) { throw new \RuntimeException('Recurring price missing'); }
         $recurring = Money::positive((string)($p['signal_price'] ?? $amount));
-        return new PreflightResult($amount, $config, context: ['hostname_rule' => 'alnum8', 'schema_hash'=>ConfigOptions::hash($form)], recurringAmount: $recurring);
+        // Magic/DCIM provisioning accepts at most 20 bytes, even when settle accepts more.
+        // Keep the local 12-byte minimum. This is not the product's generation length.
+        return new PreflightResult($amount, $config, context: $this->inputContext($schema['data']??[]) + ['schema_hash'=>ConfigOptions::hash($form)], recurringAmount: $recurring);
     }
     private function hostname(array $o): string
     {
         $hash = hash('sha256', $o['order_namespace'] . ':' . $o['idempotency_key'], true);
         // Preserve the original identity for already-submitted orders during the rule change.
         if (($o['driver_context']['hostname_rule'] ?? null) === null) { return 'jy-' . substr(bin2hex($hash), 0, 36); }
+        if ($o['driver_context']['hostname_rule']==='schema_v1') {
+            $p=$o['driver_context']['hostname_policy']; $characters='';
+            foreach ($p['character_sets'] as $set) { $characters.=PasswordPolicy::CHARACTER_SETS[$set]; }
+            $name=$p['prefix'];
+            for ($i=0;$i<$p['length'];$i++) { $name.=$characters[ord($hash[$i])%strlen($characters)]; }
+            return $name;
+        }
         if ($o['driver_context']['hostname_rule'] !== 'alnum8') { throw new \RuntimeException('Unknown frozen hostname rule'); }
         $alphabet = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
         $name = '0123456789'[ord($hash[0]) % 10] . 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'[ord($hash[1]) % 26] . 'abcdefghijklmnopqrstuvwxyz'[ord($hash[2]) % 26];
@@ -130,6 +179,14 @@ final class ZjmfDriver implements UpstreamDriverInterface, RenewalDriverInterfac
         $op = null; $submitted = false;
         try {
             $quote = $this->preflightPrice((int)$orderData['remote_pid'], $orderData['billing_cycle'], $orderData['config_options'], $credentials);
+            try { PasswordPolicy::validate($orderData['password'], $quote->context); }
+            catch (\App\Core\ApiException) { return new R('rejected', code: 'INVALID_INITIAL_PASSWORD'); }
+            // New orders freeze the upstream generation contract; never silently substitute an identity.
+            if (($orderData['driver_context']['hostname_rule']??null)==='schema_v1'
+                && (($quote->context['hostname_policy']??null)!=($orderData['driver_context']['hostname_policy']??null)
+                    || ($quote->context['password_policy']??null)!=($orderData['driver_context']['password_policy']??null))) {
+                return new R('rejected',code:'INPUT_RULES_CHANGED_BEFORE_EXECUTION');
+            }
             if (bccomp($quote->amount, $orderData['upstream_total'], 2) !== 0
                 || (isset($orderData['driver_context']['schema_hash']) && $quote->context['schema_hash'] !== $orderData['driver_context']['schema_hash'])
                 || (isset($orderData['upstream_recurring']) && bccomp($quote->recurringAmount, $orderData['upstream_recurring'], 2) !== 0)) { return new R('rejected', code: 'PRICE_CHANGED_BEFORE_EXECUTION'); }

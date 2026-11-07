@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   api, message,
@@ -11,6 +11,28 @@ const configuration = ref<ProductConfiguration>({
 });
 const selected = ref<Record<string, string>>({});
 const confirmed = ref<Quote | null>(null);
+const passwordPolicy = computed(() => confirmed.value?.password_policy ?? { min_length: 12, max_length: 72 });
+const passwordSets: Record<string, string> = {
+  upper: "ABCDEFGHIJKLMNOPQRSTUVWXYZ", lower: "abcdefghijklmnopqrstuvwxyz",
+  digit: "0123456789", special: "~@#$&*(){}[]|",
+};
+const passwordLabels: Record<string, string> = { upper: "大写字母", lower: "小写字母", digit: "数字", special: "特殊符号" };
+function randomIndex(length: number): number {
+  const value = new Uint32Array(1), limit = Math.floor(0x100000000 / length) * length;
+  do { crypto.getRandomValues(value); } while (value[0]! >= limit);
+  return value[0]! % length;
+}
+function generatePassword() {
+  const policy = passwordPolicy.value, sets = policy.character_sets?.map((name) => passwordSets[name]!);
+  if (!sets?.length || !policy.generation_length) return;
+  const characters = sets.join(""), result = sets.map((set) => set[randomIndex(set.length)]!);
+  while (result.length < policy.generation_length) result.push(characters[randomIndex(characters.length)]!);
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = randomIndex(i + 1);
+    [result[i], result[j]] = [result[j]!, result[i]!];
+  }
+  password.value = result.join("");
+}
 const route = useRoute(),
   router = useRouter();
 const product = ref<Product | null>(null),
@@ -75,6 +97,17 @@ watch([cycle, selected], () => {
 }, { flush: "sync" });
 async function submit() {
   if (busy.value || !total.value || !confirmed.value) return;
+  const passwordBytes = new TextEncoder().encode(password.value).length;
+  if (passwordBytes < passwordPolicy.value.min_length || passwordBytes > passwordPolicy.value.max_length) {
+    error.value = `初始密码长度须为 ${passwordPolicy.value.min_length}–${passwordPolicy.value.max_length} 字节`;
+    return;
+  }
+  const sets = passwordPolicy.value.character_sets?.map((name) => passwordSets[name]!);
+  if (sets && (!sets.every((set) => [...password.value].some((character) => set.includes(character)))
+      || [...password.value].some((character) => !sets.join("").includes(character)))) {
+    error.value = "初始密码不符合上游字符规则，请按上游规则生成";
+    return;
+  }
   busy.value = true;
   error.value = "";
   try {
@@ -141,10 +174,12 @@ async function submit() {
             show-password
             autocomplete="new-password"
             required
-            minlength="12"
-            maxlength="72"
+            :minlength="passwordPolicy.min_length"
+            :maxlength="passwordPolicy.max_length"
             :disabled="busy"
           />
+          <p class="muted">{{ passwordPolicy.min_length }}–{{ passwordPolicy.max_length }} 字节<span v-if="passwordPolicy.character_sets">；须组合且仅使用{{ passwordPolicy.character_sets.map((name) => passwordLabels[name]).join("、") }}</span>。</p>
+          <el-button v-if="passwordPolicy.generation_length" :disabled="busy" @click="generatePassword">按上游规则生成密码</el-button>
 </el-form-item
         ><el-checkbox v-model="useBalance" :disabled="busy">
           立即使用余额付款

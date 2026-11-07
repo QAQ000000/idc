@@ -113,4 +113,5 @@ export interface Quote {
   total: string;
   recurring_price: string;
   quote_token: string;
+  password_policy: { min_length: number; max_length: number; character_sets?: string[]; generation_length?: number };
 }

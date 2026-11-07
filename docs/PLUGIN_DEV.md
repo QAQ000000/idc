@@ -292,3 +292,5 @@ class TelegramChannel implements NotificationChannelInterface
 ### 可选配置表单能力
 
 `ConfigurableDriverInterface::describeForm(array $snapshot): array` 将原始快照投影为公开的独立枚举字段列表。核心只识别此接口与 `ConfigOptions` 验证器，驱动负责上游 Schema 语义和不支持能力的拒绝。`PreflightResult.context.schema_hash` 绑定同一安全表单语义；`recurringAmount` 与 `amount` 分别返回周期和首期成本。当前只在魔方实现，不要求其他驱动增加空实现；接口、兼容与验证见 [M2_CONFIG_SALES.md](M2_CONFIG_SALES.md)。
+
+输入约束复用可选 `context.password_policy`：min_length/max_length 为 12–72 范围内整数，可选 character_sets（upper/lower/digit/special）及 generation_length。`PasswordPolicy` 校验通用边界与字符集，核心不解析魔方原始规则；未提供时保留原 12–72。魔方自身将 Schema 转为密码生成策略及冻结的 hostname_policy/schema_v1；新执行前比对当前规则，变化在提交前拒绝。历史 alnum8/jy- 身份与 queryOrder 不改写，调查不生成新密码或重发。规则只在原 JSON 快照/context 中保存，无新实体或配置树。具体字符集、真实缺陷与兼容影响见 [配置销售契约](M2_CONFIG_SALES.md#后续一次真实开通与输入规则修正2026-11-08)。

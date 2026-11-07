@@ -11,7 +11,7 @@ if (config('app.env') !== 'test' || config('database.connections.mysql.database'
 $db=Database::getInstance();
 $mode=$argv[1]??'';
 $s=$db->prepare("SELECT id FROM users WHERE email='runtime@example.test'");$s->execute();$uid=(int)$s->fetchColumn();
-$s=$db->prepare("SELECT p.id FROM products p JOIN providers r ON r.id=p.provider_id WHERE r.endpoint=? AND r.driver='zjmf' ORDER BY p.id DESC LIMIT 1");$s->execute([getenv('UPSTREAM_TEST_URL')]);$pid=(int)$s->fetchColumn();
+$s=$db->prepare("SELECT p.id FROM products p JOIN providers r ON r.id=p.provider_id WHERE r.endpoint=? AND r.driver='zjmf' AND p.remote_pid=391 ORDER BY p.id DESC LIMIT 1");$s->execute([getenv('UPSTREAM_TEST_URL')]);$pid=(int)$s->fetchColumn();
 if (!$pid) { throw new RuntimeException('Isolated upstream fixture missing'); }
 if ($mode==='seed') {
     $db->exec('UPDATE instances SET auto_renew=0');

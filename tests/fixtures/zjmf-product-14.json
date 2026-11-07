@@ -1,0 +1,362 @@
+{
+  "config_groups": [
+    {
+      "id": 29205,
+      "name": "魔方云-洛杉矶A弹性轻量",
+      "options": [
+        {
+          "id": 276851,
+          "option_name": "area|区域",
+          "option_type": 12,
+          "hidden": 0,
+          "linkage_pid": 0,
+          "linkage_top_pid": 0,
+          "sub": [
+            {
+              "id": 1173016,
+              "option_name": "1|US^美国Cera(4837+CMI)",
+              "hidden": 0
+            }
+          ]
+        },
+        {
+          "id": 276852,
+          "option_name": "os|操作系统",
+          "option_type": 5,
+          "hidden": 0,
+          "linkage_pid": 0,
+          "linkage_top_pid": 0,
+          "sub": [
+            {
+              "id": 1173017,
+              "option_name": "1|CentOS^CentOS-7.6.1810-x64",
+              "hidden": 0
+            },
+            {
+              "id": 1173018,
+              "option_name": "13|Debian^Debian-10.3.3-x64",
+              "hidden": 0
+            },
+            {
+              "id": 1173019,
+              "option_name": "32|Ubuntu^Ubuntu-20.04.1-x64",
+              "hidden": 0
+            },
+            {
+              "id": 1173020,
+              "option_name": "66|预设应用^宝塔面板deb11(面板信息登录SSH输入bt default)",
+              "hidden": 0
+            },
+            {
+              "id": 1173021,
+              "option_name": "59|Ubuntu^Ubuntu-22.04-x64",
+              "hidden": 0
+            },
+            {
+              "id": 1173022,
+              "option_name": "57|Debian^Debian-11.1-x64",
+              "hidden": 0
+            },
+            {
+              "id": 1173023,
+              "option_name": "73|Debian^Debian-12.0_x64",
+              "hidden": 0
+            },
+            {
+              "id": 1173024,
+              "option_name": "56|CentOS^CentOS-8-Stream-x64",
+              "hidden": 0
+            },
+            {
+              "id": 1173025,
+              "option_name": "62|CentOS^CentOS-9-Stream-x64",
+              "hidden": 0
+            },
+            {
+              "id": 1173026,
+              "option_name": "67|Rocky^Rocky-linux-8.8-x64",
+              "hidden": 0
+            },
+            {
+              "id": 1173027,
+              "option_name": "68|Rocky^Rocky-linux-9.2-x64",
+              "hidden": 0
+            },
+            {
+              "id": 1173028,
+              "option_name": "78|Ubuntu^Ubuntu-24.04-x64",
+              "hidden": 0
+            },
+            {
+              "id": 1173029,
+              "option_name": "88|Debian^Debian-13.2_x64",
+              "hidden": 0
+            }
+          ]
+        },
+        {
+          "id": 276853,
+          "option_name": "cpu|CPU",
+          "option_type": 6,
+          "hidden": 0,
+          "linkage_pid": 0,
+          "linkage_top_pid": 0,
+          "sub": [
+            {
+              "id": 1173030,
+              "option_name": "1|1核",
+              "hidden": 0
+            },
+            {
+              "id": 1173031,
+              "option_name": "2|2核",
+              "hidden": 0
+            },
+            {
+              "id": 1173032,
+              "option_name": "4|4核",
+              "hidden": 0
+            },
+            {
+              "id": 1173033,
+              "option_name": "8|8核",
+              "hidden": 0
+            }
+          ]
+        },
+        {
+          "id": 276854,
+          "option_name": "memory|内存",
+          "option_type": 8,
+          "hidden": 0,
+          "linkage_pid": 0,
+          "linkage_top_pid": 0,
+          "sub": [
+            {
+              "id": 1173034,
+              "option_name": "1024|1G",
+              "hidden": 0
+            },
+            {
+              "id": 1173035,
+              "option_name": "2048|2G",
+              "hidden": 0
+            },
+            {
+              "id": 1173036,
+              "option_name": "4096|4G",
+              "hidden": 0
+            },
+            {
+              "id": 1173037,
+              "option_name": "6144|6G",
+              "hidden": 0
+            },
+            {
+              "id": 1173038,
+              "option_name": "8192|8G",
+              "hidden": 0
+            },
+            {
+              "id": 1173039,
+              "option_name": "16384|16G",
+              "hidden": 0
+            }
+          ]
+        },
+        {
+          "id": 276855,
+          "option_name": "system_disk_size|系统盘",
+          "option_type": 13,
+          "hidden": 0,
+          "linkage_pid": 0,
+          "linkage_top_pid": 0,
+          "sub": [
+            {
+              "id": 1173040,
+              "option_name": "60G|60G",
+              "hidden": 0
+            },
+            {
+              "id": 1173041,
+              "option_name": "100G|100G",
+              "hidden": 0
+            }
+          ]
+        },
+        {
+          "id": 276856,
+          "option_name": "network_type|网络类型",
+          "option_type": 10,
+          "hidden": 0,
+          "linkage_pid": 0,
+          "linkage_top_pid": 0,
+          "sub": [
+            {
+              "id": 1173042,
+              "option_name": "vpc|VPC网络(企业用途)",
+              "hidden": 0
+            },
+            {
+              "id": 1173043,
+              "option_name": "normal|经典网络(大带宽用途)",
+              "hidden": 0
+            }
+          ]
+        },
+        {
+          "id": 276857,
+          "option_name": "bw|带宽",
+          "option_type": 10,
+          "hidden": 0,
+          "linkage_pid": 0,
+          "linkage_top_pid": 0,
+          "sub": [
+            {
+              "id": 1173044,
+              "option_name": "100|100Mbps",
+              "hidden": 0
+            },
+            {
+              "id": 1173045,
+              "option_name": "200|200Mbps",
+              "hidden": 0
+            }
+          ]
+        },
+        {
+          "id": 276858,
+          "option_name": "ip_num|IP数量",
+          "option_type": 6,
+          "hidden": 0,
+          "linkage_pid": 0,
+          "linkage_top_pid": 0,
+          "sub": [
+            {
+              "id": 1173046,
+              "option_name": "1|1IP",
+              "hidden": 0
+            },
+            {
+              "id": 1173047,
+              "option_name": "3|3IP",
+              "hidden": 0
+            },
+            {
+              "id": 1173048,
+              "option_name": "5|5IP",
+              "hidden": 0
+            }
+          ]
+        },
+        {
+          "id": 276859,
+          "option_name": "data_disk_size|数据盘",
+          "option_type": 13,
+          "hidden": 0,
+          "linkage_pid": 0,
+          "linkage_top_pid": 0,
+          "sub": [
+            {
+              "id": 1173049,
+              "option_name": "30|30G",
+              "hidden": 0
+            },
+            {
+              "id": 1173050,
+              "option_name": "40|40G",
+              "hidden": 0
+            },
+            {
+              "id": 1173051,
+              "option_name": "80|80G",
+              "hidden": 0
+            },
+            {
+              "id": 1173052,
+              "option_name": "100|100G",
+              "hidden": 0
+            },
+            {
+              "id": 1173053,
+              "option_name": "200|200G",
+              "hidden": 0
+            }
+          ]
+        },
+        {
+          "id": 276860,
+          "option_name": "traffic_bill_type|流量计费方式",
+          "option_type": 13,
+          "hidden": 0,
+          "linkage_pid": 0,
+          "linkage_top_pid": 0,
+          "sub": [
+            {
+              "id": 1173054,
+              "option_name": "month|自然月",
+              "hidden": 0
+            },
+            {
+              "id": 1173055,
+              "option_name": "last_30days|订购日至下月",
+              "hidden": 0
+            }
+          ]
+        },
+        {
+          "id": 276861,
+          "option_name": "flow_limit|流量",
+          "option_type": 10,
+          "hidden": 0,
+          "linkage_pid": 0,
+          "linkage_top_pid": 0,
+          "sub": [
+            {
+              "id": 1173056,
+              "option_name": "0|无限流量(长期占用将限速)",
+              "hidden": 0
+            }
+          ]
+        },
+        {
+          "id": 276862,
+          "option_name": "ip_group|IP分组",
+          "option_type": 6,
+          "hidden": 0,
+          "linkage_pid": 0,
+          "linkage_top_pid": 0,
+          "sub": [
+            {
+              "id": 1173057,
+              "option_name": "|随机IP段",
+              "hidden": 0
+            },
+            {
+              "id": 1173058,
+              "option_name": "3|北美IP154.12段",
+              "hidden": 0
+            }
+          ]
+        },
+        {
+          "id": 276863,
+          "option_name": "port|远程端口",
+          "option_type": 6,
+          "hidden": 0,
+          "linkage_pid": 0,
+          "linkage_top_pid": 0,
+          "sub": [
+            {
+              "id": 1173059,
+              "option_name": "auto|随机端口",
+              "hidden": 0
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "advanced": [],
+  "customfields": []
+}

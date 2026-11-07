@@ -99,8 +99,9 @@ onMounted(load);
 </el-descriptions-item
         ><el-descriptions-item label="应付金额">
           ¥{{ invoice.total }}
-</el-descriptions-item
-        ><el-descriptions-item label="付款渠道">
+</el-descriptions-item>
+        <el-descriptions-item v-if="invoice.type === 'new' && invoice.recurring_price" label="每期续费价">¥{{ invoice.recurring_price }}</el-descriptions-item>
+        <el-descriptions-item label="付款渠道">
           {{
             invoice.payment_method === "balance"
               ? "账户余额"
@@ -112,6 +113,7 @@ onMounted(load);
             invoice.quote_expired_at ? invoice.quote_expired_at + " UTC" : "—"
           }}
         </el-descriptions-item>
+        <el-descriptions-item v-for="(item, index) in invoice.configuration" :key="index" :label="item.label">{{ item.value }}</el-descriptions-item>
       </el-descriptions>
       <p v-if="invoice.status === 'paid'" class="muted">
         {{ invoice.type === 'renew' ? '续费权益已记账，请查看实例的上游确认状态。欠费暂停不会仅凭付款解除。' : '付款成功，请等待交付。付款状态不代表资源已经开通。' }}

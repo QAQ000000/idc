@@ -2,7 +2,7 @@
 declare(strict_types=1);
 namespace App\Http\Controllers;
 
-use App\Core\{ApiException, Database, Request, Security};
+use App\Core\{ApiException, Request, Security};
 use App\Middlewares\AuthMiddleware;
 use App\Services\{AuthService, BillingService, CaptchaService, CatalogService};
 use App\Support\ApiResponse;
@@ -28,10 +28,11 @@ final class ApiController
         $body = Request::body();
         $options = $body['config_options'] ?? [];
         if (!is_array($options)) { throw new ApiException('Invalid config_options'); }
-        $catalog->preflight(Request::id($id), Request::text($body, 'billing_cycle', 1, 20), $options);
-        $quote = $catalog->quote(Database::getInstance(), Request::id($id), Request::text($body, 'billing_cycle', 1, 20), $options);
-        unset($quote['product']);
-        return ApiResponse::success($quote);
+        return ApiResponse::success($catalog->calculate(Request::id($id), Request::text($body, 'billing_cycle', 1, 20), $options));
+    }
+    public function configuration(string $id, CatalogService $catalog): JsonResponse
+    {
+        return ApiResponse::success($catalog->configuration(Request::id($id)));
     }
     public function checkout(BillingService $billing): JsonResponse { return ApiResponse::success($billing->checkout((int)AuthMiddleware::user()['id'], Request::body())); }
     public function invoice(string $id, BillingService $billing): JsonResponse { return ApiResponse::success($billing->invoice((int)AuthMiddleware::user()['id'], Request::id($id))); }

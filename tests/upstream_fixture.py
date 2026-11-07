@@ -5,12 +5,15 @@ import sys
 import threading
 import time
 import calendar
+from pathlib import Path
+import copy
+CONFIG_SCHEMA = json.loads((Path(__file__).parent / "fixtures/zjmf-product-14.json").read_text())
 from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 
 state = {'mode': 'normal', 'creates': 0, 'hosts': {}, 'host_counter': 700, 'wrong_host_id': False,
-         'renew_mode': 'normal', 'renew_calls': 0, 'renew_payments': 0, 'renew_invoices': {}}
+         'renew_mode': 'normal', 'renew_calls': 0, 'renew_payments': 0, 'renew_invoices': {}, 'config_mode': 'normal', 'last_create_total': '0.01'}
 lock = threading.Lock()
 
 def next_due(stamp, cycle):
@@ -54,25 +57,49 @@ class Handler(BaseHTTPRequestHandler):
         elif path == '/__wrong_host_id':
             state['wrong_host_id'] = p['enabled'][0] == '1'
             r = {'ok': True}
+        elif path == '/__config_mode':
+            state['config_mode'] = p['mode'][0]
+            r = {'ok': True}
         elif path == '/__state':
-            r = {'creates': state['creates'], 'hosts': len(state['hosts']), 'renew_calls': state['renew_calls'], 'renew_payments': state['renew_payments']}
+            r = {'creates': state['creates'], 'hosts': len(state['hosts']), 'renew_calls': state['renew_calls'], 'renew_payments': state['renew_payments'], 'last_config': state.get('last_config', {})}
         elif path == '/zjmf_api_login':
             r = {'status': 200, 'jwt': 'isolated-test-token'}
         elif self.headers.get('Authorization') != 'Bearer isolated-test-token':
             r = {'status': 405}
         elif path == '/cart/get_product_config':
-            r = {'status': 200, 'data': {'products': {'id': 391}, 'config_groups': [], 'customfields': [], 'advanced': []}}
+            data = {'products': {'id': 391}, 'config_groups': [], 'customfields': [], 'advanced': []}
+            if p.get('pid') == ['14']:
+                data = copy.deepcopy(CONFIG_SCHEMA)
+                if state['config_mode'] == 'schema':
+                    data['config_groups'][0]['options'][0]['sub'][0]['option_name'] += ' changed'
+            r = {'status': 200, 'data': data}
         elif path == '/cart/get_total':
-            r = {'status': 200, 'currency': {'code': 'CNY'}, 'products': {'billingcycle': p['billingcycle'][0], 'stock_control': 0, 'qty': 81, 'total': '0.01'}}
+            total, recurring = '0.01', '0.01'
+            if p.get('pid') == ['14']:
+                opts = {k[13:-1]: v[0] for k, v in p.items() if k.startswith('configoption[')}
+                fields = [o for g in CONFIG_SCHEMA['config_groups'] for o in g['options']]
+                valid = len(opts) == len(fields) and all(opts.get(str(o['id'])) in [str(v['id']) for v in o['sub']] for o in fields)
+                if not valid or state['config_mode'] == 'unavailable':
+                    self.send_error(422, 'Invalid configuration or unavailable quote')
+                    return
+                total, recurring = ('16.00', '14.00') if opts['276853'] == '1173030' else ('24.00', '22.00')
+                if state['config_mode'] == 'price': total = '17.00'
+                if state['config_mode'] == 'recurring': recurring = '15.00'
+            r = {'status': 200, 'currency': {'code': 'CNY'}, 'products': {'billingcycle': p['billingcycle'][0], 'stock_control': 0, 'qty': 81, 'total': total, 'signal_price': recurring}}
         elif path == '/cart/settle':
             hostname = p['cart_data[host]'][0]
             if not re.fullmatch(r'[0-9A-Za-z]{8}', hostname) or not all(re.search(x, hostname) for x in [r'[a-z]',r'[A-Z]',r'[0-9]']):
                 self.send_error(422, 'Invalid upstream hostname')
                 return
             with lock:
+                state['last_config'] = {k[25:-1]: v[0] for k, v in p.items() if k.startswith('cart_data[configoptions][')}
+                total, recurring = ('0.01', '0.01')
+                if p['cart_data[pid]'] == ['14']:
+                    total, recurring = ('16.00', '14.00') if state['last_config'].get('276853') == '1173030' else ('24.00', '22.00')
+                state['last_create_total'] = total
                 state['creates'] += 1
                 state['host_counter'] += 1
-                h = {'id': state['host_counter'], 'domain': p['cart_data[host]'][0], 'productid': int(p['cart_data[pid]'][0]), 'billingcycle': p['cart_data[billingcycle]'][0], 'firstpaymentamount': '0.01', 'amount': '0.01', 'nextduedate': int(time.time()) + 30*86400, 'domainstatus': 'Pending' if state['mode'] == 'pending' else 'Active', 'username': 'cdn-test-user', 'password': 'RemoteSecret!NotInList', 'dedicatedip': ''}
+                h = {'id': state['host_counter'], 'domain': p['cart_data[host]'][0], 'productid': int(p['cart_data[pid]'][0]), 'billingcycle': p['cart_data[billingcycle]'][0], 'firstpaymentamount': total, 'amount': recurring, 'nextduedate': int(time.time()) + 30*86400, 'domainstatus': 'Pending' if state['mode'] == 'pending' else 'Active', 'username': 'cdn-test-user', 'password': 'RemoteSecret!NotInList', 'dedicatedip': ''}
                 state['hosts'][h['id']] = h
                 mode = state['mode']
             if mode == 'drop_after_create':
@@ -82,7 +109,9 @@ class Handler(BaseHTTPRequestHandler):
                 time.sleep(10)
             r = {'status': 200, 'data': {'invoiceid': 900}}
         elif path == '/invoice_page':
-            r = {'status': 200, 'data': {'invoice_total': '0.01', 'invoice_subtotal': '0.01'}}
+            invoice = int(p['invoiceid'][0])
+            amount = state['hosts'][state['renew_invoices'][invoice]]['amount'] if invoice in state['renew_invoices'] else state['last_create_total']
+            r = {'status': 200, 'data': {'invoice_total': amount, 'invoice_subtotal': amount}}
         elif path == '/host/renewpage':
             h = state['hosts'][int(p['hostid'][0])]
             r = {'status': 200, 'data': {'host': h, 'currency': {'code': 'CNY'}, 'cycle': [

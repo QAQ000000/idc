@@ -60,7 +60,7 @@ M0 已接入 Laravel 13/PHP 8.4，并建立唯一 `web/` 前端工程。现有�
 
 `product_id` 使用 seed 返回值；`use_balance=true` 在下单同事务中付款，余额不足则整个下单回滚。省略或设为 `false` 返回未付账单，再通过 `POST /api/v1/invoices/{id}/pay`、载荷 `{ "gateway": "balance" }` 付款。`GET /api/v1/invoices/{id}` 查看状态；`POST /api/v1/invoices/{id}/cancel` 取消未付账单并归还预留库存。金额均使用十进制字符串，客户端提交金额不参与定价。
 
-当前人工交付商品在 `config_cache` 保存 `prices.monthly` / `prices.annually` 十进制字符串与 `fixed_config` 固定规格；暂不接受自定义配置、优惠券或返佣商品。报价有效期 30 分钟；过期余额付款会被拒绝，需取消重下。通过 Laravel 调度每分钟运行 `php artisan invoices:expire` 回收过期未付实例与库存（每次最多 500 笔）。
+当前人工交付商品在 `config_cache` 保存 `prices.monthly` / `prices.annually` 十进制字符串与 `fixed_config` 固定规格；人工商品暂不接受自定义配置；魔方独立枚举选配见下方 M2 配置销售契约。优惠券和返佣商品仍未启用。报价有效期 30 分钟；过期余额付款会被拒绝，需取消重下。通过 Laravel 调度每分钟运行 `php artisan invoices:expire` 回收过期未付实例与库存（每次最多 500 笔）。
 
 实例在待交付期间 `start_date/due_date` 均为 `NULL`。后续 Worker 确认实际交付成功后，通过 `InstanceActivationService::completeCreate()` 带任务令牌与租约原子激活并起租；自然月/年到期日对齐目标月末。已有 MVP 库需先备份，再审阅执行 `database/migrations/001_delivery_dates.sql`，新库直接使用更新后的 `schema.sql`。本次代码修改不自动迁移现有数据库。
 
@@ -150,7 +150,7 @@ REDIS_SERVER=/absolute/path/to/redis-server python3 scripts/test_integration.py
 }
 ```
 
-该命令只预检，不购买；新建 Provider 固定资源命名空间，凭据 AES 加密，重复安装已有支付设置会回滚，不原地换上游账号。当前只支持无配置/自定义字段的固定 CNY 商品，月价必须与上游预检一致，未启用加价引擎。回调 URL 必须能被网关服务器访问，return_url 必须能被付款用户浏览器访问；密钥配置与应用 APP_KEY 由部署侧备份。
+该命令只预检，不购买；新建 Provider 固定资源命名空间，凭据 AES 加密，重复安装已有支付设置会回滚，不原地换上游账号。`connections:install` 保持固定 CNY 商品安装入口，月价必须与上游预检一致。已有 Provider 的选配商品使用 `products:snapshot`，支持独立枚举选项与 none/fixed/percent 加价，详见 [M2 配置销售契约](docs/M2_CONFIG_SALES.md)。回调 URL 必须能被网关服务器访问，return_url 必须能被付款用户浏览器访问；密钥配置与应用 APP_KEY 由部署侧备份。
 
 用独立受管理进程运行 `php artisan outbox:work`，`--once` 处理一次候选。需要值守并监控 critical 日志，用 `php artisan outbox:inspect` 查看任务和 token。人工材料通过 stdin 交给 `php artisan outbox:resolve TASK_ID ADMIN_ID`，具体要求见 [Outbox](docs/TASKS_OUTBOX.md#m2-运行与永久取消)。运行安装步骤和现有 M2 守护接入证据见 [运行部署规程](docs/DEPLOYMENT_RUNTIME.md)。
 
@@ -158,7 +158,7 @@ REDIS_SERVER=/absolute/path/to/redis-server python3 scripts/test_integration.py
 
 当前验收分开记录：隔离环境通过 15 项单元、22 项插件、119 项原集成和 45 项 M2 检查，另通过配置缓存前后的私有 PHP-FPM 身份隔离；前端 lint、类型检查、构建及实例页面桌面/390px 浏览器交互通过。SakuraIDC 商品 391 月付 0.01 CNY、无配置字段。易支付成功凭证 `H202611072309326429` / ¥0.01 已验签，账单与 Outbox 原子结算，上游资源 `host:4250` 曾为 Pending，实时复核发现上游已改名并变为 Active；Worker 按已记录的账号范围稳定资源 ID 核对商品、账期及首付金额后自动恢复，任务 success、实例 active。首购起租为 `2026-11-07 15:33:12 UTC`，首购确认到期为 `2026-12-07 15:33:12 UTC`；所有者详情与凭据接口已实测，凭据值不入文档。
 
-**首条固定套餐真实支付与交付闭环已完成**。后续订单的远端名称为稳定生成的 8 位数字/大小写字母，并随订单快照冻结。原订单保留旧身份，没有重复购买；无远端 ID 的调查仍严格按冻结名称匹配。本轮未伪造回调或用演示余额替代渠道付款；付款结论依据网关验签成功凭证，未进行银行侧独立对账。通用配置表单、其他驱动、原路退款及完整生命周期不在此首链验收范围。
+**首条固定套餐真实支付与交付闭环已完成**。后续订单的远端名称为稳定生成的 8 位数字/大小写字母，并随订单快照冻结。原订单保留旧身份，没有重复购买；无远端 ID 的调查仍严格按冻结名称匹配。本轮未伪造回调或用演示余额替代渠道付款；付款结论依据网关验签成功凭证，未进行银行侧独立对账。高级联动/数量配置、其他驱动、原路退款及完整生命周期不在此首链验收范围。
 
 ## 固定套餐续费与自动代扣
 
@@ -179,3 +179,6 @@ REDIS_SERVER=/absolute/path/to/redis-server python3 scripts/test_integration.py
 
 
 运行验收入口：`REDIS_SERVER=/absolute/path/to/redis-server python3 -B scripts/test_integration.py --runtime`（需 root/systemd，使用独立临时单元与数据库）。22 项运行检查通过，覆盖实际分钟 timer、受控时钟的小时/15 分钟调度、SIGKILL 自动重启与只读恢复、日志及人工待办保留。正式环境单独部署；不把加速租约/受控时钟演练当作整机重启或完整小时墙钟验收。
+
+
+M2 独立枚举配置销售已接入安全 Schema 投影、Element Plus 动态表单、服务端预检/加价、5 分钟报价确认、首期与续费价分别冻结及原 Outbox 参数透传。商品 14 本批仅真实只读核价和隔离交易验收；未导入现有 M2 目录、未新购或重启托管服务。配置范围、操作命令、契约兼容及验收边界见 [配置销售契约](docs/M2_CONFIG_SALES.md)。

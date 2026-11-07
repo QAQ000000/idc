@@ -150,3 +150,8 @@ sequenceDiagram
 
 
 **当前运行接入**：M2 验收环境以独立 systemd Worker 执行 MySQL Outbox，分钟 timer 调用同一 Laravel schedule:run，业务频率仍只定义在 routes/console.php；日志统一由 journal 采集。独立故障演练验证进程重启后调查原任务，不另建队列、重发任务或释放业务占用。正式环境仍需单独部署，见 [运行部署规程](DEPLOYMENT_RUNTIME.md)。
+
+
+### M2 配置销售实现边界（2026-11-08）
+
+现已实现本地 JSON Schema 快照、安全表单投影、独立枚举选配和事务外实时预检；5 分钟 HMAC 报价确认绑定配置、首期/续费价与商品版本，事务内冻结后沿用原资金/Outbox/Worker 链路。核心仅引用可选驱动接口，不依赖具体魔方实现；无配置拆表。Redis/SWR 自动快照刷新、高级联动和数量选项仍是规划。商品 14 本轮真实只读，完整契约与验收边界见 [M2_CONFIG_SALES.md](M2_CONFIG_SALES.md)。

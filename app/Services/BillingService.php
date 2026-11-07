@@ -20,6 +20,7 @@ final class BillingService
         if (!is_array($options) || (isset($input['use_balance']) && !is_bool($input['use_balance']))) {
             throw new ApiException('Invalid order options');
         }
+        $options = \App\Plugins\Providers\ConfigOptions::canonical($options);
         if (!empty($input['coupon_code'])) {
             throw new ApiException('Coupons are not enabled in this milestone');
         }
@@ -59,8 +60,19 @@ final class BillingService
                 }
             }
             $quote = (new CatalogService())->quote($db, $productId, $cycle, $options, true, $preflight);
+            (new CatalogService())->assertConfirmed($quote, $preflight, $input['quote_token'] ?? null);
             $product = $quote['product'];
-            $snapshot = json_encode(['product_id' => $productId, 'remote_pid' => (int)$product['remote_pid'], 'provider_driver' => $product['driver'], 'is_auto_setup' => (bool)$product['is_auto_setup'], 'order_namespace' => json_decode($product['config_cache'], true)['order_namespace'] ?? '', 'upstream_total' => $preflight['amount'] ?? null, 'driver_context' => $preflight['context'] ?? [], 'billing_cycle' => $cycle, 'config_options' => $quote['config_options'], 'total' => $quote['total'], 'stock_reserved' => (int)$product['stock'] > 0], JSON_THROW_ON_ERROR);
+            $snapshot = json_encode([
+                'product_id'=>$productId, 'remote_pid'=>(int)$product['remote_pid'],
+                'provider_driver'=>$product['driver'], 'is_auto_setup'=>(bool)$product['is_auto_setup'],
+                'order_namespace'=>json_decode($product['config_cache'],true)['order_namespace']??'',
+                'upstream_total'=>$preflight['amount']??null, 'upstream_recurring'=>$preflight['recurring']??null,
+                'recurring_price'=>$quote['recurring_price'], 'total'=>$quote['total'],
+                'markup_type'=>$product['markup_type'], 'markup_value'=>$product['markup_value'],
+                'configuration'=>$quote['configuration'], 'config_options'=>$quote['config_options'],
+                'driver_context'=>$preflight['context']??[], 'billing_cycle'=>$cycle,
+                'stock_reserved'=>(int)$product['stock']>0,
+            ],JSON_THROW_ON_ERROR);
             if ((int)$product['stock'] > 0 && !($input['use_balance'] ?? false)) {
                 $stmt = $db->prepare("SELECT COUNT(*) FROM invoices WHERE user_id = ? AND type = 'new' AND status = 'unpaid' AND JSON_EXTRACT(price_snapshot, '$.stock_reserved') = true");
                 $stmt->execute([$userId]);
@@ -70,7 +82,7 @@ final class BillingService
             }
             // 新购租期由交付成功后的原子激活起算，未付与等待交付均不消耗租期。
             $db->prepare('INSERT INTO instances (user_id, product_id, provider_id, name, encrypted_password, config_snapshot, billing_cycle, recurring_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-                ->execute([$userId, $productId, $product['provider_id'], $hostname, Security::encrypt($password), $snapshot, $cycle, $quote['total']]);
+                ->execute([$userId, $productId, $product['provider_id'], $hostname, Security::encrypt($password), $snapshot, $cycle, $quote['recurring_price']]);
             $instanceId = (int)$db->lastInsertId();
             $db->prepare("INSERT INTO invoices (user_id, instance_id, type, total, price_snapshot, quote_expired_at, checkout_key, checkout_hash) VALUES (?, ?, 'new', ?, ?, DATE_ADD(UTC_TIMESTAMP(), INTERVAL 30 MINUTE), ?, ?)")
                 ->execute([$userId, $instanceId, $quote['total'], $snapshot, $checkoutKey, $requestHash]);
@@ -88,7 +100,7 @@ final class BillingService
 
     public function invoice(int $userId, int $id): array
     {
-        $stmt = Database::getInstance()->prepare('SELECT id AS invoice_id, user_id, instance_id, type, total, status, payment_method, paid_at, quote_expired_at FROM invoices WHERE id = ?');
+        $stmt = Database::getInstance()->prepare('SELECT id AS invoice_id, user_id, instance_id, type, total, status, payment_method, paid_at, quote_expired_at, price_snapshot FROM invoices WHERE id = ?');
         $stmt->execute([$id]);
         $invoice = $stmt->fetch();
         if (!$invoice) {
@@ -97,7 +109,11 @@ final class BillingService
         if ((int)$invoice['user_id'] !== $userId) {
             throw new ApiException('Forbidden', 403, 403);
         }
-        unset($invoice['user_id']);
+        $snapshot = json_decode($invoice['price_snapshot'] ?? '{}', true, 64, JSON_THROW_ON_ERROR);
+        $invoice['recurring_price'] = $snapshot['recurring_price'] ?? null;
+        $invoice['config_options'] = $snapshot['config_options'] ?? [];
+        $invoice['configuration'] = $snapshot['configuration'] ?? [];
+        unset($invoice['user_id'], $invoice['price_snapshot']);
         return $invoice;
     }
 

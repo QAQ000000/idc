@@ -74,3 +74,8 @@ Artisan::command('outbox:inspect', function (): void {
     $rows = Database::getInstance()->query("SELECT id,instance_id,invoice_id,action,status,execution_token,lease_until,next_retry_at,upstream_task_id,last_error FROM tasks WHERE status IN ('pending','running','investigating') OR (status='failed' AND last_error LIKE 'MANUAL_AUDIT_REQUIRED:%') ORDER BY id LIMIT 100")->fetchAll();
     $this->line(json_encode($rows, JSON_THROW_ON_ERROR));
 })->purpose('Inspect unresolved tasks without dumping payloads, credentials or raw upstream responses');
+
+Artisan::command('products:snapshot', function (): void {
+    $input=json_decode(stream_get_contents(STDIN,65536),true,64,JSON_THROW_ON_ERROR);
+    $this->line(json_encode(app(\App\Services\ProductSnapshotService::class)->save($input),JSON_THROW_ON_ERROR));
+})->purpose('Import or refresh a JSON schema product using an existing provider; read upstream only');

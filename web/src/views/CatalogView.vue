@@ -36,6 +36,7 @@ onMounted(load);
             cycle === "monthly" ? "月付" : cycle === "annually" ? "年付" : cycle
           }}
           <strong>¥{{ price }}</strong>
+          <span v-if="product.configurable">（默认配置参考价）</span>
         </p>
         <p>
           {{

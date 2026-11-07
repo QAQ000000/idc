@@ -110,7 +110,7 @@ M2 已实现以上最小接口。电源、变配、重装与快照仍为后续�
 
 | DTO | 当前字段与语义 |
 |---|---|
-| `PreflightResult` | `amount` 十进制字符串、`config` 已验证配置、`currency`（首链仅 CNY）、`context` 驱动必需且不含秘密的履约参数（随订单冻结）。预检在数据库事务外完成，锁内比对商品指纹及报价，不接受客户端价格。 |
+| `PreflightResult` | `amount` 十进制字符串、`config` 已验证配置、`currency`（首链仅 CNY）、可空 `recurringAmount` 表示独立的周期续费成本；旧驱动省略时保持原同价行为。`context` 驱动必需且不含秘密的履约参数（随订单冻结）。预检在数据库事务外完成，锁内比对商品指纹及报价，不接受客户端价格。 |
 | `DriverExecutionResult` | `status` 为 `succeeded/pending/unknown/not_executed/rejected`；可含 `remoteInstanceId`、`ipAddress`、`operationId`、固定脱敏 `code`；可选真实 `username/password` 仅经受控交付写入，密码立即 AES 加密，不存任务或日志。 |
 
 `not_executed` 必须证明没有资产、扣款和可延迟执行请求，才可退避重试；`rejected` 是确认未执行且需人工处理的拒绝。超时、非 JSON、异常与最终一致性查无均为 unknown。成功必须真实可用并返回远端 ID，CDN 不要求 IP。`orderData` 包含服务端快照的远端 PID、账期、上游金额、配置、订单命名空间、原任务键、冻结的 driver_context，以及已知 operation_id；密码仅执行时解密。调查不能再次调用 create 或支付。
@@ -121,7 +121,7 @@ Provider 行固定表示一个上游账户/资源命名空间，不允许原地�
 
 `plugins/providers/zjmf` 使用 `/zjmf_api_login`、`/cart/get_product_config`、`/cart/get_total`、带独立 `cart_data` 的 `/cart/settle`、`/invoice_page`、`/apply_credit`。不清空或修改共享购物车，不默认上游支持请求键幂等。付款前校验远端账单实付与小计均等于冻结金额；结果未知不再支付。
 
-按部署生成的 `order_namespace` 与原任务键生成固定 8 位数字/大小写字母的资源名称（含三类字符，不带前缀或连字符），规则写入 `driver_context.hostname_rule=alnum8` 随订单冻结；已提交的旧订单保留原命名规则用于调查，不因升级改名或重购。未知资源 ID 时，调查 `/host/list` 必须严格匹配冻结名称、PID、账期与首付金额，再用账户范围 `/cart/hostinfo` 核对候选 ID；已由结算/支付响应或上述调查取得的稳定资源 ID，以 ID、PID、账期与首付金额核验，允许上游改名，但不接受接口返回另一个 ID。仅 Active 回填。查无/多匹配均保留调查；一小时仍未知转人工。当前首链只允许无配置/无自定义字段的固定月/年商品；配置变化即暂停销售，不冒称通用 Schema 渲染已完成。上游待付款订单也可能迟后执行，不能因为本地没有 Active 资产就直接退款。
+按部署生成的 `order_namespace` 与原任务键生成固定 8 位数字/大小写字母的资源名称（含三类字符，不带前缀或连字符），规则写入 `driver_context.hostname_rule=alnum8` 随订单冻结；已提交的旧订单保留原命名规则用于调查，不因升级改名或重购。未知资源 ID 时，调查 `/host/list` 必须严格匹配冻结名称、PID、账期与首付金额，再用账户范围 `/cart/hostinfo` 核对候选 ID；已由结算/支付响应或上述调查取得的稳定资源 ID，以 ID、PID、账期与首付金额核验，允许上游改名，但不接受接口返回另一个 ID。仅 Active 回填。查无/多匹配均保留调查；一小时仍未知转人工。固定首链兼容保留；新增独立枚举选配支持见 [配置销售契约](M2_CONFIG_SALES.md)，高级联动/自定义字段/数量仍拒绝销售。选配 Schema 变化需刷新快照；付款后执行前成本或 Schema 变化转人工，不重购。上游待付款订单也可能迟后执行，不能因为本地没有 Active 资产就直接退款。
 
 ### 可选续费能力（当前已实现）
 
@@ -287,3 +287,8 @@ class TelegramChannel implements NotificationChannelInterface
 
 1. **零核心侵入与受控基础设施**：插件可以依赖 `App\Plugins\*` 契约，并通过核心公开接口使用授权范围内的服务及基础设施（如本地验证码使用 `App\Core\RedisStore` 存取自身挑战）。不得直接引用其他具体插件；不得跨领域直接写表或绕过 `LedgerService` 修改账户/资金账本；不得修改 `app/` 核心文件来适配某个插件。该约定只明确依赖边界，不表示尚未实现的驱动或扩展能力已经可用；
 2. **异常穿透与调查协议**：网络中断或超时必须保留“结果未知”语义，**严禁盲目重试以防重复扣款、开通或发送**。上游生命周期任务按 [TASKS_OUTBOX.md](TASKS_OUTBOX.md) 转 `investigating`；支付退款按本节及 [PAYMENTS_LEDGER.md](PAYMENTS_LEDGER.md) 保持凭证 `refund_status='pending'` 并反查，不能套用实例任务状态或直接补钱；通知发送按 [NOTIFICATIONS.md](NOTIFICATIONS.md) 转 `pending_manual_check`。明确业务拒绝按各领域契约处理，禁止将同一异常强行映射为所有模块共同的失败终态。
+
+
+### 可选配置表单能力
+
+`ConfigurableDriverInterface::describeForm(array $snapshot): array` 将原始快照投影为公开的独立枚举字段列表。核心只识别此接口与 `ConfigOptions` 验证器，驱动负责上游 Schema 语义和不支持能力的拒绝。`PreflightResult.context.schema_hash` 绑定同一安全表单语义；`recurringAmount` 与 `amount` 分别返回周期和首期成本。当前只在魔方实现，不要求其他驱动增加空实现；接口、兼容与验证见 [M2_CONFIG_SALES.md](M2_CONFIG_SALES.md)。

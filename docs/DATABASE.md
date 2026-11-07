@@ -739,3 +739,8 @@ CREATE TABLE IF NOT EXISTS `migrations` (
 ## 固定套餐续费实现说明
 
 本批复用 instances 的 auto_renew、due_date、recurring_price/override_price、suspend_type，invoices 的 cycle_marker/price_snapshot 及 tasks 的 renew 枚举；仍为 27 张物理表，无新增 schema 迁移。周期标记为 `r:{instance_id}:{原到期日YYYYmmddHHMMSS}`，已付周期保留唯一凭证；取消/销毁保护退款清空标记。续费 price_snapshot 固化原/目标本地日期和独立上游原/目标日期，任务再冻结 needs_unsuspend；不把驱动凭据复制到快照。完整语义见 [续费契约](M2_RENEWAL_CONTRACT.md)。
+
+
+### M2 配置销售 JSON 边界（2026-11-08）
+
+复用 products.config_cache 的 schema/configurable/default_config/prices/order_namespace；prices 是默认选择参考售价。instances.config_snapshot 与 invoices.price_snapshot 冻结 config_options、可读 configuration、upstream_total/upstream_recurring、total/recurring_price、加价规则与 driver_context。instances.recurring_price 使用独立续费售价，不再把含初装费首期价写成续费价。已有固定快照缺少新字段时保留旧语义；无物理表、字段或迁移变化。完整约束见 [配置销售契约](M2_CONFIG_SALES.md)。

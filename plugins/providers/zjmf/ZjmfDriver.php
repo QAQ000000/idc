@@ -2,10 +2,10 @@
 declare(strict_types=1);
 namespace Plugins\providers\zjmf;
 use App\Core\Money;
-use App\Plugins\Providers\{UpstreamDriverInterface, RenewalDriverInterface, DriverExecutionResult as R, PreflightResult};
+use App\Plugins\Providers\{UpstreamDriverInterface, RenewalDriverInterface, DriverExecutionResult as R, PreflightResult, ConfigurableDriverInterface, ConfigOptions};
 
 /** Magic Finance agent API. Stateless cart_data avoids clearing or sharing the upstream account's cart. */
-final class ZjmfDriver implements UpstreamDriverInterface, RenewalDriverInterface
+final class ZjmfDriver implements UpstreamDriverInterface, RenewalDriverInterface, ConfigurableDriverInterface
 {
     public function getDriverId(): string { return 'zjmf'; }
     public function getQueryAuthority(): string { return 'EVENTUAL_CONSISTENCY'; }
@@ -41,21 +41,50 @@ final class ZjmfDriver implements UpstreamDriverInterface, RenewalDriverInterfac
         if ((int)($r['status'] ?? 0) !== 200 || !is_array($r['data'] ?? null)) { throw new \RuntimeException('Product schema unavailable'); }
         return $r['data'];
     }
+    public function describeForm(array $snapshot): array
+    {
+        if (!empty($snapshot['customfields']) || !empty($snapshot['advanced'])) { throw new \RuntimeException('Custom fields and advanced linkage are not supported'); }
+        $form = [];
+        $label = static fn(string $name): string => str_replace('^', ' / ', explode('|', $name, 2)[1] ?? $name);
+        foreach ($snapshot['config_groups'] ?? [] as $group) {
+            foreach ($group['options'] ?? [] as $option) {
+                if (!empty($option['hidden']) || !in_array((int)($option['option_type'] ?? 0), [1,2,5,6,8,10,12,13], true)
+                    || !empty($option['linkage_pid']) || !empty($option['linkage_top_pid'])) { throw new \RuntimeException('Unsupported option or linkage'); }
+                $id = (string)($option['id'] ?? '');
+                if (!preg_match('/^[1-9][0-9]{0,9}$/D', $id) || isset($form[$id])) { throw new \RuntimeException('Invalid option identity'); }
+                $choices = [];
+                foreach ($option['sub'] ?? [] as $sub) {
+                    if (!empty($sub['hidden'])) { continue; }
+                    $value = (string)($sub['id'] ?? '');
+                    if (!preg_match('/^[1-9][0-9]{0,9}$/D', $value) || isset($choices[$value])) { throw new \RuntimeException('Invalid option value'); }
+                    $choices[$value] = ['value'=>$value, 'label'=>$label((string)$sub['option_name'])];
+                }
+                if (!$choices || count($choices)>500) { throw new \RuntimeException('Invalid option choices'); }
+                $form[$id] = ['id'=>$id, 'type'=>'select', 'label'=>$label((string)$option['option_name']), 'choices'=>array_values($choices), 'default'=>array_values($choices)[0]['value']];
+            }
+        }
+        if (count($form)>100) { throw new \RuntimeException('Too many configuration options'); }
+        return array_values($form);
+    }
     public function preflightPrice(int $remotePid, string $billingCycle, array $selectedConfig, array $credentials): PreflightResult
     {
-        if (!in_array($billingCycle, ['monthly','annually'], true) || $selectedConfig !== []) { throw new \RuntimeException('Only fixed monthly/annual plans enabled'); }
+        if (!in_array($billingCycle, ['monthly','annually'], true)) { throw new \RuntimeException('Unsupported billing cycle'); }
         $token = $this->token($credentials);
         $schema = $this->request($credentials, '/cart/get_product_config', ['pid' => $remotePid], token: $token);
-        $data = $schema['data'] ?? [];
-        // First product needs no configurable inputs. Never silently discard a newly required option.
-        if ((int)($schema['status'] ?? 0) !== 200 || !empty($data['config_groups']) || !empty($data['customfields']) || !empty($data['advanced'])) { throw new \RuntimeException('Fixed-plan schema changed; review before sale'); }
-        $r = $this->request($credentials, '/cart/get_total', ['pid' => $remotePid, 'billingcycle' => $billingCycle, 'qty' => 1], 'POST', $token);
+        if ((int)($schema['status'] ?? 0) !== 200) { throw new \RuntimeException('Product schema unavailable'); }
+        $form = $this->describeForm($schema['data'] ?? []);
+        $config = ConfigOptions::validate($form, $selectedConfig);
+        // get_total uses singular configoption; settle uses plural configoptions.
+        $r = $this->request($credentials, '/cart/get_total', ['pid' => $remotePid, 'billingcycle' => $billingCycle, 'qty' => 1, 'configoption'=>$config], 'POST', $token);
         $p = $r['products'] ?? [];
         if ((int)($r['status'] ?? 0) !== 200 || ($r['currency']['code'] ?? '') !== 'CNY'
-            || ($p['billingcycle'] ?? '') !== $billingCycle || ((int)($p['stock_control'] ?? 0) === 1 && (int)($p['qty'] ?? 0) < 1)) {
-            throw new \RuntimeException('Provider quote unavailable');
-        }
-        return new PreflightResult(Money::positive((string)($p['total'] ?? '')), [], context: ['hostname_rule' => 'alnum8']);
+            || ($p['billingcycle'] ?? '') !== $billingCycle || ((int)($p['stock_control'] ?? 0) === 1 && (int)($p['qty'] ?? 0) < 1)
+            || !empty($p['type'])) { throw new \RuntimeException('Provider quote unavailable or promotional pricing unsupported'); }
+        $amount = Money::positive((string)($p['total'] ?? ''));
+        // Legacy fixed snapshots retain their historical equal first/renewal price fallback.
+        if ($form && !isset($p['signal_price'])) { throw new \RuntimeException('Recurring price missing'); }
+        $recurring = Money::positive((string)($p['signal_price'] ?? $amount));
+        return new PreflightResult($amount, $config, context: ['hostname_rule' => 'alnum8', 'schema_hash'=>ConfigOptions::hash($form)], recurringAmount: $recurring);
     }
     private function hostname(array $o): string
     {
@@ -101,7 +130,9 @@ final class ZjmfDriver implements UpstreamDriverInterface, RenewalDriverInterfac
         $op = null; $submitted = false;
         try {
             $quote = $this->preflightPrice((int)$orderData['remote_pid'], $orderData['billing_cycle'], $orderData['config_options'], $credentials);
-            if (bccomp($quote->amount, $orderData['upstream_total'], 2) !== 0) { return new R('rejected', code: 'PRICE_CHANGED_BEFORE_EXECUTION'); }
+            if (bccomp($quote->amount, $orderData['upstream_total'], 2) !== 0
+                || (isset($orderData['driver_context']['schema_hash']) && $quote->context['schema_hash'] !== $orderData['driver_context']['schema_hash'])
+                || (isset($orderData['upstream_recurring']) && bccomp($quote->recurringAmount, $orderData['upstream_recurring'], 2) !== 0)) { return new R('rejected', code: 'PRICE_CHANGED_BEFORE_EXECUTION'); }
             $token = $this->token($credentials);
             $data = ['pid' => $orderData['remote_pid'], 'billingcycle' => $orderData['billing_cycle'], 'host' => $this->hostname($orderData),
                 'password' => $orderData['password'], 'qty' => 1, 'configoptions' => $orderData['config_options']];

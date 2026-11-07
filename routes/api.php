@@ -6,6 +6,7 @@ Route::get('captcha/config', [ApiController::class, 'captcha']);
 Route::post('auth/register', [ApiController::class, 'register'])->middleware('captcha:register');
 Route::post('auth/login', [ApiController::class, 'login'])->middleware('captcha:login');
 Route::get('products', [ApiController::class, 'products']);
+Route::get('products/{id}/config', [ApiController::class, 'configuration']);
 Route::post('products/{id}/calculate', [ApiController::class, 'calculate']);
 Route::middleware('client')->group(function (): void {
     Route::get('auth/me', [ApiController::class, 'me']);

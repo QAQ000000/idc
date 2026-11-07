@@ -96,16 +96,16 @@
 
 ### 1. 获取在售商品列表
 - **请求**：`GET /api/v1/products?type={cloud|dedicated|cdn}`
-- **响应**：商品卡片列表（包含名称、起售价格、类型、库存状态）。
+- **响应**：商品卡片列表（包含名称、默认配置参考价格 prices、configurable、类型、库存状态）。
 
 ### 2. 获取商品配置项表单 (动态渲染)
 - **请求**：`GET /api/v1/products/{id}/config`
-- **说明**：直接读取本地 SWR 缓存快照（5ms 秒开），包含 CPU/内存/带宽/机房/操作系统选项。
+- **说明**：读取本地 JSON 快照，返回 `{fields:[{id,type:"select",label,choices:[{value,label}],default}],defaults,schema_hash}`；不公开原始上游响应，不声称 SWR/性能已实现。当前仅独立枚举。
 
 ### 3. 下单前原子算价与预检 (Pre-flight Check)
 - **请求**：`POST /api/v1/products/{id}/calculate`
-- **载荷**：`{ "billing_cycle": "monthly", "config_options": { "cpu": 2, "memory": 4, "bandwidth": 10 } }`
-- **响应**：返回核验后的精确总价、优惠减免与上游库存确认状态。
+- **载荷**：`{ "billing_cycle": "monthly", "config_options": { "276853": "1173030" } }（示意；实际必须提交全部必填选项）`
+- **响应**：返回核验后的十进制字符串 total、recurring_price、config_options、configuration、billing_cycle 和 quote_token；确认令牌有效 5 分钟。当前不支持优惠券。
 
 ### 4. 提交订单并生成账单
 - **请求**：`POST /api/v1/orders/checkout`
@@ -114,10 +114,11 @@
 {
   "product_id": 153,
   "billing_cycle": "monthly",
-  "config_options": { "8": 2, "12": "centos7" },
+  "config_options": { "276853": "1173030" },
   "hostname": "server-hk-01",
   "password": "RootPassword!",
-  "coupon_code": "SALE2026"
+  "checkout_key": "user-generated-unique-key",
+  "quote_token": "calculate 返回的令牌"
 }
 ```
 - **生命周期流转**：
@@ -316,3 +317,8 @@ CDN 交付可没有 IP，不以缺 IP 判定失败。不包含 M4 电源、重�
 
 
 续费人工核验的 `POST /admin/tasks/{id}/resolve` 增加 `action=investigate`，载荷为 `{ "action":"investigate", "expected_execution_token":7, "evidence":"核验工单及继续查询说明" }`，仅启用 super_admin、已付 renew 的 failed+MANUAL_AUDIT_REQUIRED 可用。成功仍返回 `{resolved:true}`，保留原上游单号转 investigating 并递增 token/写审计；缺材料返回 400、权限不足 403、旧 token/状态或门禁冲突 409。没有续费退款接口；扣款成功但上游未成功由日志告警及待办列表通知管理员，详见 [续费契约](M2_RENEWAL_CONTRACT.md#续费异常通知与人工核验2026-11-08)。
+
+
+### M2 配置销售 API 增量
+
+上述选配示例省略其余字段，仅说明 ID 结构；必须以 `/config` 返回的全部字段为准。配置 ID/值规范化后计算 checkout_hash，键顺序及整数/字符串表达不产生新意图。选配订单必须携带确认令牌，下单前的首期价、续费价、Schema 或本地加价变化返回 409；原成功请求重放在预检与令牌检查前返回。新购账单响应增加 recurring_price、config_options 与可读 configuration，实例详情/列表增加 configuration；不公开上游成本或原始 Schema。30 分钟账单付款期限仍有效。旧固定商品可不传令牌，传入则校验。完整行为见 [配置销售契约](M2_CONFIG_SALES.md)。

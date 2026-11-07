@@ -154,6 +154,7 @@ v-if="instance.status === 'suspended' && instance.suspend_type !== 'billing'"
           <el-switch :model-value="Boolean(instance.auto_renew)" :disabled="busy" aria-label="余额自动续费" @change="setAutomatic(Boolean($event))" />
           <p class="muted">到期前 7 天出账，开启后每 15 分钟检查余额并尝试付款；余额不足保留未付账单。</p>
         </el-descriptions-item>
+        <el-descriptions-item v-for="(item, index) in instance.configuration" :key="index" :label="item.label">{{ item.value }}</el-descriptions-item>
       </el-descriptions>
       <div class="actions">
         <el-button v-if="instance.renewal_eligible" :disabled="busy || ['provisioning','investigating','needs_review'].includes(instance.renewal_status)" type="primary" @click="renew">续费一个账期</el-button>

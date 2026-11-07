@@ -53,6 +53,7 @@ export interface Product {
   type: string;
   stock: number;
   prices: Record<string, string>;
+  configurable: boolean;
 }
 export interface Invoice {
   invoice_id: number;
@@ -62,6 +63,9 @@ export interface Invoice {
   status: string;
   payment_method: string | null;
   quote_expired_at: string | null;
+  recurring_price: string | null;
+  config_options: Record<string, string>;
+  configuration: { label: string; value: string }[];
 }
 export interface Captcha {
   enabled: boolean;
@@ -90,4 +94,23 @@ export interface Instance {
   renewal_invoice_id: number | null;
   renewal_status: string;
   renewal_eligible: boolean;
+  configuration: { label: string; value: string }[];
+}
+
+export interface ConfigField {
+  id: string;
+  type: "select";
+  label: string;
+  choices: { value: string; label: string }[];
+  default: string;
+}
+export interface ProductConfiguration {
+  fields: ConfigField[];
+  schema_hash: string;
+  defaults: Record<string, string>;
+}
+export interface Quote {
+  total: string;
+  recurring_price: string;
+  quote_token: string;
 }

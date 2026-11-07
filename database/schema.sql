@@ -16,6 +16,18 @@ CREATE TABLE IF NOT EXISTS `admins` (
     `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='系统管理与运维员工表';
 
+CREATE TABLE IF NOT EXISTS `system_settings` (
+    `key` VARCHAR(100) NOT NULL PRIMARY KEY COMMENT '配置键 (如 captcha_scenes, payment.alipay_f2f, notify.telegram, seo.config)',
+    `group` VARCHAR(50) NOT NULL DEFAULT 'general' COMMENT '配置分组: general | captcha | payment | notification | seo',
+    `value` JSON NULL COMMENT '非敏感公开配置 JSON',
+    `encrypted_credentials` TEXT NULL COMMENT '敏感密钥 JSON 密文 (经 AES-256-GCM 整体或字段级信封加密)',
+    `updated_by` INT UNSIGNED NULL COMMENT '最后修改管理员ID',
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (`updated_by`) REFERENCES `admins` (`id`) ON DELETE SET NULL,
+    INDEX `idx_group` (`group`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='系统全局与插件动态配置表';
+
 CREATE TABLE IF NOT EXISTS `users` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     `email` VARCHAR(100) NOT NULL UNIQUE COMMENT '登录邮箱',
@@ -25,12 +37,14 @@ CREATE TABLE IF NOT EXISTS `users` (
     `frozen_commission` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '冻结中的推广佣金',
     `available_commission` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '可提现的推广佣金',
     `total_spent` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '历史累计消费金额 (原子累加)',
+    `affiliate_code` VARCHAR(32) NULL UNIQUE COMMENT '用户专属推广邀请码',
     `affiliate_id` BIGINT UNSIGNED NULL COMMENT '推荐人 User ID',
     `status` ENUM('active', 'suspended') NOT NULL DEFAULT 'active' COMMENT '状态',
     `last_login_at` DATETIME NULL COMMENT '最后登录时间',
     `last_login_ip` VARCHAR(45) NULL COMMENT '最后登录IP',
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (`affiliate_id`) REFERENCES `users` (`id`) ON DELETE SET NULL,
     INDEX `idx_affiliate_id` (`affiliate_id`),
     INDEX `idx_login_spent` (`last_login_at`, `total_spent`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='终端客户账户与钱包表';
@@ -42,6 +56,7 @@ CREATE TABLE IF NOT EXISTS `user_verifications` (
     `id_card_num` VARCHAR(255) NOT NULL COMMENT '身份证号(AES-256-GCM信封加密存储)',
     `id_card_hash` CHAR(64) NOT NULL UNIQUE COMMENT '身份证HMAC-SHA256盲索引(用于唯一性查询防作弊)',
     `id_card_birthday` DATE NOT NULL COMMENT '从身份证7-14位解析出的法定公历生日',
+    `birthday_md` CHAR(5) GENERATED ALWAYS AS (DATE_FORMAT(`id_card_birthday`, '%m-%d')) STORED COMMENT '月-日生成列 (如 08-24)',
     `status` ENUM('pending', 'verified', 'rejected') NOT NULL DEFAULT 'pending' COMMENT '认证状态',
     `reject_reason` VARCHAR(255) NULL COMMENT '驳回原因',
     `verified_type` ENUM('manual', 'api_three_factor', 'api_face') NOT NULL DEFAULT 'manual' COMMENT '认证方式',
@@ -49,8 +64,7 @@ CREATE TABLE IF NOT EXISTS `user_verifications` (
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
-    INDEX `idx_birthday` (`id_card_birthday`),
-    INDEX `idx_status` (`status`)
+    INDEX `idx_status_birthday_md` (`status`, `birthday_md`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户实名认证与法定生日档案';
 
 CREATE TABLE IF NOT EXISTS `providers` (
@@ -90,6 +104,7 @@ CREATE TABLE IF NOT EXISTS `products` (
     `type` ENUM('cloud', 'dedicated', 'cdn', 'hosting', 'software') NOT NULL DEFAULT 'cloud',
     `markup_type` ENUM('fixed', 'percent', 'none') NOT NULL DEFAULT 'percent' COMMENT '代理加价策略',
     `markup_value` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '加价值 (如 15.00 表示加价 15%)',
+    `commission_rate` DECIMAL(5,2) NOT NULL DEFAULT 0.00 COMMENT '推广返佣比例 (如 10.00 表示返佣 10%, 0 表示不参与返佣)',
     `config_cache` JSON NULL COMMENT '上游规格与配置项 JSON 快照 (SWR 缓存使用)',
     `is_auto_setup` TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否支付后自动交付',
     `stock` INT NOT NULL DEFAULT -1 COMMENT '本地库存缓存 (-1 表示不限或以远端为准)',
@@ -112,6 +127,7 @@ CREATE TABLE IF NOT EXISTS `instances` (
     `remote_instance_id` VARCHAR(100) NULL COMMENT '远端实例 ID (如魔方的 hostid / PVE vmid)',
     `name` VARCHAR(100) NULL COMMENT '实例自定义名称/主机名',
     `ip_address` VARCHAR(100) NULL COMMENT '主 IP 地址',
+    `encrypted_password` VARCHAR(255) NULL COMMENT '实例当前 Root/面板密码 (AES-256-GCM 密文)',
     `config_snapshot` JSON NULL COMMENT '当前实例规格配置快照',
     `billing_cycle` VARCHAR(20) NOT NULL DEFAULT 'monthly' COMMENT '付费周期',
     `recurring_price` DECIMAL(10,2) NOT NULL COMMENT '标准下次续费价格',
@@ -126,8 +142,10 @@ CREATE TABLE IF NOT EXISTS `instances` (
     `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
     FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE RESTRICT,
+    FOREIGN KEY (`provider_id`) REFERENCES `providers` (`id`) ON DELETE RESTRICT,
     INDEX `idx_user_status` (`user_id`, `status`),
-    INDEX `idx_due_date` (`status`, `due_date`)
+    INDEX `idx_due_date` (`status`, `due_date`),
+    INDEX `idx_provider_remote` (`provider_id`, `remote_instance_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='已购云资源实例';
 
 CREATE TABLE IF NOT EXISTS `instance_snapshot_schedules` (
@@ -186,8 +204,10 @@ CREATE TABLE IF NOT EXISTS `invoices` (
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
+    FOREIGN KEY (`instance_id`) REFERENCES `instances` (`id`) ON DELETE SET NULL,
     UNIQUE KEY `uk_cycle_instance` (`cycle_marker`),
     INDEX `idx_status_due` (`status`, `created_at`),
+    INDEX `idx_user_status_created` (`user_id`, `status`, `created_at`),
     INDEX `idx_instance_type` (`instance_id`, `type`, `status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='账单结算表';
 
@@ -200,7 +220,7 @@ CREATE TABLE IF NOT EXISTS `payment_records` (
     `gateway_trade_no` VARCHAR(100) NULL COMMENT '第三方支付网关交易单号',
     `amount` DECIMAL(10,2) NOT NULL COMMENT '实际收款金额',
     `currency` VARCHAR(10) NOT NULL DEFAULT 'CNY',
-    `status` ENUM('pending', 'success', 'failed', 'late_credited_to_balance', 'refunded') NOT NULL DEFAULT 'pending',
+    `status` ENUM('pending', 'success', 'failed', 'late_credited_to_balance') NOT NULL DEFAULT 'pending',
     `refund_status` ENUM('none', 'pending', 'success', 'failed') NOT NULL DEFAULT 'none' COMMENT '退款状态',
     `refund_amount` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '已退款金额',
     `refund_reason` VARCHAR(255) NULL COMMENT '退款原因',
@@ -231,6 +251,7 @@ CREATE TABLE IF NOT EXISTS `transactions` (
     `remark` VARCHAR(255) NOT NULL COMMENT '流水摘要说明',
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
+    FOREIGN KEY (`invoice_id`) REFERENCES `invoices` (`id`) ON DELETE SET NULL,
     INDEX `idx_user_account` (`user_id`, `account_type`, `created_at`),
     CONSTRAINT `chk_ledger_balance` CHECK (`balance_after` = `balance_before` + `amount`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='资金全账本变动流水';
@@ -253,6 +274,9 @@ CREATE TABLE IF NOT EXISTS `tasks` (
     `last_error` TEXT NULL COMMENT '最近一次报错信息',
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (`instance_id`) REFERENCES `instances` (`id`) ON DELETE RESTRICT,
+    FOREIGN KEY (`invoice_id`) REFERENCES `invoices` (`id`) ON DELETE RESTRICT,
+    INDEX `idx_invoice_id` (`invoice_id`),
     INDEX `idx_poll_lease` (`status`, `lease_until`, `next_retry_at`),
     INDEX `idx_instance_lease` (`instance_id`, `status`, `lease_until`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='事务发件箱与幂等任务队列';
@@ -271,6 +295,8 @@ CREATE TABLE IF NOT EXISTS `commissions` (
     FOREIGN KEY (`affiliate_user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
     FOREIGN KEY (`buyer_user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
     FOREIGN KEY (`invoice_id`) REFERENCES `invoices` (`id`) ON DELETE RESTRICT,
+    UNIQUE KEY `uk_invoice_affiliate` (`invoice_id`, `affiliate_user_id`),
+    INDEX `idx_affiliate_created` (`affiliate_user_id`, `status`, `created_at`),
     INDEX `idx_freeze_poll` (`status`, `freeze_until`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='推广返佣明细';
 
@@ -294,8 +320,6 @@ CREATE TABLE IF NOT EXISTS `commission_withdrawals` (
     INDEX `idx_status_created` (`status`, `created_at`),
     INDEX `idx_user_status` (`user_id`, `status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='推广返佣提现申请表';
-
-SET FOREIGN_KEY_CHECKS = 1;
 
 CREATE TABLE IF NOT EXISTS `notification_deliveries` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -368,7 +392,7 @@ CREATE TABLE IF NOT EXISTS `coupons` (
     `name` VARCHAR(100) NOT NULL COMMENT '优惠券/码名称 (如: 新人礼券 / 2024迎新9折)',
     `code` VARCHAR(50) NULL UNIQUE COMMENT '口令码 (NULL表示专属/定向卡券，填值表示公开优惠码)',
     `type` ENUM('percent', 'fixed') NOT NULL COMMENT '折扣类型: percent打折 / fixed立减',
-    `value` DECIMAL(10,2) NOT NULL COMMENT '折扣值: 如80表示8折(0.80)，20表示立减20元',
+    `value` DECIMAL(10,2) NOT NULL COMMENT '折扣值: percent类型填折扣百分比 0.01~99.99 (如 15.00 表示打85折立减15%, 20.00 表示打8折立减20%); fixed类型填立减金额 (如 20.00 表示立减20元)',
     `min_amount` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '最低消费门槛 (0为无门槛)',
     `target_type` ENUM('all', 'product', 'category') NOT NULL DEFAULT 'all' COMMENT '适用范围',
     `target_id` INT UNSIGNED NULL COMMENT '绑定的商品ID或分类ID',
@@ -495,3 +519,5 @@ FOR EACH ROW BEGIN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Admin audit log is strictly append-only: DELETE is forbidden';
 END;;
 DELIMITER ;
+
+SET FOREIGN_KEY_CHECKS = 1;

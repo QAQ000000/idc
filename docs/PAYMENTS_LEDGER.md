@@ -37,7 +37,23 @@ $$\text{balance\_after} = \text{balance\_before} + \text{amount}$$
 > **数据库内核物理强制与保证范围说明**：  
 > 1. `trg_transactions_check_balance`: 在 `BEFORE INSERT` 时校验 `ROUND(balance_after, 2) == ROUND(balance_before + amount, 2)`，若不平衡直接抛出 `SQLSTATE 45000` 拦截；
 > 2. `trg_transactions_no_update` & `trg_transactions_no_delete`: 拦截任何对 `transactions` 表的修改与删除；
-> 3. **边界厘清**：触发器负责保证单条分录自身的数学等式及不可变性；`users.balance` 与流水账本之间的实时一致性，必须由统一的资金应用服务 (`LedgerService`) 在单一数据库事务中先对 `users FOR UPDATE` 加锁后成对提交保证。
+> 3. **悲观行锁执行规范 (Pessimistic Locking Pattern)**：因为触发器物理校验 `balance_after = balance_before + amount`，应用层资金服务 (`LedgerService`) 在更新任何分户资产时，**严禁使用盲写并发更新**（如 `UPDATE users SET balance = balance - 10` 后盲猜余额），必须先执行悲观行锁锁定当前分户行：
+>    ```sql
+>    -- 标准资金变动标准事务模板
+>    START TRANSACTION;
+>    -- 1. 悲观行锁锁定用户分户资产行
+>    SELECT `balance`, `available_commission`, `frozen_commission` 
+>    FROM `users` WHERE `id` = :user_id FOR UPDATE;
+>    -- 2. 应用层校验业务前置条件 (如扣款时: $balance >= $deduct_amount)
+>    -- 3. 计算确切的 balance_after = balance_before + amount
+>    UPDATE `users` SET `balance` = :balance_after WHERE `id` = :user_id;
+>    -- 4. 插入资金流水 (触发器严格校验 balance_after = balance_before + amount)
+>    INSERT INTO `transactions` (
+>        `user_id`, `invoice_id`, `account_type`, `type`, `amount`,
+>        `balance_before`, `balance_after`, `idempotency_key`, `remark`
+>    ) VALUES (...);
+>    COMMIT;
+>    ```
 
 ---
 
@@ -102,47 +118,95 @@ stateDiagram-v2
     Refunded --> [*]
 ```
 
-### 3.1 退款原子认领与钱包余额防透支预扣（Same-Transaction Claim）
-为彻底消灭“两个并发退款请求同时通过余额判定导致重复原路退款”的重大财务漏洞：
+### 3.1 退款业务场景双轨分流与原子认领规范
 
-> [!CAUTION]
-> **退款认领、幂等键固化、在途余额预扣与记账必须在同一个数据库事务内完成！**
+退款在业务上有两种本质不同的来源，系统严格做场景分流，严禁混淆：
 
+#### 场景 3.1.A：钱包余额/迟到款原路退款 (Balance / Late-Credited Refund)
+- **资金现状**：款项此前已通过充值或迟到款入账存放在 `users.balance` 中。用户申请原路退款时，必须先扣除钱包余额，防止用户在网关退款在途期间再次使用该余额消费。
+- **原子事务规范**：
 ```sql
 START TRANSACTION;
 
--- 1. CAS 原子认领退款请求 (锁定 payment_records 凭证行)
+-- 1. CAS 原子认领退款请求 (锁定 payment_records 凭证行，解耦收款状态与退款状态)
 UPDATE `payment_records` 
 SET `refund_status` = 'pending',
     `refund_amount` = :refund_amount,
     `refund_reason` = :reason,
     `refund_trade_no` = :stable_refund_trade_no -- 稳定退款幂等键 (如 ref_inv_1024_01)
 WHERE `id` = :payment_record_id 
-  AND `status` = 'success' 
+  AND `status` IN ('success', 'late_credited_to_balance')
   AND `refund_status` = 'none';
 -- ⚡ 关键行级校验: 若 affected_rows === 0 说明已被其他并发请求认领，立即 ROLLBACK 并返回并发报错！
 
--- 2. 若该款项此前已入钱包(如迟到款充值)，原子预扣钱包余额防止二次提现
+-- 2. 悲观行锁锁定用户钱包并校验余额
+SELECT `balance` FROM `users` WHERE `id` = :user_id FOR UPDATE;
+-- ⚡ 校验: 若 balance < :refund_amount，说明用户已将款项消费，立即 ROLLBACK 并阻断原路退款！
+
+-- 3. 原子扣减钱包余额并计算 balance_after
 UPDATE `users` 
 SET `balance` = `balance` - :refund_amount 
-WHERE `id` = :user_id 
-  AND `balance` >= :refund_amount;
--- ⚡ 关键行级校验: 若 affected_rows === 0 说明用户已将款项消费，立即 ROLLBACK 并阻断原路退款！
+WHERE `id` = :user_id;
 
--- 3. 插入预扣资金流水
+-- 4. 插入预扣资金流水 (触发器物理校验 balance_after = balance_before + amount)
 INSERT INTO `transactions` (
-    `user_id`, `account_type`, `type`, `amount`, 
+    `user_id`, `invoice_id`, `account_type`, `type`, `amount`, 
     `balance_before`, `balance_after`, `idempotency_key`, `remark`
 ) VALUES (
-    :user_id, 'wallet', 'refund', -:refund_amount,
+    :user_id, :invoice_id, 'wallet', 'refund', -:refund_amount,
     :balance_before, :balance_after, :pre_deduct_idempotency_key, '原路退款在途预扣冻结'
 );
 
--- 4. 账单状态置为退款审批中
+-- 5. 账单状态置为退款审批中
 UPDATE `invoices` SET `status` = 'refund_pending' WHERE `id` = :invoice_id;
 
 COMMIT;
 ```
+
+#### 场景 3.1.B：已交付云资源退订/故障销毁退款 (Cloud Instance Decommissioning Refund)
+- **资金现状**：款项已在开通时交付为云资源，用户钱包余额中**不存在**此笔款项。**严禁从用户 `users.balance` 扣钱**！
+- **原子事务规范**：必须在同一事务中完成“锁账单凭证 + CAS认领 + Outbox下发销毁任务 + 推广佣金追回/取消 + 优惠券回滚”：
+```sql
+START TRANSACTION;
+
+-- 1. 悲观行锁锁定账单与收款凭证
+SELECT `id`, `user_id`, `instance_id`, `status` FROM `invoices` 
+WHERE `id` = :invoice_id AND `status` = 'paid' FOR UPDATE;
+
+-- 2. CAS 原子认领退款凭证 (保持 status='success', 仅推进 refund_status)
+UPDATE `payment_records` 
+SET `refund_status` = 'pending',
+    `refund_amount` = :refund_amount,
+    `refund_reason` = :reason,
+    `refund_trade_no` = :stable_refund_trade_no
+WHERE `id` = :payment_record_id 
+  AND `status` = 'success' 
+  AND `refund_status` = 'none';
+
+-- 3. 账单状态推进至退款中
+UPDATE `invoices` SET `status` = 'refund_pending' WHERE `id` = :invoice_id;
+
+-- 4. 发件箱投递实例销毁排他任务 (Outbox Task-as-Lock)
+INSERT INTO `tasks` (
+    `instance_id`, `invoice_id`, `idempotency_key`, `action`, `status`, `payload`
+) VALUES (
+    :instance_id, :invoice_id, CONCAT('terminate:refund_inv_', :invoice_id), 'terminate', 'pending',
+    JSON_OBJECT('refund_amount', :refund_amount, 'reason', :reason)
+);
+
+-- 5. 级联处理推广返佣 (基于 uk_invoice_affiliate 唯一索引)
+-- 若佣金在冻结期 (status='pending')：直接置为 cancelled，并扣减推荐人的 frozen_commission
+-- 若佣金已入账 (status='available')：置为 clawbacked，并从推荐人 available_commission 扣除 (或产生待收欠款记录)
+
+-- 6. 若使用了单次优惠券，回滚优惠券使用标记 (user_coupons.status = 'unused')
+UPDATE `user_coupons` 
+SET `status` = 'unused', `used_at` = NULL, `order_invoice_id` = NULL 
+WHERE `order_invoice_id` = :invoice_id;
+
+COMMIT;
+```
+> [!NOTE]
+> 事务提交后，若退款方式为**原路退回**，则调用网关 `refundPayment()`；若客户选择**退回站内余额**（场景 SC-L02），则直接调用 `LedgerService` 插入 `type='refund_to_balance'` 的增额流水并将资金充入用户钱包。
 
 ### 3.2 外部网关调用与失败补偿协议 (`refund_rollback`)
 1. **调用时机**：上述数据库事务提交成功后，方可调用支付插件发起 `refundPayment()`；

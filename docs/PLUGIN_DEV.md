@@ -104,11 +104,6 @@ interface UpstreamDriverInterface
     public function getQueryAuthority(): string;
 
     /**
-     * 1.2 权威幂等键反查 (用于调查核验协议)
-     */
-    public function queryByIdempotencyKey(string $idempotencyKey, array $credentials): DriverQueryResult;
-
-    /**
      * 2. 获取商品规格定义 (SWR 缓存使用)
      */
     public function getFormSchema(int $remotePid, array $credentials): array;
@@ -201,6 +196,11 @@ interface PaymentGatewayInterface
      * 原路退款接口 (支持向第三方网关发起原路退回)
      */
     public function refundPayment(PaymentRefundRequest $request, array $config): PaymentRefundResult;
+
+    /**
+     * 退款状态异步反查接口 (用于超时或调查协议单向核验)
+     */
+    public function queryRefund(string $refundTradeNo, array $config): PaymentRefundResult;
 }
 ```
 
@@ -225,7 +225,6 @@ class PaymentRefundResult
         public ?string $gatewayRefundNo = null, // 网关返回的退款流水号
         public ?string $errorMessage = null
     ) {}
-}
 }
 ```
 

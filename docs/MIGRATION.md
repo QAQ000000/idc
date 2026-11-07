@@ -47,10 +47,10 @@ flowchart TD
 
 ## 三、 数据映射规则表
 
-### 1. `shd_clients` $\rightarrow$ `users` (客户导入，管理员来自 shd_user，详见 MIGRATION_RUNBOOK.md)
+### 1. `shd_clients` $\rightarrow$ `users` (客户导入，管理员来自 shd_user 且导入 admins 表，详见 MIGRATION_RUNBOOK.md)
 ```sql
 INSERT INTO jianyun.users (
-    id, email, phone, password, balance, role, status, created_at
+    id, email, phone, password, balance, status, created_at
 )
 SELECT 
     c.id,
@@ -58,7 +58,6 @@ SELECT
     NULLIF(c.phonenumber, ''),
     c.password,              -- 保留原始 32 位 MD5 密文
     c.credit,                -- 余额一分不差对齐
-    'client',                -- 客户 role 统一强制为 client，管理员从 shd_user 独立提取
     IF(c.status = 1, 'active', 'suspended'),
     FROM_UNIXTIME(c.create_time)
 FROM idc2.shd_clients c;

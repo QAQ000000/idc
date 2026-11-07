@@ -82,11 +82,14 @@ class Security
     }
 
     /**
-     * 生成安全 Bearer Token (轻量自包含签名 Token)
+     * 生成安全 Bearer Token (轻量自包含签名 Token, 默认 TTL 2 小时)
      */
-    public static function generateToken(array $payload, int $ttl = 86400 * 7): string
+    public static function generateToken(array $payload, int $ttl = 7200): string
     {
         $header = ['alg' => 'HS256', 'typ' => 'JWT'];
+        if (empty($payload['sub_type'])) {
+            $payload['sub_type'] = 'user'; // 'user' | 'admin'
+        }
         $payload['iat'] = time();
         $payload['exp'] = time() + $ttl;
 

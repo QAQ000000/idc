@@ -53,9 +53,9 @@
 
 ---
 
-## 二、 核心领域模型（8 张核心表）
+## 二、 核心领域模型（8 张核心表，全系统收敛至 25 张物理表）
 
-任何 Agent 在设计实体与存储时，围绕这 8 张核心表展开：
+系统摒弃旧魔方 178 张表的臃肿设计，收敛为 8 张核心业务表 + 17 张支撑/配置/审计表（全库 25 张物理表详见 `docs/DATABASE.md`）。任何 Agent 在设计实体与业务流转时，围绕这 8 张核心表展开：
 
 1. `users`：用户基础信息、钱包可用余额、冻结佣金、密码与认证状态。
 2. `providers`：统一上游服务提供方（包含魔方财务、Easypanel、Sub2API、人工运维）。
@@ -71,7 +71,7 @@
 ## 三、 技术栈与架构基准
 
 - **后端**：PHP 8.2+ (现代框架 / 纯净模块化架构) 或 TypeScript (Node.js)，以清晰的 Domain/Service/Driver 分层设计。
-- **数据库**：MySQL 8.0+（严格启用事务与外键/唯一键，金额使用 DECIMAL(10,2)）。
+- **数据库**：MySQL 8.0+ / 5.7+（严格启用事务与外键/唯一键，金额使用 DECIMAL(10,2)）。
 - **缓存与队列**：Redis（用于快照缓存、分布式锁、Worker 队列调度）。
 - **前端**：Vue 3 + Vite + TypeScript + 现代组件库（TDesign / Element Plus / Shadcn-vue）。
 
@@ -79,28 +79,37 @@
 
 ## 四、 统一 Provider（上游驱动）开发规范
 
-所有上游系统对接必须实现统一接口 `UpstreamDriverInterface`：
+所有上游系统对接必须实现统一接口 `UpstreamDriverInterface`（详见 `docs/PLUGIN_DEV.md`）：
 
 ```php
 interface UpstreamDriverInterface
 {
+    // 声明驱动支持的能力集与反查权威度级别
+    public function getSupportedFeatures(): array;
+    public function getQueryAuthority(): string; // 'AUTHORITATIVE_REALTIME' | 'EVENTUAL_CONSISTENCY' | 'NON_QUERYABLE'
+
     // 获取规格配置定义（供购买页渲染动态表单）
-    public function getFormSchema(Product $product): array;
+    public function getFormSchema(int $remotePid, array $credentials): array;
 
     // 算价预检（下单前校验库存与最终价格）
-    public function preflightPrice(Product $product, array $config): PriceResult;
+    public function preflightPrice(int $remotePid, array $selectedConfig, array $credentials): PreflightResult;
 
     // 核心生命周期动作 (必须支持幂等)
-    public function create(Instance $instance, array $config): ProvisionResult;
-    public function renew(Instance $instance): bool;
-    public function suspend(Instance $instance, string $reason): bool;
-    public function unsuspend(Instance $instance): bool;
-    public function terminate(Instance $instance): bool;
+    public function create(array $orderData, array $credentials): DriverExecutionResult;
+    public function renew(string $remoteInstanceId, string $targetDueDate, array $credentials): DriverExecutionResult;
+    public function suspend(string $remoteInstanceId, string $reason, array $credentials): DriverExecutionResult;
+    public function unsuspend(string $remoteInstanceId, array $credentials): DriverExecutionResult;
+    public function terminate(string $remoteInstanceId, array $credentials): DriverExecutionResult;
+    public function resize(string $remoteInstanceId, array $targetConfig, array $credentials): DriverExecutionResult;
+
+    // 状态反查与幂等对账 (用于超时后结果未知恢复，严禁盲目重试)
+    public function queryOrder(string $idempotencyKey, array $credentials): DriverExecutionResult;
+    public function syncStatus(string $remoteInstanceId, array $credentials): InstanceStatusSnapshot;
 
     // 控制台运维动作
-    public function power(Instance $instance, string $action): bool; // reboot, start, stop
-    public function getVnc(Instance $instance): string;
-    public function reinstall(Instance $instance, string $os, string $password): bool;
+    public function power(string $remoteInstanceId, string $action, array $credentials): DriverExecutionResult;
+    public function getVnc(string $remoteInstanceId, array $credentials): DriverExecutionResult;
+    public function reinstall(string $remoteInstanceId, string $osId, string $password, array $credentials): DriverExecutionResult;
 }
 ```
 

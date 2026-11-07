@@ -17,6 +17,17 @@
 
 ## 2. 协议二：Task-as-Lock 与 Fencing Token 原子回写协议
 
+### 2.0 实例预创建与外键生命周期契约 (Instance Pre-creation on Checkout)
+`tasks` 表通过严格的外键约束 `FOREIGN KEY (instance_id) REFERENCES instances(id) ON DELETE RESTRICT` 保护实例数据完整性。新购订单支付完成触发开通交付时，系统**严禁**在任务中写入伪造或未持久化的实例 ID，必须遵循以下单事务前置落库规范：
+1. **预创建待交付实例记录**：在支付回调或代扣事务中，系统首先在 `instances` 表插入一条初始状态为 `pending` 的实例：
+   - `encrypted_password` 存储加密后的初始 Root/面板密码（经 `Security::encrypt($password)` AES-256-GCM 密文存储，严禁明文）；
+   - `user_id`, `product_id`, `provider_id`, `config_snapshot`, `billing_cycle`, `recurring_price` 均在此阶段完整固化；
+   - `remote_instance_id` 初始留空为 `NULL`，由 Worker 异步交付成功后回填；
+2. **同事务下发发件箱任务**：获取到持久化生成的 `instances.id` 后，在同一个数据库事务内向 `tasks` 表插入 `action='create'` 的交付任务：
+   - 任务的外键 `instance_id` 和 `invoice_id` 均严格有效；
+   - 业务幂等键统一采用 `instance_create:inv_{invoice_id}` 或 `create:inst_{instance_id}`；
+3. **交付完成原子激活**：Worker 异步调用上游开通接口成功后，在第 2.2 节的 Fencing Token 原子事务内，将 `instances.status` 由 `pending` 推进至 `active`，并写入真实的 `remote_instance_id` 与 `ip_address`。
+
 ### 2.1 Task-as-Lock 任务即排他锁
 系统严格遵循 **Task-as-Lock** 原则：`tasks` 表自身即是实例分布式排他租约的唯一事实来源：
 - 实例是否处于互斥占用中，仅需查询是否存在状态为 `running` 或 `investigating` 且 `lease_until > NOW()` 的活跃任务；

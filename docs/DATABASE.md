@@ -1,6 +1,6 @@
 # JianYun (简云) · 数据库设计字典 (Database Schema)
 
-本系统全面丢弃旧魔方 178 张表的臃肿设计，收敛为高内聚、模块化的生产数据架构（全系统共 24 张表：8 张核心业务表 + 16 张支撑业务表）。全表基于 **MySQL 8.0+ InnoDB** 引擎（与 AGENTS.md 技术栈铁律保持一致，不再兼容 5.7），字符集为 `utf8mb4_unicode_ci`，金额统一使用 `DECIMAL(10,2)`。
+本系统全面丢弃旧魔方 178 张表的臃肿设计，收敛为高内聚、模块化的生产数据架构（全系统共 25 张物理表：8 张核心业务表 + 17 张支撑/配置/审计表）。全表基于 **MySQL 8.0+ / 5.7+ InnoDB** 引擎，字符集为 `utf8mb4_unicode_ci`，金额统一使用 `DECIMAL(10,2)`。
 
 > [!IMPORTANT]
 > **全库时间列统一使用 `DATETIME`（不使用 TIMESTAMP）**：`TIMESTAMP` 存在 2038-01-19 的硬上限，会直接导致年付/多年付实例的到期日写入失败。时区语义由应用层统一约定（按 UTC 存取、展示层转换），数据库层不做隐式时区换算。
@@ -9,7 +9,7 @@
 
 ---
 
-## 1. 全库表 DDL（8 张核心业务表 + 16 张支撑业务表）
+## 1. 全库表 DDL（8 张核心业务表 + 17 张支撑业务表）
 
 ### 1.1 `admins`（系统管理与运维员工档案）
 ```sql
@@ -30,7 +30,24 @@ CREATE TABLE `admins` (
 
 ---
 
-### 1.2 `users`（终端客户账户与钱包资产）
+### 1.2 `system_settings`（系统全局与插件动态配置表）
+```sql
+CREATE TABLE `system_settings` (
+    `key` VARCHAR(100) NOT NULL PRIMARY KEY COMMENT '配置键 (如 captcha_scenes, payment.alipay_f2f, notify.telegram, seo.config)',
+    `group` VARCHAR(50) NOT NULL DEFAULT 'general' COMMENT '配置分组: general | captcha | payment | notification | seo',
+    `value` JSON NULL COMMENT '非敏感公开配置 JSON',
+    `encrypted_credentials` TEXT NULL COMMENT '敏感密钥 JSON 密文 (经 AES-256-GCM 整体或字段级信封加密)',
+    `updated_by` INT UNSIGNED NULL COMMENT '最后修改管理员ID',
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (`updated_by`) REFERENCES `admins` (`id`) ON DELETE SET NULL,
+    INDEX `idx_group` (`group`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='系统全局与插件动态配置表';
+```
+
+---
+
+### 1.3 `users`（终端客户账户与钱包资产）
 ```sql
 CREATE TABLE `users` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -41,12 +58,14 @@ CREATE TABLE `users` (
     `frozen_commission` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '冻结中的推广佣金',
     `available_commission` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '可提现的推广佣金',
     `total_spent` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '历史累计消费金额 (原子累加)',
+    `affiliate_code` VARCHAR(32) NULL UNIQUE COMMENT '用户专属推广邀请码',
     `affiliate_id` BIGINT UNSIGNED NULL COMMENT '推荐人 User ID',
     `status` ENUM('active', 'suspended') NOT NULL DEFAULT 'active' COMMENT '状态',
     `last_login_at` DATETIME NULL COMMENT '最后登录时间',
     `last_login_ip` VARCHAR(45) NULL COMMENT '最后登录IP',
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (`affiliate_id`) REFERENCES `users` (`id`) ON DELETE SET NULL,
     INDEX `idx_affiliate_id` (`affiliate_id`),
     INDEX `idx_login_spent` (`last_login_at`, `total_spent`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='终端客户账户与钱包表';
@@ -54,7 +73,7 @@ CREATE TABLE `users` (
 
 ---
 
-### 1.3 `user_verifications`（用户实名认证与法定公历生日档案）
+### 1.4 `user_verifications`（用户实名认证与法定公历生日档案）
 ```sql
 CREATE TABLE `user_verifications` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -63,6 +82,7 @@ CREATE TABLE `user_verifications` (
     `id_card_num` VARCHAR(255) NOT NULL COMMENT '身份证号(AES-256-GCM信封加密存储)',
     `id_card_hash` CHAR(64) NOT NULL UNIQUE COMMENT '身份证HMAC-SHA256盲索引(用于唯一性查询防作弊)',
     `id_card_birthday` DATE NOT NULL COMMENT '从身份证7-14位解析出的法定公历生日',
+    `birthday_md` CHAR(5) GENERATED ALWAYS AS (DATE_FORMAT(`id_card_birthday`, '%m-%d')) STORED COMMENT '月-日生成列 (如 08-24)',
     `status` ENUM('pending', 'verified', 'rejected') NOT NULL DEFAULT 'pending' COMMENT '认证状态',
     `reject_reason` VARCHAR(255) NULL COMMENT '驳回原因',
     `verified_type` ENUM('manual', 'api_three_factor', 'api_face') NOT NULL DEFAULT 'manual' COMMENT '认证方式',
@@ -70,14 +90,13 @@ CREATE TABLE `user_verifications` (
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
-    INDEX `idx_birthday` (`id_card_birthday`),
-    INDEX `idx_status` (`status`)
+    INDEX `idx_status_birthday_md` (`status`, `birthday_md`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户实名认证与法定生日档案';
 ```
 
 ---
 
-### 1.4 `providers`（上游服务提供方与自营节点）
+### 1.5 `providers`（上游服务提供方与自营节点）
 ```sql
 CREATE TABLE `providers` (
     `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -93,7 +112,7 @@ CREATE TABLE `providers` (
 
 ---
 
-### 1.5 `product_categories`（产品分类与聚合落地页表）
+### 1.6 `product_categories`（产品分类与聚合落地页表）
 ```sql
 CREATE TABLE `product_categories` (
     `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -115,7 +134,7 @@ CREATE TABLE `product_categories` (
 
 ---
 
-### 1.6 `products`（商品目录定义）
+### 1.7 `products`（商品目录定义）
 ```sql
 CREATE TABLE `products` (
     `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -126,6 +145,7 @@ CREATE TABLE `products` (
     `type` ENUM('cloud', 'dedicated', 'cdn', 'hosting', 'software') NOT NULL DEFAULT 'cloud',
     `markup_type` ENUM('fixed', 'percent', 'none') NOT NULL DEFAULT 'percent' COMMENT '代理加价策略',
     `markup_value` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '加价值 (如 15.00 表示加价 15%)',
+    `commission_rate` DECIMAL(5,2) NOT NULL DEFAULT 0.00 COMMENT '推广返佣比例 (如 10.00 表示返佣 10%, 0 表示不参与返佣)',
     `config_cache` JSON NULL COMMENT '上游规格与配置项 JSON 快照 (SWR 缓存使用)',
     `is_auto_setup` TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否支付后自动交付',
     `stock` INT NOT NULL DEFAULT -1 COMMENT '本地库存缓存 (-1 表示不限或以远端为准)',
@@ -143,7 +163,7 @@ CREATE TABLE `products` (
 
 ---
 
-### 1.7 `instances`（已售云实例与服务资产）
+### 1.8 `instances`（已售云实例与服务资产）
 ```sql
 CREATE TABLE `instances` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -153,6 +173,7 @@ CREATE TABLE `instances` (
     `remote_instance_id` VARCHAR(100) NULL COMMENT '远端实例 ID (如魔方的 hostid / PVE vmid)',
     `name` VARCHAR(100) NULL COMMENT '实例自定义名称/主机名',
     `ip_address` VARCHAR(100) NULL COMMENT '主 IP 地址',
+    `encrypted_password` VARCHAR(255) NULL COMMENT '实例当前 Root/面板密码 (AES-256-GCM 密文)',
     `config_snapshot` JSON NULL COMMENT '当前实例规格配置快照 (如 CPU、内存、OS)',
     `billing_cycle` VARCHAR(20) NOT NULL DEFAULT 'monthly' COMMENT '付费周期: monthly/annually等',
     `recurring_price` DECIMAL(10,2) NOT NULL COMMENT '标准下次续费价格',
@@ -167,8 +188,10 @@ CREATE TABLE `instances` (
     `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
     FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE RESTRICT,
+    FOREIGN KEY (`provider_id`) REFERENCES `providers` (`id`) ON DELETE RESTRICT,
     INDEX `idx_user_status` (`user_id`, `status`),
-    INDEX `idx_due_date` (`status`, `due_date`)
+    INDEX `idx_due_date` (`status`, `due_date`),
+    INDEX `idx_provider_remote` (`provider_id`, `remote_instance_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='已购云资源实例';
 ```
 > [!NOTE]
@@ -176,7 +199,7 @@ CREATE TABLE `instances` (
 
 ---
 
-### 1.8 `instance_snapshot_schedules`（云快照与备份自主计划任务）
+### 1.9 `instance_snapshot_schedules`（云快照与备份自主计划任务）
 ```sql
 CREATE TABLE `instance_snapshot_schedules` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -202,7 +225,7 @@ CREATE TABLE `instance_snapshot_schedules` (
 
 ---
 
-### 1.9 `instance_snapshots`（云快照与备份归属凭证台账）
+### 1.10 `instance_snapshots`（云快照与备份归属凭证台账）
 ```sql
 CREATE TABLE `instance_snapshots` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -229,7 +252,7 @@ CREATE TABLE `instance_snapshots` (
 
 ---
 
-### 1.10 `invoices`（账单与结算）
+### 1.11 `invoices`（账单与结算）
 ```sql
 CREATE TABLE `invoices` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -246,8 +269,10 @@ CREATE TABLE `invoices` (
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
+    FOREIGN KEY (`instance_id`) REFERENCES `instances` (`id`) ON DELETE SET NULL,
     UNIQUE KEY `uk_cycle_instance` (`cycle_marker`),
     INDEX `idx_status_due` (`status`, `created_at`),
+    INDEX `idx_user_status_created` (`user_id`, `status`, `created_at`),
     INDEX `idx_instance_type` (`instance_id`, `type`, `status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='账单结算表';
 ```
@@ -256,7 +281,7 @@ CREATE TABLE `invoices` (
 
 ---
 
-### 1.11 `payment_records`（支付尝试与实收凭证流水表）
+### 1.12 `payment_records`（支付尝试与实收凭证流水表）
 ```sql
 CREATE TABLE `payment_records` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -267,7 +292,7 @@ CREATE TABLE `payment_records` (
     `gateway_trade_no` VARCHAR(100) NULL COMMENT '第三方支付网关交易单号',
     `amount` DECIMAL(10,2) NOT NULL COMMENT '实际收款金额 (严禁使用 float)',
     `currency` VARCHAR(10) NOT NULL DEFAULT 'CNY',
-    `status` ENUM('pending', 'success', 'failed', 'late_credited_to_balance', 'refunded') NOT NULL DEFAULT 'pending',
+    `status` ENUM('pending', 'success', 'failed', 'late_credited_to_balance') NOT NULL DEFAULT 'pending',
     `refund_status` ENUM('none', 'pending', 'success', 'failed') NOT NULL DEFAULT 'none' COMMENT '退款状态',
     `refund_amount` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '已退款金额',
     `refund_reason` VARCHAR(255) NULL COMMENT '退款原因',
@@ -287,7 +312,7 @@ CREATE TABLE `payment_records` (
 
 ---
 
-### 1.12 `transactions`（资金全账本明细流水）
+### 1.13 `transactions`（资金全账本明细流水）
 ```sql
 CREATE TABLE `transactions` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -303,6 +328,7 @@ CREATE TABLE `transactions` (
     `remark` VARCHAR(255) NOT NULL COMMENT '流水摘要说明',
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
+    FOREIGN KEY (`invoice_id`) REFERENCES `invoices` (`id`) ON DELETE SET NULL,
     INDEX `idx_user_account` (`user_id`, `account_type`, `created_at`),
     CONSTRAINT `chk_ledger_balance` CHECK (`balance_after` = `balance_before` + `amount`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='资金全账本变动流水';
@@ -317,7 +343,7 @@ CREATE TABLE `transactions` (
 
 ---
 
-### 1.13 `tasks`（事务发件箱与幂等任务队列）
+### 1.14 `tasks`（事务发件箱与幂等任务队列）
 ```sql
 CREATE TABLE `tasks` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -337,6 +363,9 @@ CREATE TABLE `tasks` (
     `last_error` TEXT NULL COMMENT '最近一次报错信息',
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (`instance_id`) REFERENCES `instances` (`id`) ON DELETE RESTRICT,
+    FOREIGN KEY (`invoice_id`) REFERENCES `invoices` (`id`) ON DELETE RESTRICT,
+    INDEX `idx_invoice_id` (`invoice_id`),
     INDEX `idx_poll_lease` (`status`, `lease_until`, `next_retry_at`),
     INDEX `idx_instance_lease` (`instance_id`, `status`, `lease_until`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='事务发件箱与幂等任务队列';
@@ -346,7 +375,7 @@ CREATE TABLE `tasks` (
 
 ---
 
-### 1.14 `commissions`（推荐返利明细与退款联动）
+### 1.15 `commissions`（推荐返利明细与退款联动）
 ```sql
 CREATE TABLE `commissions` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -362,13 +391,15 @@ CREATE TABLE `commissions` (
     FOREIGN KEY (`affiliate_user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
     FOREIGN KEY (`buyer_user_id`) REFERENCES `users` (`id`) ON DELETE RESTRICT,
     FOREIGN KEY (`invoice_id`) REFERENCES `invoices` (`id`) ON DELETE RESTRICT,
+    UNIQUE KEY `uk_invoice_affiliate` (`invoice_id`, `affiliate_user_id`),
+    INDEX `idx_affiliate_created` (`affiliate_user_id`, `status`, `created_at`),
     INDEX `idx_freeze_poll` (`status`, `freeze_until`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='推广返佣明细';
 ```
 
 ---
 
-### 1.15 `commission_withdrawals`（推广返佣提现申请表）
+### 1.16 `commission_withdrawals`（推广返佣提现申请表）
 ```sql
 CREATE TABLE `commission_withdrawals` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -394,7 +425,7 @@ CREATE TABLE `commission_withdrawals` (
 
 ---
 
-### 1.16 `notification_deliveries`（通知投递与渠道级幂等防重）
+### 1.17 `notification_deliveries`（通知投递与渠道级幂等防重）
 ```sql
 CREATE TABLE `notification_deliveries` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -416,7 +447,7 @@ CREATE TABLE `notification_deliveries` (
 
 ---
 
-### 1.17 `web_push_subscriptions`（浏览器 Web Push 设备订阅）
+### 1.18 `web_push_subscriptions`（浏览器 Web Push 设备订阅）
 ```sql
 CREATE TABLE `web_push_subscriptions` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -437,7 +468,7 @@ CREATE TABLE `web_push_subscriptions` (
 
 ---
 
-### 1.18 `tickets`（客服工单）
+### 1.19 `tickets`（客服工单）
 ```sql
 CREATE TABLE `tickets` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -460,7 +491,7 @@ CREATE TABLE `tickets` (
 
 ---
 
-### 1.19 `ticket_replies`（工单协同与回复）
+### 1.20 `ticket_replies`（工单协同与回复）
 ```sql
 CREATE TABLE `ticket_replies` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -483,14 +514,14 @@ CREATE TABLE `ticket_replies` (
 
 ---
 
-### 1.20 `coupons`（统一促销与优惠券模板）
+### 1.21 `coupons`（统一促销与优惠券模板）
 ```sql
 CREATE TABLE `coupons` (
     `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     `name` VARCHAR(100) NOT NULL COMMENT '优惠券/码名称 (如: 新人礼券 / 2024迎新9折)',
     `code` VARCHAR(50) NULL UNIQUE COMMENT '口令码 (NULL表示专属/定向卡券，填值表示公开优惠码)',
     `type` ENUM('percent', 'fixed') NOT NULL COMMENT '折扣类型: percent打折 / fixed立减',
-    `value` DECIMAL(10,2) NOT NULL COMMENT '折扣值: 如80表示8折(0.80)，20表示立减20元',
+    `value` DECIMAL(10,2) NOT NULL COMMENT '折扣值: percent类型填折扣百分比 0.01~99.99 (如 15.00 表示打85折立减15%, 20.00 表示打8折立减20%); fixed类型填立减金额 (如 20.00 表示立减20元)',
     `min_amount` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '最低消费门槛 (0为无门槛)',
     `target_type` ENUM('all', 'product', 'category') NOT NULL DEFAULT 'all' COMMENT '适用范围',
     `target_id` INT UNSIGNED NULL COMMENT '绑定的商品ID或分类ID',
@@ -507,7 +538,7 @@ CREATE TABLE `coupons` (
 
 ---
 
-### 1.21 `user_coupons`（用户卡券资产包）
+### 1.22 `user_coupons`（用户卡券资产包）
 ```sql
 CREATE TABLE `user_coupons` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -530,7 +561,7 @@ CREATE TABLE `user_coupons` (
 
 ---
 
-### 1.22 `coupon_issue_logs`（优惠券发放幂等与审计日志）
+### 1.23 `coupon_issue_logs`（优惠券发放幂等与审计日志）
 ```sql
 CREATE TABLE `coupon_issue_logs` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -549,7 +580,7 @@ CREATE TABLE `coupon_issue_logs` (
 
 ---
 
-### 1.23 `articles`（统一公告与帮助中心）
+### 1.24 `articles`（统一公告与帮助中心）
 ```sql
 CREATE TABLE `articles` (
     `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -574,7 +605,7 @@ CREATE TABLE `articles` (
 
 ---
 
-### 1.24 `admin_audit_logs`（管理员高危操作审计日志）
+### 1.25 `admin_audit_logs`（管理员高危操作审计日志）
 ```sql
 CREATE TABLE `admin_audit_logs` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -595,6 +626,6 @@ CREATE TABLE `admin_audit_logs` (
 
 ---
 
-### 1.25 静态下载配置 (`config/downloads.json`)
+### 1.26 静态下载配置 (`config/downloads.json`)
 > [!NOTE]
 > 为避免过度设计与僵尸数据表，常用工具与客户端驱动下载彻底从数据库中解耦，采用静态配置文件 `config/downloads.json` 进行统一维护，具备零 SQL 查询损耗与极简维护优势。

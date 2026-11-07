@@ -59,13 +59,25 @@ flowchart TD
 
 ### 3.2 命令二：`SendBirthdayGifts`（法定公历生日关怀）
 - **触发时机**：每日凌晨 00:05 定时跑批执行；
-- **筛选条件**：
+- **高性能索引筛选与平闰年 2月29日 智能兼顾**：
+  依托 `user_verifications.birthday_md` 物理生成列与复合索引 `idx_status_birthday_md(status, birthday_md)`，查询可直接走 B+Tree 索引范围查找，彻底消除对百万级认证表的 `DATE_FORMAT()` 全表扫描。
+  
+  **平年 2月29日 关怀规则**：在非闰年（当年 2 月仅 28 天）的 2 月 28 日，系统将 2 月 29 日出生的用户一并纳入关怀名单：
   ```sql
-  SELECT v.user_id, u.email 
+  -- 正常日期或闰年当日执行：
+  SELECT v.user_id, u.email, v.birthday_md
   FROM `user_verifications` v
   JOIN `users` u ON v.user_id = u.id
   WHERE v.status = 'verified'
-    AND DATE_FORMAT(v.id_card_birthday, '%m-%d') = DATE_FORMAT(CURRENT_DATE, '%m-%d');
+    AND v.birthday_md = DATE_FORMAT(CURRENT_DATE, '%m-%d');
+
+  -- 平年 2月28日 特殊处理 (合并 02-28 与 02-29 出生用户):
+  -- PHP 端判断: !checkdate(2, 29, (int)date('Y')) && date('m-d') === '02-28'
+  SELECT v.user_id, u.email, v.birthday_md
+  FROM `user_verifications` v
+  JOIN `users` u ON v.user_id = u.id
+  WHERE v.status = 'verified'
+    AND v.birthday_md IN ('02-28', '02-29');
   ```
 - **自然年防重键**：`cycle_marker = CONCAT('bday:', user_id, ':', YEAR(CURRENT_DATE))`；
 - **业务效果**：一人一年严格只准享受一次生日关怀特权，杜绝多领。

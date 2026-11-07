@@ -100,7 +100,14 @@
   "coupon_code": "SALE2026"
 }
 ```
-- **响应**：返回生成的账单 `{ "invoice_id": 81092, "total": 45.00, "status": "unpaid" }`。
+- **生命周期流转**：
+  1. 系统原子预检库存并锁定当前价格快照，插入 `invoices` 记录；
+  2. 若用户使用余额全额支付或收银台付款成功，系统在单一事务中：
+     - 预创建 `status='pending'` 的 `instances` 记录，密码经 AES-256-GCM 信封加密存入 `instances.encrypted_password`；
+     - 将生成的 `instances.id` 关联至 `invoices.instance_id`；
+     - 向 `tasks` 表下发 `action='create'` 发件箱任务（外键 `instance_id` 物理有效）；
+  3. 后台 Worker 异步执行开通，完成后带 Fencing Token 原子更新 `instances.status = 'active'` 并回填远端 ID 与 IP。
+- **响应**：返回生成的账单 `{ "invoice_id": 81092, "instance_id": 10024, "total": 45.00, "status": "unpaid" }`。
 
 ---
 

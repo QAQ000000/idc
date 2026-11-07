@@ -9,6 +9,8 @@ use App\Core\Database;
 class AuthMiddleware
 {
     private static ?array $currentUser = null;
+    private static bool $isImpersonated = false;
+    private static ?int $operatorAdminId = null;
 
     public function handle(): bool
     {
@@ -22,6 +24,12 @@ class AuthMiddleware
         $payload = Security::verifyToken($token);
         if (!$payload || empty($payload['uid'])) {
             Response::error('Unauthorized: Token expired or invalid', 401, 401);
+            return false;
+        }
+
+        // 作用域严格校验：拒绝将 admin Token 用于普通客户路由
+        if (($payload['sub_type'] ?? 'user') !== 'user') {
+            Response::error('Unauthorized: Invalid token scope for client portal', 401, 401);
             return false;
         }
 
@@ -40,6 +48,37 @@ class AuthMiddleware
             return false;
         }
 
+        self::$isImpersonated = !empty($payload['is_impersonated']);
+        self::$operatorAdminId = $payload['operator_admin_id'] ?? null;
+
+        // 模拟登录（Impersonation）写操作与敏感凭据拦截
+        if (self::$isImpersonated) {
+            $uri = $_SERVER['REQUEST_URI'] ?? '';
+            $method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
+            $blockedPatterns = [
+                '/password',
+                '/email',
+                '/phone',
+                '/withdraw',
+                '/verification',
+                '/realname',
+                '/security',
+            ];
+
+            foreach ($blockedPatterns as $pattern) {
+                if (stripos($uri, $pattern) !== false && $method !== 'GET') {
+                    Response::error(
+                        'Forbidden: Impersonated sessions are strictly prohibited from modifying security credentials or requesting withdrawals',
+                        403,
+                        403
+                    );
+                    return false;
+                }
+            }
+        }
+
+        $user['is_impersonated'] = self::$isImpersonated;
+        $user['operator_admin_id'] = self::$operatorAdminId;
         self::$currentUser = $user;
         return true;
     }
@@ -47,5 +86,15 @@ class AuthMiddleware
     public static function user(): ?array
     {
         return self::$currentUser;
+    }
+
+    public static function isImpersonated(): bool
+    {
+        return self::$isImpersonated;
+    }
+
+    public static function operatorAdminId(): ?int
+    {
+        return self::$operatorAdminId;
     }
 }

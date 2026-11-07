@@ -1,82 +1,58 @@
 [
   {
+    "id": 1,
+    "category": "远程连接",
+    "title": "JuiceSSH 安卓专业终端客户端",
+    "description": "专为 Android 打造的高性能全功能 SSH 客户端工具",
+    "download_url": "https://juicessh.com/",
+    "downloads_count": 968
+  },
+  {
+    "id": 2,
+    "category": "远程连接",
+    "title": "ConnectBot 开源 SSH 客户端",
+    "description": "Android 平台老牌开源轻量级 SSH 与 Telnet 终端",
+    "download_url": "https://connectbot.org/",
+    "downloads_count": 344
+  },
+  {
     "id": 3,
-    "category": "常用工具",
-    "title": "acg社区源码（后台账号liujianghao密码miko2016）",
-    "description": "acg社区源码（后台账号liujianghao密码miko2016）",
-    "download_url": "https://sakuraidc.cc/download/product_file?id=3",
-    "downloads_count": 365
+    "category": "远程连接",
+    "title": "Microsoft Remote Desktop 远程桌面安卓端",
+    "description": "微软官方出品的 Android Windows 云服务器 RDP 远程管理套件",
+    "download_url": "https://play.google.com/store/apps/details?id=com.microsoft.rdc.androidx",
+    "downloads_count": 295
   },
   {
     "id": 4,
     "category": "常用工具",
-    "title": "烟花模拟器",
-    "description": "下载链接https://hssq.lanzoue.com/iNK0D0jtjqba",
-    "download_url": "https://sakuraidc.cc/download/product_file?id=4",
-    "downloads_count": 182
+    "title": "PuTTY 官方 Windows SSH 客户端",
+    "description": "Windows 平台极其经典的轻量级开源 SSH / Telnet 客户端",
+    "download_url": "https://www.chiark.greenend.org.uk/~sgtatham/putty/latest.html",
+    "downloads_count": 420
+  },
+  {
+    "id": 5,
+    "category": "常用工具",
+    "title": "WinSCP SFTP/FTP 传输工具",
+    "description": "Windows 平台使用广泛的开源 SFTP 与 FTP 图形化文件传输管理器",
+    "download_url": "https://winscp.net/eng/download.php",
+    "downloads_count": 512
+  },
+  {
+    "id": 6,
+    "category": "网站源码",
+    "title": "Typecho 极简开源博客内核",
+    "description": "超轻量高效的开源 PHP 个人博客系统",
+    "download_url": "https://typecho.org/download",
+    "downloads_count": 187
   },
   {
     "id": 7,
-    "category": "远程连接",
-    "title": "JuiceSSH 密码:dioj",
-    "description": "密码:dioj",
-    "download_url": "https://sakuraidc.cc/download/product_file?id=7",
-    "downloads_count": 968
-  },
-  {
-    "id": 8,
-    "category": "远程连接",
-    "title": "ConnectBot 密码:a189",
-    "description": "https://hssq.lanzoue.com/iA0jK0mncgcb 密码:a189",
-    "download_url": "https://sakuraidc.cc/download/product_file?id=8",
-    "downloads_count": 344
-  },
-  {
-    "id": 9,
     "category": "网站源码",
-    "title": "集成主题版typecho",
-    "description": "轻量博客系统 Typecho 集成主题版",
-    "download_url": "https://sakuraidc.cc/download/product_file?id=9",
-    "downloads_count": 87
-  },
-  {
-    "id": 10,
-    "category": "网站源码",
-    "title": "wordpress-6.1.1-zh_CN 内置qzdy主题",
-    "description": "WordPress 中文版 内置站长 qzdy 主题",
-    "download_url": "https://sakuraidc.cc/download/product_file?id=10",
-    "downloads_count": 118
-  },
-  {
-    "id": 11,
-    "category": "前端特效",
-    "title": "流星雨html",
-    "description": "https://hssq.lanzoue.com/i5r7F0qaxzej",
-    "download_url": "https://sakuraidc.cc/download/product_file?id=11",
-    "downloads_count": 170
-  },
-  {
-    "id": 12,
-    "category": "远程连接",
-    "title": "微软远程桌面安卓APP提取码:zw7p",
-    "description": "Microsoft Remote Desktop 官方安卓客户端",
-    "download_url": "https://sakuraidc.cc/download/product_file?id=12",
-    "downloads_count": 295
-  },
-  {
-    "id": 13,
-    "category": "网站源码",
-    "title": "Linux中国 开源社区 wordpress 网站文件和网站数据库分享",
-    "description": "后台用户名密码都是 admin 我也放里面了",
-    "download_url": "https://sakuraidc.cc/download/product_file?id=13",
-    "downloads_count": 143
-  },
-  {
-    "id": 14,
-    "category": "常用工具",
-    "title": "LoveCards",
-    "description": "表白卡片源码",
-    "download_url": "https://sakuraidc.cc/download/product_file?id=14",
-    "downloads_count": 187
+    "title": "WordPress 中文最新正式版",
+    "description": "全球市场份额第一的强大建站与内容管理系统",
+    "download_url": "https://cn.wordpress.org/download/",
+    "downloads_count": 260
   }
 ]

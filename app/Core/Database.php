@@ -8,6 +8,7 @@ use PDOException;
 class Database
 {
     private static ?PDO $instance = null;
+    private static int $transactionDepth = 0;
 
     public static function getInstance(): PDO
     {
@@ -44,19 +45,35 @@ class Database
     }
 
     /**
-     * 在事务中执行回调
+     * 在事务中执行回调 (支持嵌套事务与 SAVEPOINT 保存点重入)
      */
     public static function transaction(callable $callback)
     {
         $pdo = self::getInstance();
-        $pdo->beginTransaction();
+        if (self::$transactionDepth === 0) {
+            $pdo->beginTransaction();
+        } else {
+            $pdo->exec('SAVEPOINT sp_' . self::$transactionDepth);
+        }
+        self::$transactionDepth++;
+
         try {
             $result = $callback($pdo);
-            $pdo->commit();
+            self::$transactionDepth--;
+            if (self::$transactionDepth === 0) {
+                $pdo->commit();
+            } else {
+                $pdo->exec('RELEASE SAVEPOINT sp_' . self::$transactionDepth);
+            }
             return $result;
         } catch (\Throwable $e) {
-            if ($pdo->inTransaction()) {
-                $pdo->rollBack();
+            self::$transactionDepth--;
+            if (self::$transactionDepth === 0) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+            } else {
+                $pdo->exec('ROLLBACK TO SAVEPOINT sp_' . self::$transactionDepth);
             }
             throw $e;
         }

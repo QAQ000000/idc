@@ -26,7 +26,7 @@ class AuthMiddleware
         }
 
         $db = Database::getInstance();
-        $stmt = $db->prepare("SELECT id, email, phone, balance, frozen_commission, available_commission, role, status FROM users WHERE id = ?");
+        $stmt = $db->prepare("SELECT id, email, phone, balance, frozen_commission, available_commission, status FROM users WHERE id = ?");
         $stmt->execute([$payload['uid']]);
         $user = $stmt->fetch();
 

@@ -6,7 +6,14 @@ class Security
 {
     private static function getAppKey(): string
     {
-        $key = getenv('APP_KEY') ?: 'REDACTED_HISTORICAL_SECRET';
+        $key = getenv('APP_KEY');
+        if ($key === false || $key === '') {
+            // 主密钥只允许来自环境变量；缺少时必须拒绝启动，
+            // 严禁静默降级到任何代码内置的固定密钥（等于加密形同虚设）。
+            throw new \RuntimeException(
+                'Missing required environment variable APP_KEY (supports "base64:<key>" or plain secret). Refusing to run with a fallback key.'
+            );
+        }
         if (str_starts_with($key, 'base64:')) {
             return base64_decode(substr($key, 7));
         }

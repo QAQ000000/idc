@@ -15,14 +15,22 @@ class Database
             $host = getenv('DB_HOST') ?: '127.0.0.1';
             $port = getenv('DB_PORT') ?: '3306';
             $dbname = getenv('DB_DATABASE') ?: 'jianyun';
-            $user = getenv('DB_USERNAME') ?: 'idc2';
-            $pass = getenv('DB_PASSWORD') ?: 'REDACTED_HISTORICAL_SECRET';
+            $user = getenv('DB_USERNAME');
+            $pass = getenv('DB_PASSWORD');
+            // 凭据只允许来自环境变量；缺少时必须拒绝启动，严禁代码内置兜底凭据。
+            if ($user === false || $user === '' || $pass === false || $pass === '') {
+                throw new \RuntimeException(
+                    'Missing required environment variables DB_USERNAME / DB_PASSWORD. Credentials must be provided via the environment, never hardcoded.'
+                );
+            }
 
             $dsn = "mysql:host={$host};port={$port};dbname={$dbname};charset=utf8mb4";
             $options = [
                 PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
                 PDO::ATTR_EMULATE_PREPARES => false,
+                // 全库 DATETIME 约定为 UTC 存取（见 docs/DATABASE.md），连接层强制 UTC 时区
+                PDO::MYSQL_ATTR_INIT_COMMAND => "SET time_zone = '+00:00'",
             ];
 
             try {

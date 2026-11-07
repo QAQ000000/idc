@@ -2,7 +2,7 @@
 declare(strict_types=1);
 require dirname(__DIR__) . '/bootstrap.php';
 
-use App\Core\{ApiException, Database, Request, Response, Router};
+use App\Core\{ApiException, Database, Request, Response, Router, Security};
 use App\Middlewares\{AuthMiddleware, CaptchaMiddleware};
 use App\Services\{AuthService, BillingService, CaptchaService, CatalogService};
 
@@ -26,7 +26,7 @@ $router->get('/api/v1/captcha/config', static function (): void {
     if (!is_string($scene)) {
         throw new ApiException('Invalid captcha scene');
     }
-    Response::success((new CaptchaService())->config($scene, $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1'));
+    Response::success((new CaptchaService())->config($scene, Security::getClientIp()));
 });
 $router->post('/api/v1/auth/register', static fn() => Response::success((new AuthService())->register(Request::body())), [new CaptchaMiddleware('register')]);
 $router->post('/api/v1/auth/login', static fn() => Response::success((new AuthService())->login(Request::body())), [new CaptchaMiddleware('login')]);

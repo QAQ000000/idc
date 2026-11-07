@@ -2,7 +2,7 @@
 declare(strict_types=1);
 namespace App\Middlewares;
 
-use App\Core\{ApiException, Request};
+use App\Core\{ApiException, Request, Security};
 use App\Services\CaptchaService;
 
 final class CaptchaMiddleware
@@ -15,7 +15,7 @@ final class CaptchaMiddleware
         if (!is_array($payload)) {
             throw new ApiException('Invalid captcha payload', 422, 422);
         }
-        (new CaptchaService())->verify($this->scene, $payload, $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1');
+        (new CaptchaService())->verify($this->scene, $payload, Security::getClientIp());
         return true;
     }
 }

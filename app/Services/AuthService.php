@@ -56,7 +56,7 @@ final class AuthService
                 $db->prepare('UPDATE users SET password = ? WHERE id = ?')->execute([Security::hashPassword($password), $user['id']]);
             }
             $db->prepare('UPDATE users SET last_login_at = UTC_TIMESTAMP(), last_login_ip = ? WHERE id = ?')
-                ->execute([$_SERVER['REMOTE_ADDR'] ?? '127.0.0.1', $user['id']]);
+                ->execute([Security::getClientIp(), $user['id']]);
             return $this->session($db, (int)$user['id']);
         });
     }

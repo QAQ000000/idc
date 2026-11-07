@@ -36,6 +36,7 @@ def main():
         DB_PASSWORD=secrets.token_hex(24), REDIS_HOST="127.0.0.1", REDIS_PORT=str(redis_port),
         REDIS_PASSWORD=secrets.token_hex(24), TEST_BASE_URL=f"http://127.0.0.1:{http_port}",
         PHP_CLI_SERVER_WORKERS="4", CORS_ALLOWED_ORIGINS="https://console.example.test",
+        TRUSTED_PROXIES="127.0.0.1,::1",
     )
     processes = []
     container_created = False
@@ -65,6 +66,7 @@ def main():
                     raise RuntimeError("Isolated MySQL did not become ready")
                 time.sleep(0.3)
             subprocess.run([php, "scripts/console.php", "db:init"], cwd=ROOT, env=env, check=True)
+            subprocess.run([php, "tests/unit.php"], cwd=ROOT, env=env, check=True)
             with (directory / "http.log").open("w") as log:
                 processes.append(subprocess.Popen([php, "-S", f"127.0.0.1:{http_port}", "-t", "public", "public/index.php"], cwd=ROOT, env=env, stdout=log, stderr=log, start_new_session=True))
             deadline = time.monotonic() + 10

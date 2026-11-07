@@ -27,9 +27,9 @@ final class BillingService
             $quote = (new CatalogService())->quote($db, $productId, $cycle, $options, true);
             $product = $quote['product'];
             $snapshot = json_encode(['product_id' => $productId, 'billing_cycle' => $cycle, 'config_options' => $quote['config_options'], 'total' => $quote['total'], 'stock_reserved' => (int)$product['stock'] > 0], JSON_THROW_ON_ERROR);
-            $due = (new \DateTimeImmutable())->modify($cycle === 'monthly' ? '+1 month' : '+1 year')->format('Y-m-d H:i:s');
-            $db->prepare('INSERT INTO instances (user_id, product_id, provider_id, name, encrypted_password, config_snapshot, billing_cycle, recurring_price, due_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-                ->execute([$userId, $productId, $product['provider_id'], $hostname, Security::encrypt($password), $snapshot, $cycle, $quote['total'], $due]);
+            // 新购租期由交付成功后的原子激活起算，未付与等待交付均不消耗租期。
+            $db->prepare('INSERT INTO instances (user_id, product_id, provider_id, name, encrypted_password, config_snapshot, billing_cycle, recurring_price) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+                ->execute([$userId, $productId, $product['provider_id'], $hostname, Security::encrypt($password), $snapshot, $cycle, $quote['total']]);
             $instanceId = (int)$db->lastInsertId();
             $db->prepare("INSERT INTO invoices (user_id, instance_id, type, total, price_snapshot, quote_expired_at) VALUES (?, ?, 'new', ?, ?, DATE_ADD(UTC_TIMESTAMP(), INTERVAL 30 MINUTE))")
                 ->execute([$userId, $instanceId, $quote['total'], $snapshot]);

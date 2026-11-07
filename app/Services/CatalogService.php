@@ -20,7 +20,7 @@ final class CatalogService
 
     public function quote(PDO $db, int $id, string $cycle, array $options, bool $lock = false): array
     {
-        $stmt = $db->prepare('SELECT p.*, r.driver, r.status AS provider_status FROM products p JOIN providers r ON r.id = p.provider_id WHERE p.id = ?' . ($lock ? ' FOR UPDATE' : ''));
+        $stmt = $db->prepare('SELECT p.*, r.driver, r.status AS provider_status FROM products p JOIN providers r ON r.id = p.provider_id WHERE p.id = ?' . ($lock ? ' FOR UPDATE OF p' : ''));
         $stmt->execute([$id]);
         $product = $stmt->fetch();
         if (!$product || $product['status'] !== 'active' || (int)$product['provider_status'] !== 1) {

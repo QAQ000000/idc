@@ -3,7 +3,7 @@ declare(strict_types=1);
 require dirname(__DIR__) . '/bootstrap.php';
 
 use App\Core\{ApiException, Database, Money, RedisStore, Security};
-use App\Services\{DemoService, LedgerService};
+use App\Services\{CatalogService, DemoService, InstanceActivationService, LedgerService};
 
 if (getenv('APP_ENV') !== 'test' || !preg_match('/^jianyun_test(?:_[a-z0-9]+)?$/D', getenv('DB_DATABASE') ?: '')) {
     fwrite(STDERR, "Integration tests require APP_ENV=test and an isolated jianyun_test[_suffix] database.\n");
@@ -24,10 +24,10 @@ function check(bool $condition, string $message): void
     $checks++;
     echo "PASS: {$message}\n";
 }
-function http(string $method, string $path, ?array $body = null, ?string $token = null): array
+function http(string $method, string $path, ?array $body = null, ?string $token = null, array $headers = []): array
 {
     global $base;
-    $curl = handle($method, $base . $path, $body, $token);
+    $curl = handle($method, $base . $path, $body, $token, $headers);
     $raw = curl_exec($curl);
     if ($raw === false) {
         throw new RuntimeException('HTTP transport failed');
@@ -36,10 +36,10 @@ function http(string $method, string $path, ?array $body = null, ?string $token 
     curl_close($curl);
     return [$status, json_decode($raw, true, 32, JSON_THROW_ON_ERROR)];
 }
-function handle(string $method, string $url, ?array $body, ?string $token)
+function handle(string $method, string $url, ?array $body, ?string $token, array $extraHeaders = [])
 {
     $curl = curl_init($url);
-    $headers = ['Content-Type: application/json'];
+    $headers = array_merge(['Content-Type: application/json'], $extraHeaders);
     if ($token) {
         $headers[] = 'Authorization: Bearer ' . $token;
     }
@@ -74,11 +74,11 @@ function parallel(array $requests): array
     curl_multi_close($multi);
     return $results;
 }
-function captcha(string $scene): array
+function captcha(string $scene, string $ip = '127.0.0.1'): array
 {
     // 仅测试进程直接写隔离 Redis 的已知答案；生产接口从不暴露答案。
     $id = bin2hex(random_bytes(24));
-    (new RedisStore())->command('SET', 'jianyun:captcha:' . $id, json_encode(['hash' => hash('sha256', 'ABCDE'), 'scene' => $scene, 'ip' => '127.0.0.1']), 'EX', '300');
+    (new RedisStore())->command('SET', 'jianyun:captcha:' . $id, json_encode(['hash' => hash('sha256', 'ABCDE'), 'scene' => $scene, 'ip' => $ip]), 'EX', '300');
     return ['challenge_id' => $id, 'answer' => 'ABCDE'];
 }
 function scalar(string $sql, array $params = []): mixed
@@ -123,6 +123,13 @@ check(!isset($user['password']) && $user['balance'] === '0.00', 'register return
 check(http('POST', '/api/v1/auth/register', $registration + ['captcha_payload' => $proof])[0] === 422, 'captcha cannot be replayed');
 check(http('POST', '/api/v1/auth/register', $registration + ['captcha_payload' => captcha('register')])[0] === 409, 'duplicate email rejected');
 check(http('POST', '/api/v1/auth/login', $registration + ['captcha_payload' => captcha('login')])[0] === 200, 'login through HTTP');
+$forwarded = ['X-Forwarded-For: 203.0.113.7'];
+$r = http('GET', '/api/v1/captcha/config?scene=login', null, null, $forwarded);
+$challenge = json_decode((new RedisStore())->command('GET', 'jianyun:captcha:' . $r[1]['data']['challenge_id']), true);
+check($challenge['ip'] === '203.0.113.7', 'captcha generation uses trusted client IP');
+check(http('POST', '/api/v1/auth/login', $registration + ['captcha_payload' => captcha('login', '203.0.113.7')], null, $forwarded)[0] === 200
+    && scalar('SELECT last_login_ip FROM users WHERE id = ?', [$uid]) === '203.0.113.7', 'captcha verification and login audit share trusted client IP');
+check(http('POST', '/api/v1/auth/login', $registration + ['captcha_payload' => captcha('login', '203.0.113.7')])[0] === 422, 'captcha rejects different resolved client IP');
 check(http('POST', '/api/v1/auth/login', ['email' => $email, 'password' => 'wrong', 'captcha_payload' => captcha('login')])[0] === 401, 'invalid password rejected');
 check(http('GET', '/api/v1/auth/me', null, $token)[0] === 200, 'Bearer authentication');
 check(http('GET', '/api/v1/auth/me', null, Security::generateToken(['uid' => $uid, 'sub_type' => 'admin']))[0] === 401, 'admin token cannot enter user routes');
@@ -132,6 +139,20 @@ $db->prepare('UPDATE users SET password = ? WHERE id = ?')->execute([md5($regist
 check(http('POST', '/api/v1/auth/login', $registration + ['captcha_payload' => captcha('login')])[0] === 200 && password_verify($registration['password'], scalar('SELECT password FROM users WHERE id = ?', [$uid])), 'legacy MD5 login upgrades password hash');
 
 $demo = new DemoService(); $product = $demo->seed();
+$db->prepare("INSERT INTO products (provider_id, name, config_cache, markup_type) SELECT provider_id, 'same-provider-lock-test', config_cache, markup_type FROM products WHERE id = ?")->execute([$product]);
+$sibling = (int)$db->lastInsertId();
+$otherDb = new PDO('mysql:host=' . getenv('DB_HOST') . ';port=' . getenv('DB_PORT') . ';dbname=' . getenv('DB_DATABASE') . ';charset=utf8mb4', getenv('DB_USERNAME'), getenv('DB_PASSWORD'), [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC, PDO::ATTR_EMULATE_PREPARES => false]);
+$otherDb->exec('SET SESSION innodb_lock_wait_timeout = 1');
+Database::transaction(static function (PDO $db) use ($otherDb, $product, $sibling): void {
+    $catalog = new CatalogService();
+    $catalog->quote($db, $product, 'monthly', [], true);
+    $otherDb->beginTransaction();
+    try {
+        check($catalog->quote($otherDb, $sibling, 'monthly', [], true)['total'] === '10.00', 'different products on same provider do not block each other');
+        try { $catalog->quote($otherDb, $product, 'monthly', [], true); check(false, 'product lock remains exclusive'); }
+        catch (PDOException $e) { check(($e->errorInfo[1] ?? null) === 1205, 'same product still requires exclusive row lock'); }
+    } finally { $otherDb->rollBack(); }
+});
 check(http('GET', '/api/v1/products')[0] === 200, 'public product catalog');
 $r = http('POST', "/api/v1/products/{$product}/calculate", ['billing_cycle' => 'monthly']);
 check($r[0] === 200 && $r[1]['data']['total'] === '10.00', 'fixed-plan server price uses decimal strings');
@@ -144,6 +165,7 @@ check($r[0] === 200 && $r[1]['data']['status'] === 'unpaid', 'checkout creates u
 $invoice = (int)$r[1]['data']['invoice_id']; $instance = (int)$r[1]['data']['instance_id'];
 $encrypted = scalar('SELECT encrypted_password FROM instances WHERE id = ?', [$instance]);
 check($encrypted !== order($product)['password'] && Security::decrypt($encrypted) === order($product)['password'], 'checkout pre-creates pending instance with AES-GCM password');
+check((int)scalar('SELECT COUNT(*) FROM instances WHERE id = ? AND start_date IS NULL AND due_date IS NULL', [$instance]) === 1, 'unpaid checkout does not start rental period');
 check((int)scalar('SELECT COUNT(*) FROM tasks WHERE invoice_id = ?', [$invoice]) === 0, 'unpaid checkout does not dispatch delivery');
 $r = http('POST', "/api/v1/invoices/{$invoice}/pay", ['gateway' => 'balance'], $token);
 check($r[0] === 409 && $r[1]['code'] === 1001, 'insufficient balance rejected');
@@ -163,6 +185,7 @@ foreach (['transactions', 'payment_records', 'tasks'] as $table) {
     check((int)scalar("SELECT COUNT(*) FROM {$table} WHERE invoice_id = ?", [$invoice]) === 1, "concurrent payment writes one {$table} record");
 }
 check(scalar('SELECT status FROM instances WHERE id = ?', [$instance]) === 'pending' && scalar('SELECT status FROM tasks WHERE invoice_id = ?', [$invoice]) === 'pending', 'paid purchase awaits delivery without fake activation');
+check((int)scalar('SELECT COUNT(*) FROM instances WHERE id = ? AND start_date IS NULL AND due_date IS NULL', [$instance]) === 1, 'paid purchase does not consume rental period while delivery waits');
 check(scalar('SELECT total_spent FROM users WHERE id = ?', [$uid]) === '10.00', 'total_spent increments exactly once');
 
 $r = http('POST', '/api/v1/auth/register', ['email' => 'other-' . $email, 'password' => 'ExampleOtherPass!23', 'captcha_payload' => captcha('register')]);
@@ -216,6 +239,52 @@ Database::transaction(static function (PDO $db): void {
     check($db->inTransaction(), 'inner transaction rollback preserves outer transaction');
 });
 check(!Database::getInstance()->inTransaction(), 'transaction depth restored after nested rollback');
+$activation = new InstanceActivationService();
+foreach ([
+    ['monthly', '2027-01-31 12:00:00', '2027-02-28 12:00:00'],
+    ['monthly', '2028-01-31 12:00:00', '2028-02-29 12:00:00'],
+    ['annually', '2028-02-29 12:00:00', '2029-02-28 12:00:00'],
+] as [$cycle, $start, $due]) {
+    $input = order($sibling, true); $input['billing_cycle'] = $cycle;
+    // 年付演示价为100；只验证周期运算，先为该用户追加足够测试资金。
+    $demo->recharge($uid, '100.00', 'activation_' . bin2hex(random_bytes(8)));
+    $r = http('POST', '/api/v1/orders/checkout', $input, $token);
+    check($r[0] === 200, "{$cycle} activation fixture paid");
+    $activationInstance = (int)$r[1]['data']['instance_id'];
+    $activationTask = (int)scalar('SELECT id FROM tasks WHERE instance_id = ?', [$activationInstance]);
+    try {
+        // 固定数据库会话时钟，直接测试实际激活方法的日期运算。
+        $db->exec('SET timestamp = UNIX_TIMESTAMP(' . $db->quote($start) . ')');
+        $db->prepare("UPDATE tasks SET status = 'running', worker_id = 'test-worker', execution_token = 9, lease_until = DATE_ADD(UTC_TIMESTAMP(), INTERVAL 5 MINUTE) WHERE id = ?")->execute([$activationTask]);
+        try { $activation->completeCreate($activationTask, 'test-worker', 8, 'remote-test', '192.0.2.1'); check(false, 'stale token'); }
+        catch (ApiException $e) { check($e->httpStatus === 409, 'stale delivery token cannot activate instance'); }
+        $db->prepare('UPDATE tasks SET lease_until = DATE_SUB(UTC_TIMESTAMP(), INTERVAL 1 SECOND) WHERE id = ?')->execute([$activationTask]);
+        try { $activation->completeCreate($activationTask, 'test-worker', 9, 'remote-test', '192.0.2.1'); check(false, 'expired lease'); }
+        catch (ApiException $e) { check($e->httpStatus === 409, 'expired delivery lease cannot activate instance'); }
+        $db->prepare('UPDATE tasks SET lease_until = DATE_ADD(UTC_TIMESTAMP(), INTERVAL 5 MINUTE) WHERE id = ?')->execute([$activationTask]);
+        $db->exec("CREATE TRIGGER test_activation_fail BEFORE UPDATE ON instances FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'injected activation failure'");
+        try {
+            try { $activation->completeCreate($activationTask, 'test-worker', 9, 'remote-test', '192.0.2.1'); check(false, 'activation failure'); }
+            catch (PDOException) {
+                check(scalar('SELECT status FROM tasks WHERE id = ?', [$activationTask]) === 'running'
+                    && (int)scalar('SELECT COUNT(*) FROM instances WHERE id = ? AND start_date IS NULL AND due_date IS NULL', [$activationInstance]) === 1, 'activation failure rolls back task success and rental dates');
+            }
+        } finally { $db->exec('DROP TRIGGER test_activation_fail'); }
+        $activation->completeCreate($activationTask, 'test-worker', 9, 'remote-' . $activationTask, '192.0.2.1');
+        check(scalar('SELECT start_date FROM instances WHERE id = ?', [$activationInstance]) === $start
+            && scalar('SELECT due_date FROM instances WHERE id = ?', [$activationInstance]) === $due
+            && scalar('SELECT status FROM instances WHERE id = ?', [$activationInstance]) === 'active'
+            && scalar('SELECT status FROM tasks WHERE id = ?', [$activationTask]) === 'success', "delivery starts full {$cycle} term at {$start}, ends {$due}");
+        try { $activation->completeCreate($activationTask, 'test-worker', 9, 'remote-' . $activationTask, '192.0.2.1'); check(false, 'duplicate activation'); }
+        catch (ApiException) { check(scalar('SELECT due_date FROM instances WHERE id = ?', [$activationInstance]) === $due, 'duplicate delivery completion never extends term'); }
+    } finally { $db->exec('SET timestamp = 0'); }
+}
+// 将隔离库重建为旧 MVP 日期约束，验证真实升级 SQL，而非仅检查文本。
+$db->exec('UPDATE instances SET start_date = COALESCE(start_date, UTC_TIMESTAMP()), due_date = COALESCE(due_date, DATE_ADD(UTC_TIMESTAMP(), INTERVAL 1 MONTH))');
+$db->exec('ALTER TABLE instances MODIFY start_date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, MODIFY due_date DATETIME NOT NULL');
+$db->exec(file_get_contents(dirname(__DIR__) . '/database/migrations/001_delivery_dates.sql'));
+check((int)scalar("SELECT COUNT(*) FROM instances WHERE status = 'pending' AND remote_instance_id IS NULL AND (start_date IS NOT NULL OR due_date IS NOT NULL)") === 0, 'migration clears old pending rental dates');
+check(scalar('SELECT start_date FROM instances WHERE id = ?', [$activationInstance]) === $start && scalar('SELECT due_date FROM instances WHERE id = ?', [$activationInstance]) === $due, 'migration preserves delivered instance dates');
 $db->prepare("UPDATE users SET status = 'suspended' WHERE id = ?")->execute([$uid]);
 check(http('GET', '/api/v1/auth/me', null, $token)[0] === 403, 'suspension immediately invalidates access');
 echo "{$checks} checks passed.\n";

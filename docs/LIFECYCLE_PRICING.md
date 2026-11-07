@@ -12,7 +12,7 @@
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Pending: 支付成功，等待交付
+    [*] --> Pending: 下单预创建，支付后等待交付
     Pending --> Active: Outbox 开通履约完成
     
     Active --> Busy: 发起变配 / 续费代扣 / 备份执行 (Task 持有 lease_until 租约)
@@ -120,6 +120,8 @@ FOR UPDATE;
     - **若 `affected_rows === 0`**：说明恰好在锁升级前被抢占为 running，取消失败！**立即回滚续费操作，转为退回钱包余额，绝不允许延长到期日**。
 
 ### 2.2 权益到期日与上游同步交付解耦
+**新购与续费分开起算**：新购 `pending` 实例的 `start_date`、`due_date` 均为 `NULL`，即使付款成功也不提前起租；交付成功时由 `InstanceActivationService::completeCreate()` 在任务完成同一事务中填入实际 UTC 起租时间，并按自然月/年、对齐月末生成首期到期日。以下付款顺延规则适用于已交付实例的续费，不用于新购占位实例。
+
 为杜绝“用户一付款，上游尚未续费成功，系统就错误地直接恢复 active 并对外提供网络”的安全隐患：
 1. **已购买权益到期日 (`instances.due_date`)**：付款成功瞬间累加，作为财务履约凭证；
 2. **实例运行状态解耦**：

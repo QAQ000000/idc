@@ -24,13 +24,13 @@
    - 用户提交订单时即提供了 `hostname` 与初始 Root/面板 `password`；
    - 系统在下单事务中，**立即预创建 `status='pending'` 的 `instances` 记录**，将密码经 `Security::encrypt($password)` AES-256-GCM 信封加密存入 `instances.encrypted_password`（彻底解决 10 分钟后三方支付异步回调丢失明文密码的致命缺陷）；
    - 同时将生成的 `instances.id` 回填绑定至 `invoices.instance_id`，确保账单与实例强关联；
-   - `remote_instance_id` 初始留空为 `NULL`，等待开通成功回写。
+   - `remote_instance_id`、`start_date` 与 `due_date` 初始均为 `NULL`，等待开通成功回写；付款只投递任务，不提前起租。
 2. **付款成功投递发件箱任务**：
    - **余额直付场景**：扣除余额并标记账单 `paid` 的同一事务内，直接向 `tasks` 表插入 `action='create'` 发件箱任务（`instance_id = invoices.instance_id`）；
    - **网关回调场景（`POST /api/v1/payments/notify/{gateway}`）**：CAS 校验并标记 `invoices.status='paid'` 时，读取 `invoices.instance_id` 向 `tasks` 插入 `action='create'` 交付任务；
    - 业务幂等键统一采用 `instance_create:inv_{invoice_id}`。
 3. **交付完成原子激活**：
-   Worker 异步调用上游开通接口成功后，在第 2.2 节的 Fencing Token 原子事务内，将 `instances.status` 由 `pending` 推进至 `active`，并写入真实的 `remote_instance_id` 与 `ip_address`。
+   Worker 异步调用上游开通接口成功后，调用 `InstanceActivationService::completeCreate()`，在第 2.2 节的 Fencing Token 原子事务内，将 `instances.status` 由 `pending` 推进至 `active`，并写入真实的 `remote_instance_id` 与 `ip_address`。同时以本地交付成功入库的 UTC 时间写入 `start_date`，通过 `DATE_ADD(start_date, INTERVAL 1 MONTH/1 YEAR)` 生成首期 `due_date`，按目标月末截断，避免 PHP 自然月溢出；未付时间及交付排队不消耗租期。完成方法只接受已支付新购、有效执行令牌及未过期的所属 Worker 租约，激活失败时任务终态一并回滚。此方法尚无自动 Worker 调用入口。
 4. **超时未付安全清理**：
    未支付账单超时自动取消（`unpaid -> cancelled`）时，定时清理任务同步将关联的 `status='pending'` 实例置为 `terminated`（或安全物理删除该未生效占位行），并释放锁定的优惠券 `user_coupons.status = 'unused'`。
 
@@ -62,6 +62,8 @@ UPDATE `instances`
 SET `status` = 'active',
     `remote_instance_id` = :remote_id,
     `ip_address` = :ip,
+    `start_date` = UTC_TIMESTAMP(),
+    `due_date` = DATE_ADD(UTC_TIMESTAMP(), INTERVAL 1 MONTH), -- 月付示例；年付为 1 YEAR
     `updated_at` = NOW()
 WHERE `id` = :instance_id;
 

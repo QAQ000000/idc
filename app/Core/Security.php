@@ -135,17 +135,65 @@ class Security
     }
 
     /**
-     * 获取客户端真实 IP
+     * 仅信任明确配置的代理，沿 X-Forwarded-For 从右向左剥离受信跳点。
      */
     public static function getClientIp(): string
     {
-        if (!empty($_SERVER['HTTP_CF_CONNECTING_IP'])) {
-            return $_SERVER['HTTP_CF_CONNECTING_IP'];
+        $peer = $_SERVER['REMOTE_ADDR'] ?? '';
+        if (!is_string($peer) || !filter_var($peer, FILTER_VALIDATE_IP)) {
+            return '0.0.0.0';
         }
-        if (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
-            $ips = explode(',', $_SERVER['HTTP_X_FORWARDED_FOR']);
-            return trim($ips[0]);
+        if (!self::isTrustedProxy($peer)) {
+            return $peer;
         }
-        return $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
+        $header = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? '';
+        if (!is_string($header) || $header === '' || strlen($header) > 8192) {
+            return $peer;
+        }
+        $hops = array_map('trim', explode(',', $header));
+        if (count($hops) > 64) {
+            return $peer;
+        }
+        foreach ($hops as $hop) {
+            if (!filter_var($hop, FILTER_VALIDATE_IP)) {
+                return $peer; // 不跳过畸形跳点，整条转发链拒绝采纳。
+            }
+        }
+        $current = $peer;
+        foreach (array_reverse($hops) as $hop) {
+            if (!self::isTrustedProxy($current)) {
+                break;
+            }
+            $current = $hop;
+        }
+        return $current;
+    }
+
+    private static function isTrustedProxy(string $ip): bool
+    {
+        $address = inet_pton($ip);
+        foreach (explode(',', getenv('TRUSTED_PROXIES') ?: '') as $entry) {
+            $parts = explode('/', trim($entry));
+            if (count($parts) > 2 || !filter_var($parts[0], FILTER_VALIDATE_IP)) {
+                continue;
+            }
+            $network = inet_pton($parts[0]);
+            if (strlen($address) !== strlen($network)) {
+                continue;
+            }
+            $maxBits = strlen($network) * 8;
+            $prefix = $parts[1] ?? (string)$maxBits;
+            if (!ctype_digit($prefix) || (int)$prefix > $maxBits) {
+                continue;
+            }
+            $bits = (int)$prefix;
+            $bytes = intdiv($bits, 8);
+            $remainder = $bits % 8;
+            if (substr($address, 0, $bytes) === substr($network, 0, $bytes)
+                && ($remainder === 0 || ((ord($address[$bytes]) ^ ord($network[$bytes])) & (0xff << (8 - $remainder))) === 0)) {
+                return true;
+            }
+        }
+        return false;
     }
 }

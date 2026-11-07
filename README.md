@@ -47,6 +47,10 @@
 
 当前人工交付商品在 `config_cache` 保存 `prices.monthly` / `prices.annually` 十进制字符串与 `fixed_config` 固定规格；暂不接受自定义配置、优惠券或返佣商品。报价有效期 30 分钟；过期余额付款会被拒绝，需取消重下。每分钟运行 `php scripts/console.php invoices:expire` 回收过期未付实例与库存（每次最多 500 笔）。
 
+实例在待交付期间 `start_date/due_date` 均为 `NULL`。后续 Worker 确认实际交付成功后，通过 `InstanceActivationService::completeCreate()` 带任务令牌与租约原子激活并起租；自然月/年到期日对齐目标月末。已有 MVP 库需先备份，再审阅执行 `database/migrations/001_delivery_dates.sql`，新库直接使用更新后的 `schema.sql`。本次代码修改不自动迁移现有数据库。
+
+反向代理部署时配置 `TRUSTED_PROXIES` 为实际代理 IP 或 CIDR 列表（例如 `127.0.0.1,::1,10.0.0.0/24`）；默认不信任转发头。登录审计与验证码统一从可信 `X-Forwarded-For` 链右侧剥离代理，返回最近的非受信跳点；代理必须覆盖或正确追加真实来源地址。不会直接采纳 `CF-Connecting-IP`，Cloudflare 部署需由受信边缘规范化到 XFF 或 Web 服务器的 `REMOTE_ADDR`。畸形转发链回退连接来源 IP。
+
 ### 隔离集成测试
 
 ```bash
@@ -57,7 +61,7 @@ REDIS_SERVER=/absolute/path/to/redis-server python3 scripts/test_integration.py
 
 要求 Python 3.9+、Docker、PHP 和本地 `redis-server`；脚本使用 `mysql:8.0.35`（可通过 `MYSQL_TEST_IMAGE` 覆盖为兼容的 MySQL 8 镜像），自动创建独立容器、随机端口 Redis 和多进程 PHP HTTP 服务，执行真实接口/数据库检查后清理资源。测试不加载部署 `.env`，不连接现有业务库。
 
-覆盖并发付款只扣一次、最后库存并发预留、Outbox 写入失败整笔回滚、越权阻断、验证码场景隔离与单次消费、过期报价和账本只追加约束。
+覆盖并发付款只扣一次、最后库存并发预留、Outbox 写入失败整笔回滚、越权阻断、验证码场景隔离与单次消费、过期报价和账本只追加约束；并验证同上游不同商品的锁隔离、可信代理 IPv4/IPv6 与伪造链、交付起租的月末/闰年运算、失效令牌/租约保护及旧库日期迁移。IP 解析单元检查也可独立运行 `php tests/unit.php`。
 
 ---
 

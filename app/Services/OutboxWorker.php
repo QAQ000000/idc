@@ -114,7 +114,7 @@ final class OutboxWorker
 
     public function finish(array $claim, DriverExecutionResult $result): void
     {
-        Database::transaction(static function (PDO $db) use ($claim, $result): void {
+        $alert = Database::transaction(static function (PDO $db) use ($claim, $result): ?array {
             $t = self::lockOwned($db, (int)$claim['id'], $claim['worker_id'], (int)$claim['execution_token']);
             if ($result->status === 'succeeded') {
                 if ($t['action']==='renew') {
@@ -122,7 +122,7 @@ final class OutboxWorker
                     if ($result->remoteInstanceId!==($p['remote_instance_id']??null)) { throw new ApiException('Renewal delivery resource mismatch',409,409); }
                     RenewalService::complete($db,$t);
                     $db->prepare("UPDATE tasks SET status='success',lease_until=NULL,worker_id=NULL,next_retry_at=NULL,last_error=NULL,upstream_task_id=COALESCE(?,upstream_task_id) WHERE id=?")->execute([$result->operationId,$t['id']]);
-                    return;
+                    return null;
                 }
                 if ($result->username !== null || $result->password !== null) {
                     $s = $db->prepare('SELECT config_snapshot FROM instances WHERE id = ?'); $s->execute([$t['instance_id']]);
@@ -131,7 +131,7 @@ final class OutboxWorker
                     $db->prepare('UPDATE instances SET config_snapshot = ?, encrypted_password = COALESCE(?, encrypted_password) WHERE id = ?')->execute([json_encode($snapshot, JSON_THROW_ON_ERROR), $result->password === null ? null : Security::encrypt($result->password), $t['instance_id']]);
                 }
                 (new InstanceActivationService())->completeCreate((int)$t['id'], $t['worker_id'], (int)$t['execution_token'], $result->remoteInstanceId ?? '', $result->ipAddress);
-                return;
+                return null;
             }
             $p = json_decode($t['payload'] ?? '{}', true, 32, JSON_THROW_ON_ERROR);
             $retry = (int)$t['retry_count'];
@@ -151,7 +151,18 @@ final class OutboxWorker
             }
             $db->prepare('UPDATE tasks SET status = ?, worker_id = NULL, lease_until = NULL, next_retry_at = ?, retry_count = ?, last_error = ?, payload = ?, upstream_task_id = COALESCE(?, upstream_task_id) WHERE id = ?')
                 ->execute([$status, $next, $retry, $error, json_encode($p, JSON_THROW_ON_ERROR), $result->operationId, $t['id']]);
-            if ($status === 'failed') { logger()->critical('Outbox manual review required', ['task_id' => (int)$t['id']]); }
+            if ($status === 'failed' || ($t['action'] === 'renew' && $t['status'] === 'running')) {
+                return ['manual_review' => $status === 'failed', 'task_id' => (int)$t['id'],
+                    'instance_id' => (int)$t['instance_id'], 'invoice_id' => (int)$t['invoice_id'],
+                    'action' => $t['action'], 'execution_token' => (int)$t['execution_token'],
+                    'status' => $status, 'result_code' => $error];
+            }
+            return null;
         });
+        // The task list is durable. Logs are emitted only after commit; no money/resource side effects.
+        if ($alert !== null) {
+            $level = $alert['manual_review'] ? 'critical' : 'warning';
+            logger()->log($level, $alert['manual_review'] ? 'Outbox manual review required' : 'Paid renewal requires upstream verification', $alert);
+        }
     }
 }

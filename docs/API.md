@@ -313,3 +313,6 @@ CDN 交付可没有 IP，不以缺 IP 判定失败。不包含 M4 电源、重�
 - `/invoices/{id}/pay` 与 cancel 增加 renew：付款原子延长一次本地权益及投 Outbox，不直接恢复暂停；取消未付续费只取消该账单，不终止实例。
 
 运行与异常资金规则见 [续费契约](M2_RENEWAL_CONTRACT.md)。
+
+
+续费人工核验的 `POST /admin/tasks/{id}/resolve` 增加 `action=investigate`，载荷为 `{ "action":"investigate", "expected_execution_token":7, "evidence":"核验工单及继续查询说明" }`，仅启用 super_admin、已付 renew 的 failed+MANUAL_AUDIT_REQUIRED 可用。成功仍返回 `{resolved:true}`，保留原上游单号转 investigating 并递增 token/写审计；缺材料返回 400、权限不足 403、旧 token/状态或门禁冲突 409。没有续费退款接口；扣款成功但上游未成功由日志告警及待办列表通知管理员，详见 [续费契约](M2_RENEWAL_CONTRACT.md#续费异常通知与人工核验2026-11-08)。

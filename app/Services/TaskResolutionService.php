@@ -12,7 +12,7 @@ final class TaskResolutionService
         $action = Request::text($input, 'action', 1, 30);
         $evidence = Request::text($input, 'evidence', 10, 1000);
         $token = Request::id($input['expected_execution_token'] ?? null);
-        if (!in_array($action, ['retry', 'fulfill', 'cancel_compensate'], true)) { throw new ApiException('Unsupported resolution'); }
+        if (!in_array($action, ['retry', 'fulfill', 'cancel_compensate', 'investigate'], true)) { throw new ApiException('Unsupported resolution'); }
         if (in_array($action, ['retry','cancel_compensate'], true)
             && ($input['confirmed_no_execution_or_pending_request'] ?? false) !== true) {
             throw new ApiException('Confirm no asset, debit or delayed execution before resolving');
@@ -35,7 +35,15 @@ final class TaskResolutionService
             $s = $db->prepare("SELECT id FROM admins WHERE id = ? AND role = 'super_admin' AND status = 'active' FOR UPDATE"); $s->execute([$adminId]);
             if (!$s->fetch()) { throw new ApiException('Active super_admin required', 403, 403); }
             $context = ['evidence' => $evidence, 'previous_execution_token' => $token];
-            if ($action === 'cancel_compensate') {
+            if ($action === 'investigate') {
+                if ($t['action'] !== 'renew') { throw new ApiException('Read-only renewal investigation required', 409, 409); }
+                $p = json_decode($t['payload'] ?? '{}', true, 32, JSON_THROW_ON_ERROR);
+                $p['investigation_started_at'] = time();
+                $s = $db->prepare("UPDATE tasks SET status = 'investigating', execution_token = execution_token + 1, worker_id = NULL, lease_until = NULL, next_retry_at = NULL, last_error = NULL, payload = ?
+                    WHERE id = ? AND status = 'failed' AND execution_token = ? AND last_error LIKE 'MANUAL_AUDIT_REQUIRED:%'");
+                $s->execute([json_encode($p, JSON_THROW_ON_ERROR), $taskId, $token]);
+                if ($s->rowCount() !== 1) { throw new ApiException('Investigation resolution conflict', 409, 409); }
+            } elseif ($action === 'cancel_compensate') {
                 if ($t['action']==='renew') { throw new ApiException('Renewal compensation requires separate reviewed reconciliation; never terminate the original resource',409,409); }
                 $s = $db->prepare('SELECT id FROM commissions WHERE invoice_id = ? FOR UPDATE'); $s->execute([$inv['id']]);
                 if ($s->fetch()) { throw new ApiException('Existing commission requires a reviewed reversal before cancellation', 409, 409); }

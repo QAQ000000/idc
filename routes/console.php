@@ -63,6 +63,6 @@ Artisan::command('outbox:resolve {task} {admin}', function (): void {
     $this->info('Resolution committed with audit.');
 })->purpose('Super-admin evidence-based resolution from stdin, with expected_execution_token');
 Artisan::command('outbox:inspect', function (): void {
-    $rows = Database::getInstance()->query("SELECT id,instance_id,invoice_id,status,execution_token,lease_until,next_retry_at,upstream_task_id,last_error FROM tasks WHERE status IN ('pending','running','investigating') OR (status='failed' AND last_error LIKE 'MANUAL_AUDIT_REQUIRED:%') ORDER BY id LIMIT 100")->fetchAll();
+    $rows = Database::getInstance()->query("SELECT id,instance_id,invoice_id,action,status,execution_token,lease_until,next_retry_at,upstream_task_id,last_error FROM tasks WHERE status IN ('pending','running','investigating') OR (status='failed' AND last_error LIKE 'MANUAL_AUDIT_REQUIRED:%') ORDER BY id LIMIT 100")->fetchAll();
     $this->line(json_encode($rows, JSON_THROW_ON_ERROR));
 })->purpose('Inspect unresolved tasks without dumping payloads, credentials or raw upstream responses');

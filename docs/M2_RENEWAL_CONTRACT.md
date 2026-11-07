@@ -23,7 +23,7 @@
 
 只有 pending 且 termination_reason=billing_overdue 的销毁任务能在正常续费付款事务中取消，递增令牌并保留终止标记；运行中、调查中、人工核验的销毁即使租约已过期仍阻断；主动退订和安全销毁不撤销。其他未决任务与云消费退款冻结继续使用现有 TaskGate。
 
-人工裁决允许在证据、旧令牌、enabled super_admin 门禁下重试或确认原资产续费完成；不接受把续费资产换成另一个 ID。新购的 cancel_compensate 不复用于续费，避免终止原有付费资源；续费资金补偿、原路退款仍需后续独立审阅，未知结果先调查。
+人工裁决允许在证据、旧令牌、enabled super_admin 门禁下重试或确认原资产续费完成；不接受把续费资产换成另一个 ID。新购的 cancel_compensate 不复用于续费，避免终止原有付费资源；续费扣款成功而上游未成功时只通知管理员核验，不自动退款或撤回本地权益；未知结果先调查。原路退款另按后续专项推进。
 
 ## 出账、代扣与部署
 
@@ -38,3 +38,37 @@
 测试使用独立数据库和 HTTP 协议夹具，验证并发唯一出账、周期请求重放、重复余额/渠道付款、事务回滚、月末和闰年、响应丢失、SIGKILL 接管、暂停恢复、退款/销毁门禁及出账/代扣解耦。最终协议回归通过 52 项续费检查，并保留原 119 项集成与 45 项 M2 检查。真实续费已验签渠道成功凭证 H202611072358567224 / ¥0.01；账单 2 paid、renew 任务 2 success，资源 host:4250 保持 Active，上游续费单 invoice:811244。本地原日期顺延至 2027-01-07 15:33:12 UTC，上游原日期顺延至 2027-01-07 15:10:19 UTC，API 返回 renewed。首次新购基线不改写；真实资源未执行测试暂停/销毁或退款，夹具异常与真实链路分开验收。
 
 浏览器复验：隔离用户关闭自动续费、生成唯一周期账单、余额付款、专用 Worker 完成后显示上游已确认；390px 页面无横向溢出。真实交易只执行同一资源的一次续费，未重购。
+
+## 续费异常通知与人工核验（2026-11-08）
+
+**策略定案**：用户确认续费扣款成功而上游未成功时，通知管理员处理即可，不需要自动退款。本批不增加续费补偿入口、原到期日回滚、退款账本或资源销毁逻辑；新购 cancel_compensate 仍仅处理未交付新购，不能用于原续费资源。已支付凭证、原账单、记账权益和资源保持完整，不能因接口超时推定未履约或自行退款。
+
+### 当前通知方式
+
+沿用已存在的 Worker 告警日志及 `php artisan outbox:inspect` 待核验任务列表。首次续费执行未获 succeeded（包含明确未执行后的安全退避）在任务事务提交后记录 warning：`Paid renewal requires upstream verification`，携带 task_id、invoice_id、instance_id、action、execution_token、状态及脱敏结果码。只读调查的每分钟未知结果不重复刷 warning；确证未执行后再次执行若仍异常，可记录该次执行的 warning。到达人工门禁记录 critical：`Outbox manual review required`，同样含定位字段。成功没有异常通知。
+
+任务持久状态是待办事实，日志是通知出口；事务回滚不发告警。数据库提交与日志输出不是原子投递，进程恰在两者之间崩溃或日志被丢弃时，仍须通过 inspect 列表/日志监控值守，不能宣称已必达管理员。当前 inspect 最多返回前 100 条未决任务，后续完整后台队列/分页及外部邮件、Telegram 推送仍待办；本批不实现多渠道通知中心，不把日志当作外部发送成功。部署侧须确保 Worker stderr 被采集及待办被巡检，本批不修改生产日志服务。
+
+### 调查与回填
+
+未知沿用同一任务 investigating 只读查询，不重发续费、付款或解挂，不自动退款。超过观察窗口转 failed + MANUAL_AUDIT_REQUIRED 后，继续保留业务占用、告警并交管理员核验。确认已续费只通过调查成功或原有 fulfill 回填，不再累加到期日；确认不能履约由管理员联系上游及用户处理，程序不自动移动资金。
+
+人工 `resolve` 新增续费专用 `action=investigate`：需启用 super_admin、当前 expected_execution_token 和 10–1000 字符 evidence。仅已付 renew、failed + MANUAL_AUDIT_REQUIRED、原资源仍存在、其他 blocker/退款门禁通过时可受理。在同一事务内将任务恢复 investigating、递增 token、清 Worker/租约/退避时间、开始新观察窗口并追加 task_investigate 审计；保留原 payload 的冻结身份/日期、retry_count 及 upstream_task_id。下次 Worker 只调用 queryRenewal，不走 renew；旧 Worker 不得覆盖裁决。没有 confirmed_no_execution 要求，因为此动作不会重发业务请求。retry/fulfill 的既有权限及证据要求保持不变。
+
+```json
+{
+  "action": "investigate",
+  "expected_execution_token": 7,
+  "evidence": "工单编号：上游查询已恢复，继续核验原续费单"
+}
+```
+
+入口仍为 `POST /api/v1/admin/tasks/{id}/resolve`，或 `php artisan outbox:resolve TASK_ID ADMIN_ID < resolution.json`。没有新增退款 action。外部推送、充值秒级唤醒及非财务暂停自动处理保持待办。
+
+### 兼容与验证
+
+影响 Worker 异常日志、人工调查裁决及 inspect 输出（仅新增 action 字段），账单/支付/插件接口与 27 表 schema 不变，无数据迁移。运行中的 Worker 更新须按部署流程重启，本批未修改生产服务或已真实续费资源 4250。
+
+隔离夹具验证首次异常告警、调查不刷屏、人工门禁升级、资金/权益/资源保留、权限/旧令牌/审计、继续调查保留原上游单号，以及已续费只回填不重付；不把这些本地测试声称为邮件/TG送达或管理员已读。
+
+本批最终验证：15 项单元、23 项插件、119 项原集成、45 项 M2 及 68 项续费检查通过，包含告警状态事务故障回滚、持久列表定位及已续费只回填；配置缓存前后私有 PHP-FPM 身份隔离通过，schema 27 表一致及变更 PHP 语法/Markdown 本地链接/diff 检查通过。前端没有本批改动，未作新的浏览器验收；未发送外部推送、未重启生产 Worker、未操作真实资金或资源。

@@ -142,4 +142,44 @@ reject(fn()=>$resolution->resolve($admin,(int)$ut['id'],$input+['action'=>'fulfi
 reject(fn()=>$resolution->resolve($admin,(int)$ut['id'],$input+['action'=>'retry']),'manual renewal retry requires explicit nonexecution confirmation',400);
 $resolution->resolve($admin,(int)$ut['id'],$input+['action'=>'retry','confirmed_no_execution_or_pending_request'=>true]);fixtureRenew('/__renew_mode?mode=normal');runTask((int)$uv['invoice_id']);
 check(task((int)$uv['invoice_id'])['status']==='success' && row('instances',(int)$unknown['instance_id'])['status']==='active','audited confirmed nonexecution can retry renewal without terminating original asset');
+// Paid renewal exceptions notify operators; they never trigger a renewal refund or resource cancellation.
+$handler=new \Monolog\Handler\TestHandler();$logger=\Illuminate\Support\Facades\Log::channel()->getLogger();$logger->pushHandler($handler);
+$alerted=resource();$alertIid=(int)$alerted['instance_id'];$alertInvoice=$renew->issue($user,$alertIid);$alertVid=(int)$alertInvoice['invoice_id'];$billing->pay($user,$alertVid);
+$paidInstance=row('instances',$alertIid);$paidInvoice=row('invoices',$alertVid);$paidBalance=renewalValue('SELECT balance FROM users WHERE id=?',[$user]);$paidSpent=renewalValue('SELECT total_spent FROM users WHERE id=?',[$user]);
+fixtureRenew('/__renew_mode?mode=drop_submit');$handler->clear();runTask($alertVid);$alertTask=task($alertVid);$records=$handler->getRecords();
+check(count($records)===1 && $records[0]->level===\Monolog\Level::Warning && $records[0]->context['action']==='renew'
+ && $records[0]->context['invoice_id']===$alertVid && $records[0]->context['instance_id']===$alertIid && $records[0]->context['task_id']===(int)$alertTask['id'],'first unconfirmed paid renewal logs an actionable operator warning');
+check(row('invoices',$alertVid)===$paidInvoice && row('instances',$alertIid)===$paidInstance && renewalValue('SELECT balance FROM users WHERE id=?',[$user])===$paidBalance && renewalValue('SELECT total_spent FROM users WHERE id=?',[$user])===$paidSpent,'renewal warning preserves paid invoice, money, consumption and local entitlement');
+$prior=fixtureRenew('/__state');runTask($alertVid);check(count($handler->getRecords())===1 && fixtureRenew('/__state')===$prior,'read-only unknown investigation neither repeats warning nor submits renewal or payment');
+$db->prepare("UPDATE tasks SET payload=JSON_SET(payload,'$.investigation_started_at',?) WHERE id=?")->execute([time()-3601,$alertTask['id']]);
+$db->exec("CREATE TRIGGER renewal_alert_fault BEFORE UPDATE ON tasks FOR EACH ROW BEGIN IF NEW.action='renew' AND NEW.status='failed' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='isolated alert commit fault'; END IF; END");
+try{runTask($alertVid);}finally{$db->exec('DROP TRIGGER renewal_alert_fault');}
+$records=$handler->getRecords();check(task($alertVid)['status']==='investigating' && count(array_filter($records,static fn($r)=>$r->level===\Monolog\Level::Critical))===0,'rolled-back manual transition emits no false committed manual alert');
+$db->prepare('UPDATE tasks SET lease_until=DATE_SUB(UTC_TIMESTAMP(),INTERVAL 1 SECOND) WHERE id=?')->execute([$alertTask['id']]);$handler->clear();runTask($alertVid);$alertTask=task($alertVid);$records=$handler->getRecords();
+check($alertTask['status']==='failed' && str_starts_with($alertTask['last_error'],'MANUAL_AUDIT_REQUIRED:') && count($records)===1 && $records[0]->level===\Monolog\Level::Critical && $records[0]->context['invoice_id']===$alertVid,'unresolved paid renewal persists in manual list and escalates to a critical operator alert');
+$listed=json_decode(shell_exec(escapeshellarg(PHP_BINARY).' artisan outbox:inspect'),true,32,JSON_THROW_ON_ERROR);$listed=array_values(array_filter($listed,static fn($t)=>(int)$t['id']===(int)$alertTask['id']));
+check(count($listed)===1 && $listed[0]['action']==='renew' && (int)$listed[0]['invoice_id']===$alertVid && !array_key_exists('payload',$listed[0]),'durable inspect list identifies renewal and invoice without exposing payload or credentials');
+$proof=['expected_execution_token'=>(int)$alertTask['execution_token'],'evidence'=>'TEST-ALERT: operator requests continued read-only investigation'];
+reject(fn()=>$resolution->resolve(999999,(int)$alertTask['id'],$proof+['action'=>'investigate']),'only active super admin may resume manual investigation',403);
+reject(fn()=>$resolution->resolve($admin,(int)$alertTask['id'],array_replace($proof,['action'=>'investigate','expected_execution_token'=>(int)$alertTask['execution_token']-1])),'manual investigation rejects stale token');
+reject(fn()=>$resolution->resolve($admin,(int)$alertTask['id'],$proof+['action'=>'compensate_renewal']),'renewal refund action is not exposed',400);
+$resolution->resolve($admin,(int)$alertTask['id'],$proof+['action'=>'investigate']);$resumed=task($alertVid);
+check($resumed['status']==='investigating' && (int)$resumed['execution_token']===(int)$alertTask['execution_token']+1 && $resumed['upstream_task_id']===$alertTask['upstream_task_id'] && $resumed['retry_count']===$alertTask['retry_count'],'operator resumes investigation with a fresh token while preserving original remote identity and retry history');
+$oldClaim=$alertTask;$oldClaim['worker_id']='renewal-test';
+reject(fn()=>$worker->finish($oldClaim,new \App\Plugins\Providers\DriverExecutionResult('succeeded',row('instances',$alertIid)['remote_instance_id'])),'old worker cannot overwrite resumed operator investigation');
+runTask($alertVid);$after=task($alertVid);check($after['status']==='investigating' && fixtureRenew('/__state')===$prior && count($handler->getRecords())===1,'operator investigation remains read-only without repeated warning or money movement');
+check((int)renewalValue("SELECT COUNT(*) FROM transactions WHERE invoice_id=? AND type='refund_to_balance'",[$alertVid])===0 && (int)renewalValue("SELECT COUNT(*) FROM tasks WHERE instance_id=? AND action='terminate'",[$alertIid])===0 && renewalValue('SELECT refund_status FROM payment_records WHERE invoice_id=?',[$alertVid])==='none','unconfirmed renewal never refunds, terminates the original resource or marks the receipt refunded');
+check((int)renewalValue("SELECT COUNT(*) FROM admin_audit_logs WHERE target_id=? AND action='task_investigate'",[$alertTask['id']])===1,'continued investigation is audited once');
+// Finish this fixture via existing audited evidence-based fill-in so it cannot block later test candidates.
+$db->prepare("UPDATE tasks SET payload=JSON_SET(payload,'$.investigation_started_at',?) WHERE id=?")->execute([time()-3601,$alertTask['id']]);runTask($alertVid);$alertTask=task($alertVid);
+$resolution->resolve($admin,(int)$alertTask['id'],['action'=>'fulfill','expected_execution_token'=>(int)$alertTask['execution_token'],'evidence'=>'TEST-ALERT: operator confirms original resource was renewed outside the fixture','remote_instance_id'=>$paidInstance['remote_instance_id']]);
+
+// A paid upstream renewal hidden by temporary query failures only needs its original task filled in.
+fixtureRenew('/__renew_mode?mode=normal');$delivered=resource();$di=(int)$delivered['instance_id'];$dv=$renew->issue($user,$di);$dvid=(int)$dv['invoice_id'];$billing->pay($user,$dvid);fixtureRenew('/__renew_mode?mode=drop_payment');runTask($dvid);$dt=task($dvid);$operation=$dt['upstream_task_id'];
+fixtureRenew('/__wrong_host_id?enabled=1');$db->prepare("UPDATE tasks SET payload=JSON_SET(payload,'$.investigation_started_at',?) WHERE id=?")->execute([time()-3601,$dt['id']]);runTask($dvid);$dt=task($dvid);
+check($dt['status']==='failed' && $operation!==null,'temporary query ownership failure preserves paid upstream renewal for operator review');
+$prior=fixtureRenew('/__state');$beforeBalance=renewalValue('SELECT balance FROM users WHERE id=?',[$user]);$due=row('instances',$di)['due_date'];fixtureRenew('/__wrong_host_id?enabled=0');
+$resolution->resolve($admin,(int)$dt['id'],['action'=>'investigate','expected_execution_token'=>(int)$dt['execution_token'],'evidence'=>'TEST-ALERT: upstream query restored; inspect existing paid renewal only']);runTask($dvid);
+check(task($dvid)['status']==='success' && task($dvid)['upstream_task_id']===$operation && row('invoices',$dvid)['status']==='paid' && row('instances',$di)['due_date']===$due && fixtureRenew('/__state')===$prior && renewalValue('SELECT balance FROM users WHERE id=?',[$user])===$beforeBalance,'recovered upstream confirmation only fills status without another payment, extension or refund');
+$logger->popHandler();fixtureRenew('/__renew_mode?mode=normal');
 echo "Renewal checks: $checks\n";

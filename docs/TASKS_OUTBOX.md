@@ -233,7 +233,7 @@ flowchart TD
 
 未知结果每分钟只读调查，一小时仍未知或 NON_QUERYABLE 转 `failed + MANUAL_AUDIT_REQUIRED:`，记 critical 事件（只含 task_id）；必须配合日志监控和 `outbox:inspect` 人工值守。证明未执行的退避为 5/15/30 分钟，达到重试上限转人工。Provider 禁用、查询失败与最终一致性查无不释放占用。
 
-人工入口：`POST /api/v1/admin/tasks/{id}/resolve`，或 `php artisan outbox:resolve TASK_ID ADMIN_ID < resolution.json`。当前取代规划中的分散 force-retry/manual-fulfill 路径，未实现独立后台 UI。均要求有效 super_admin、`expected_execution_token`、10–1000 字符 evidence；action 为 retry/fulfill/cancel_compensate。retry/cancel_compensate 还需显式 `confirmed_no_execution_or_pending_request=true`，核验材料必须证明没有资产、扣款及后续可执行请求；不能只提交“没查到”。fulfill 需真实 remote_instance_id，可空 ip_address。
+人工入口：`POST /api/v1/admin/tasks/{id}/resolve`，或 `php artisan outbox:resolve TASK_ID ADMIN_ID < resolution.json`。当前取代规划中的分散 force-retry/manual-fulfill 路径，未实现独立后台 UI。均要求有效 super_admin、`expected_execution_token`、10–1000 字符 evidence；action 为 retry/fulfill/cancel_compensate，以及续费专用 investigate（见后文）。retry/cancel_compensate 还需显式 `confirmed_no_execution_or_pending_request=true`，核验材料必须证明没有资产、扣款及后续可执行请求；不能只提交“没查到”。fulfill 需真实 remote_instance_id，可空 ip_address。
 
 永久取消只适用待交付、已支付新购、唯一正常消费收款凭证且无历史佣金/在途退款的订单。它同事务递增令牌并永久终止该任务及其他 pending，实例本地 terminated、账单 refunded、恢复预留库存、真实原额入钱包、冲累计消费并追加管理员审计。收款凭证标注 refund_status=success、refund_method=to_balance，防止后续再次原路退款。没有远端资产时不派 terminate。已有佣金拒绝处理并要求专项冲正，不能略过资金保证。重复或旧 token 裁决拒绝，无第二次补偿。
 
@@ -247,3 +247,6 @@ flowchart TD
 续费支付以 `instance_renew:inv_{invoice_id}` 唯一键投递单条 renew，沿用同一认领、token、租约、退款冻结与人工核验机制。付款事务已按原本地到期日顺延权益；Worker 不再累加日期，只确认上游目标日期，并仅在需要且仍为 billing 暂停时恢复 active。魔方组合执行由支付后观察上游恢复承接，不拆分另一条 unsuspend，也不对未知结果重发解挂。
 
 renew 的人工 retry/fulfill 使用现有 resolve 入口和审计，fulfill 必须保留原资源 ID，调用续费完成处理器；不能调用新购起租方法。cancel_compensate 仅适用新购，不能拿它销毁原续费实例。完整边界及兼容证据见 [M2_RENEWAL_CONTRACT.md](M2_RENEWAL_CONTRACT.md)。
+
+
+**续费异常通知策略**：首次执行未确认续费成功在事务提交后记录含账单/实例/任务编号的 warning，只读调查不逐分钟重复 warning，进入人工门禁升级 critical；已提交的 tasks 是待办事实，日志不能证明管理员已读，须配合 outbox:inspect（增加 action 字段）巡检。已扣款续费不自动退款、不撤回本地权益、不派销毁；由管理员处理。人工 action=investigate 仅对已付 renew 的 failed+MANUAL_AUDIT_REQUIRED 开启新只读观察窗口，保留原上游单号、冻结参数和重试计数，递增 token 并写审计；queryRenewal 不再次付款/续费。完整证据与通知边界见 [续费契约](M2_RENEWAL_CONTRACT.md#续费异常通知与人工核验2026-11-08)。

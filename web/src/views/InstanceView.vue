@@ -4,7 +4,7 @@ import { useRoute, useRouter } from "vue-router";
 import { api, message, type Instance, type Invoice } from "../api/request";
 import InstancePowerPanel from "../components/InstancePowerPanel.vue";
 import InstanceReinstallPanel from "../components/InstanceReinstallPanel.vue";
-const powerBlocked = ref(false), reinstallBlocked = ref(false);
+const powerBlocked = ref(false), reinstallBlocked = ref(false), powerRefreshVersion = ref(0);
 function invalidateCredentials() { credentialVersion++; credentials.value = null; }
 const route = useRoute(),
   router = useRouter(),
@@ -244,6 +244,7 @@ VNC 控制台 ↗
             :key="instance.id"
             :instance-id="Number(instance.id)"
             :external-blocked="reinstallBlocked"
+            :refresh-version="powerRefreshVersion"
             @blocked="powerBlocked = $event"
           />
           <el-card v-else shadow="never">
@@ -319,7 +320,7 @@ VNC 控制台 ↗
             :key="`reinstall-${instance.id}`"
             :instance-id="Number(instance.id)"
             @blocked="reinstallBlocked = $event; if ($event) invalidateCredentials()"
-            @changed="invalidateCredentials"
+            @changed="invalidateCredentials(); powerRefreshVersion++"
           />
         </div>
         <div class="panel-stack">

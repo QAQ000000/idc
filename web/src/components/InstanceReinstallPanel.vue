@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from "vue";
-import { ElMessageBox } from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
 import { api, message } from "../api/request";
 const props = defineProps<{ instanceId: number }>();
 const emit = defineEmits<{ blocked: [value: boolean]; changed: [] }>();
@@ -11,14 +11,21 @@ interface View {
 }
 const view = ref<View>(), busy = ref(false), error = ref(""), notice = ref(""), image = ref(""), confirmed = ref(false);
 const results: Record<string, string> = { pending: "已排队", running: "提交中", accepted: "上游已受理，自动跟踪执行状态", executing: "已观察到上游重装执行，自动跟踪中", awaiting_credentials: "上游已空闲，等待凭据同步", query_unavailable: "上游已受理，当前查询未能确认结果，继续只读跟踪", execution_ended: "上游执行已结束，新凭据已同步；请登录检查系统结果", investigating: "提交结果未知，正在只读调查，请勿重复提交", success: "已确认完成，新凭据可在本站查看", needs_review: "需要管理员核验，请勿重复重装", not_executed: "管理员已确认未执行并结束" };
-let timer: ReturnType<typeof setTimeout> | undefined, disposed = false, signature = "";
+let timer: ReturnType<typeof setTimeout> | undefined, disposed = false, signature = "", submittedTaskId: number | undefined, notifiedTaskId: number | undefined;
 async function refresh() {
   if (busy.value || disposed) return;
   clearTimeout(timer); busy.value = true; error.value = "";
   try {
     const current = await api<View>(`/instances/${props.instanceId}/reinstall`);
     if (disposed) return;
-    view.value = current; emit("blocked", current.blocked);
+    view.value = current;
+    const submitted = current.tasks.find(task => task.id === submittedTaskId);
+    if (submitted?.accepted && submitted.status !== "failed" && notifiedTaskId !== submitted.id) {
+      notifiedTaskId = submitted.id;
+      notice.value = "";
+      ElMessage.success("重装请求成功，正在获取实时状态");
+    }
+    emit("blocked", current.blocked);
     if (current.tasks[0] && ["success", "failed"].includes(current.tasks[0].status)) notice.value = "";
     const next = JSON.stringify(current.tasks.map(t => [t.id, t.status, t.result]));
     if (signature && signature !== next) emit("changed");
@@ -41,7 +48,8 @@ async function submit() {
   try {
     emit("changed");
     const task = await api<{ task_id: number }>(`/instances/${props.instanceId}/reinstall`, { method: "POST", body: { image_id: selected.id, operation_token: token, request_key: crypto.randomUUID(), confirmed_system_disk_erase: true } });
-    notice.value = `重装任务 #${task.task_id} 已提交。受理不代表完成，请在下方跟踪结果。`;
+    submittedTaskId = task.task_id;
+    notice.value = `重装请求 #${task.task_id} 已提交，等待上游响应。`;
   } catch (e) { notice.value = message(e) + "；请先刷新核对原任务，勿再次提交。"; }
   finally { confirmed.value = false; busy.value = false; await refresh(); }
 }

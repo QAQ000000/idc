@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from "vue";
+import { onMounted, onUnmounted, ref, watch } from "vue";
 import { ElMessageBox } from "element-plus";
 import { api, message } from "../api/request";
-const props = defineProps<{ instanceId: number; externalBlocked?: boolean }>();
+const props = defineProps<{ instanceId: number; externalBlocked?: boolean; refreshVersion?: number }>();
 const emit = defineEmits<{ blocked: [value: boolean] }>();
 type Action = "start" | "stop" | "reboot";
 interface Runtime {
@@ -18,12 +18,14 @@ async function refresh() {
   if (busy.value || disposed) return;
   clearTimeout(timer); busy.value = true; error.value = "";
   try {
-    runtime.value = await api<Runtime>(`/instances/${props.instanceId}/runtime`);
+    const current = await api<Runtime>(`/instances/${props.instanceId}/runtime`);
+    if (disposed) return;
+    runtime.value = current;
     emit("blocked", runtime.value.blocked);
   } catch (e) { error.value = message(e); runtime.value = undefined; }
   finally {
     busy.value = false;
-    if (!disposed && runtime.value?.tasks.some(t => ["pending", "running", "investigating"].includes(t.status))) {
+    if (!disposed && (props.externalBlocked || runtime.value?.tasks.some(t => ["pending", "running", "investigating"].includes(t.status)))) {
       timer = setTimeout(refresh, 15000);
     }
   }
@@ -46,6 +48,7 @@ async function submit(action: Action) {
   } catch (e) { notice.value = message(e) + "；请先刷新核对任务记录，不要重复提交。"; }
   finally { busy.value = false; await refresh(); }
 }
+watch(() => [props.externalBlocked, props.refreshVersion], () => { void refresh(); });
 onMounted(refresh);
 onUnmounted(() => { disposed = true; clearTimeout(timer); });
 </script>

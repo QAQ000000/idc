@@ -8,10 +8,11 @@ final class TaskGate
     /** Caller must hold the instance row first. These are CURRENT reads, including expired blockers. */
     public static function assertClear(PDO $db, int $instanceId, int $ownTask = 0): void
     {
-        $s = $db->prepare('SELECT id, status, last_error FROM tasks WHERE instance_id = ? ORDER BY id FOR UPDATE');
+        $s = $db->prepare('SELECT id, status, last_error, action FROM tasks WHERE instance_id = ? ORDER BY id FOR UPDATE');
         $s->execute([$instanceId]);
         foreach ($s->fetchAll() as $t) {
             if ((int)$t['id'] !== $ownTask && (in_array($t['status'], ['running', 'investigating'], true)
+                || ($t['status'] === 'pending' && $t['action'] === 'power')
                 || ($t['status'] === 'failed' && str_starts_with($t['last_error'] ?? '', 'MANUAL_AUDIT_REQUIRED:')))) {
                 throw new ApiException('Instance has an unresolved operation', 409, 409);
             }

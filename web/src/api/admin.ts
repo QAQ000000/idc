@@ -6,13 +6,14 @@ export interface Admin {
   role: "super_admin" | "finance" | "support" | "operator";
 }
 export interface Page<T> { items: T[]; total: number; page: number; per_page: number }
-export type Resolution = "fulfill" | "retry" | "investigate" | "cancel_compensate";
+export type Resolution = "fulfill" | "retry" | "investigate" | "cancel_compensate" | "close_unexecuted";
 export const actionLabels: Record<Resolution, string> = {
+  close_unexecuted: "确认未执行并结束操作",
   fulfill: "确认已履约并回填", retry: "确认未执行后重试",
   investigate: "继续只读调查", cancel_compensate: "永久取消并退到钱包",
 };
 export interface Task {
-  id: number; instance_id: number; invoice_id: number; user_id: number;
+  id: number; instance_id: number; invoice_id: number | null; user_id: number;
   action: string; status: string; execution_token: number;
   upstream_task_id: string | null; remote_instance_id: string | null;
   last_error: string | null; retry_count: number; max_retries: number;

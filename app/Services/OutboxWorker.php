@@ -3,7 +3,7 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Core\{ApiException, Database, Security};
-use App\Plugins\Providers\{DriverExecutionResult, RenewalDriverInterface};
+use App\Plugins\Providers\{DriverExecutionResult, RenewalDriverInterface, PowerDriverInterface};
 use PDO;
 
 final class OutboxWorker
@@ -14,7 +14,7 @@ final class OutboxWorker
     public function claim(string $worker): ?array
     {
         if (!preg_match('/^[a-zA-Z0-9:_-]{1,50}$/D', $worker)) { throw new \InvalidArgumentException('Invalid worker id'); }
-        $candidates = Database::getInstance()->query("SELECT id, instance_id, action FROM tasks WHERE action IN ('create','renew') AND
+        $candidates = Database::getInstance()->query("SELECT id, instance_id, action FROM tasks WHERE action IN ('create','renew','power') AND
             ((status = 'pending' AND (next_retry_at IS NULL OR next_retry_at <= UTC_TIMESTAMP()))
             OR (status IN ('running','investigating') AND (lease_until IS NULL OR lease_until <= UTC_TIMESTAMP())
             AND (next_retry_at IS NULL OR next_retry_at <= UTC_TIMESTAMP()))) ORDER BY id LIMIT 100")->fetchAll();
@@ -30,9 +30,11 @@ final class OutboxWorker
                     $s->execute([$c['id']]); $t = $s->fetch();
                     if (!$t || !in_array($t['status'], ['pending','running','investigating'], true) || $t['retry_delayed']
                         || ($t['status'] !== 'pending' && $t['leased'])) { return null; }
-                    $s = $db->prepare("SELECT status FROM invoices WHERE id = ? AND instance_id = ? AND user_id = ? AND type = ? FOR UPDATE");
-                    $s->execute([$t['invoice_id'], $instance['id'], $instance['user_id'], $t['action']==='renew'?'renew':'new']);
-                    if ($s->fetchColumn() !== 'paid') { return null; }
+                    if ($t['action'] !== 'power') {
+                        $s = $db->prepare("SELECT status FROM invoices WHERE id = ? AND instance_id = ? AND user_id = ? AND type = ? FOR UPDATE");
+                        $s->execute([$t['invoice_id'], $instance['id'], $instance['user_id'], $t['action']==='renew'?'renew':'new']);
+                        if ($s->fetchColumn() !== 'paid') { return null; }
+                    }
                     $mode = $t['status'] === 'pending' ? 'running' : 'investigating';
                     $payload = json_decode($t['payload'] ?? '{}', true, 32, JSON_THROW_ON_ERROR);
                     if ($mode === 'investigating') { $payload['investigation_started_at'] ??= time(); }
@@ -58,13 +60,19 @@ final class OutboxWorker
             return true;
         }
         try {
-            [$driver, $credentials] = ($this->providers ?? new ProviderService())->resolve((int)$t['instance']['provider_id']);
+            [$driver, $credentials] = ($this->providers ?? new ProviderService())->resolve((int)($t['action']==='power' ? $t['payload']['provider_id'] : $t['instance']['provider_id']));
             $order = $t['payload'] + [
                 'idempotency_key' => $t['idempotency_key'], 'instance_id' => (int)$t['instance_id'],
                 'hostname' => $t['instance']['name'], 'billing_cycle' => $t['instance']['billing_cycle'],
                 'operation_id' => $t['upstream_task_id'],
             ];
-            if ($t['action']==='renew') {
+            if ($t['action']==='power') {
+                if (!$driver instanceof PowerDriverInterface) { $result=new DriverExecutionResult('unknown',code:'NON_QUERYABLE'); }
+                elseif ($t['status']==='investigating') { $result=$driver->queryPower($order,$credentials); }
+                elseif (!InstancePowerService::eligible($t['instance']) || !InstancePowerService::matchesContext($t['instance'],$t['payload'])) {
+                    $result=new DriverExecutionResult('rejected',code:'POWER_LOCAL_PRECONDITION_CHANGED');
+                } else { $result=$driver->executePower($order,$credentials); }
+            } elseif ($t['action']==='renew') {
                 if (!$driver instanceof RenewalDriverInterface) { $result=new DriverExecutionResult('unknown',code:'NON_QUERYABLE'); }
                 elseif ($t['status']==='investigating') { $result=$driver->queryRenewal($order,$credentials); }
                 elseif ($t['instance']['status']==='suspended' && $t['instance']['suspend_type']!=='billing') { $result=new DriverExecutionResult('rejected',code:'NONBILLING_SUSPENSION'); }
@@ -117,6 +125,16 @@ final class OutboxWorker
         $alert = Database::transaction(static function (PDO $db) use ($claim, $result): ?array {
             $t = self::lockOwned($db, (int)$claim['id'], $claim['worker_id'], (int)$claim['execution_token']);
             if ($result->status === 'succeeded') {
+                if ($t['action']==='power') {
+                    $p=json_decode($t['payload'],true,32,JSON_THROW_ON_ERROR);
+                    $s=$db->prepare('SELECT * FROM instances WHERE id=?');$s->execute([$t['instance_id']]);$i=$s->fetch();
+                    if ($result->remoteInstanceId!==($p['remote_instance_id']??null)
+                        || !InstancePowerService::matchesContext($i,$p)) {
+                        throw new ApiException('Power resource binding changed',409,409);
+                    }
+                    $db->prepare("UPDATE tasks SET status='success',lease_until=NULL,worker_id=NULL,next_retry_at=NULL,last_error=NULL WHERE id=?")->execute([$t['id']]);
+                    return null;
+                }
                 if ($t['action']==='renew') {
                     $p=json_decode($t['payload'],true,32,JSON_THROW_ON_ERROR);
                     if ($result->remoteInstanceId!==($p['remote_instance_id']??null)) { throw new ApiException('Renewal delivery resource mismatch',409,409); }
@@ -153,7 +171,7 @@ final class OutboxWorker
                 ->execute([$status, $next, $retry, $error, json_encode($p, JSON_THROW_ON_ERROR), $result->operationId, $t['id']]);
             if ($status === 'failed' || ($t['action'] === 'renew' && $t['status'] === 'running')) {
                 return ['manual_review' => $status === 'failed', 'task_id' => (int)$t['id'],
-                    'instance_id' => (int)$t['instance_id'], 'invoice_id' => (int)$t['invoice_id'],
+                    'instance_id' => (int)$t['instance_id'], 'invoice_id' => $t['invoice_id']===null ? null : (int)$t['invoice_id'],
                     'action' => $t['action'], 'execution_token' => (int)$t['execution_token'],
                     'status' => $status, 'result_code' => $error];
             }

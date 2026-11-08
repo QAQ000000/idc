@@ -9,7 +9,7 @@ const route = useRoute(), account = useAdmin();
 const detail = ref<TaskDetail>(), busy = ref(false), error = ref(""), auditPage = ref(1);
 const dialog = ref(false), submitting = ref(false), formError = ref("");
 const form = reactive({ action: "fulfill" as Resolution, token: 0, evidence: "", remote: "", ip: "", confirmed: false });
-const needsConfirmation = computed(() => ["retry", "cancel_compensate"].includes(form.action));
+const needsConfirmation = computed(() => ["retry", "cancel_compensate", "close_unexecuted"].includes(form.action));
 const evidenceBytes = computed(() => new TextEncoder().encode(form.evidence.trim()).length);
 async function load(page = auditPage.value) {
   busy.value = true; error.value = ""; detail.value = undefined; auditPage.value = page;
@@ -67,7 +67,7 @@ onMounted(() => load());
         <h2>关联上下文</h2>
         <el-descriptions :column="1" border>
           <el-descriptions-item label="客户">#{{ detail.user.id }} · {{ detail.user.email }}</el-descriptions-item>
-          <el-descriptions-item label="账单">#{{ detail.task.invoice_id }} · {{ detail.invoice?.type }} · {{ detail.invoice?.status || '缺失' }} · ¥{{ detail.invoice?.total || '—' }}</el-descriptions-item>
+          <el-descriptions-item label="账单"><template v-if="detail.invoice">#{{ detail.task.invoice_id }} · {{ detail.invoice.type }} · {{ detail.invoice.status }} · ¥{{ detail.invoice.total }}</template><span v-else>无关联账单（非财务操作）</span></el-descriptions-item>
           <el-descriptions-item label="付款时间 (UTC)">{{ detail.invoice?.paid_at || '—' }} · {{ detail.invoice?.payment_method || '—' }}</el-descriptions-item>
           <el-descriptions-item label="实例">#{{ detail.instance.id }} · {{ detail.task.instance_name }} · {{ detail.instance.status }}</el-descriptions-item>
           <el-descriptions-item label="商品 / 上游">{{ detail.task.product_name }} / #{{ detail.task.provider_id }} {{ detail.task.provider_name }}</el-descriptions-item>
@@ -106,16 +106,17 @@ onMounted(() => load());
   <el-dialog v-model="dialog" class="task-resolution-dialog" :title="actionLabels[form.action]" width="580px" :close-on-click-modal="false" :close-on-press-escape="!submitting" :show-close="!submitting" :before-close="(done: () => void) => { if (!submitting) done(); }" destroy-on-close>
     <el-alert v-if="formError" :title="formError" type="error" :closable="false" role="alert" />
     <el-alert v-if="form.action === 'cancel_compensate'" title="该动作永久取消未交付新购、终止本地实例，并将原收款退到客户站内钱包，不是渠道原路退款。续费任务不支持此动作。" type="warning" :closable="false" />
-    <el-alert v-else-if="form.action === 'fulfill'" title="仅确认已完成的履约并回填，不向上游再次发起开通或续费。续费必须保留原资源编号和已顺延账期。" type="info" :closable="false" />
+    <el-alert v-else-if="form.action === 'fulfill'" title="仅依据证据确认原操作，不再次请求上游。电源操作只结束原任务，不改实例权益；当前运行状态不能单独证明重启成功。" type="info" :closable="false" />
+    <el-alert v-else-if="form.action === 'close_unexecuted'" title="仅在确认原电源请求未执行且没有排队或延迟请求时结束占用，不重发操作，不修改资源或资金。" type="warning" :closable="false" />
     <el-alert v-else-if="form.action === 'retry'" title="重试会允许 Worker 再次请求上游，只有证实本次未执行且无延迟请求时才可操作。查无记录不足以证明未执行。" type="warning" :closable="false" />
     <p>本次提交使用执行令牌 {{ form.token }}。状态或令牌变化会拒绝提交。</p>
     <el-form label-position="top" :disabled="submitting" @submit.prevent="resolve">
       <template v-if="form.action === 'fulfill'">
-        <el-form-item label="真实上游资源编号"><el-input v-model="form.remote" aria-label="真实上游资源编号" maxlength="100" :readonly="detail?.task.action === 'renew'" /></el-form-item>
+        <el-form-item label="真实上游资源编号"><el-input v-model="form.remote" aria-label="真实上游资源编号" maxlength="100" :readonly="detail?.task.action !== 'create'" /></el-form-item>
         <el-form-item v-if="detail?.task.action === 'create'" label="IP 地址（可选）"><el-input v-model="form.ip" aria-label="IP 地址" maxlength="45" /></el-form-item>
       </template>
       <el-form-item label="核验材料（工单号、归属与实际结果，不填写密码或密钥）"><el-input v-model="form.evidence" type="textarea" aria-label="核验材料" :rows="4" maxlength="1000" /><span class="muted">{{ evidenceBytes }} / 1000 字节，至少 10 字节</span></el-form-item>
-      <el-checkbox v-if="needsConfirmation" v-model="form.confirmed" class="task-confirm">已核实本次操作未产生新资产、未扣上游款且无延迟执行请求；续费保留原资源。</el-checkbox>
+      <el-checkbox v-if="needsConfirmation" v-model="form.confirmed" class="task-confirm">{{ form.action === "close_unexecuted" ? "已核实本次电源请求未执行，且无排队或延迟执行请求。" : "已核实本次操作未产生新资产、未扣上游款且无延迟执行请求；续费保留原资源。" }}</el-checkbox>
       <div class="actions"><el-button native-type="submit" :type="form.action === 'cancel_compensate' ? 'danger' : 'primary'" :loading="submitting">确认提交并记录审计</el-button><el-button :disabled="submitting" @click="dialog = false">取消</el-button></div>
     </el-form>
   </el-dialog>

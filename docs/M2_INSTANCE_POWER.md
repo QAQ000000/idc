@@ -1,0 +1,40 @@
+# 实例日常运维第一批：状态与电源（2026-11-08）
+
+本批补齐同一魔方上游的实例运行状态、开机、关机及重启，复用客户实例详情、管理员异常入口与 MySQL Outbox。不包含本站 VNC、硬关机/硬重启、重装、变配、快照或新的通知渠道。
+
+## 业务与信任边界
+
+- 本地 `instances.status` 表示交付/权益状态，不表示电源开关；关机不能改为 suspended，开机不能解挂财务、安全或人工暂停。仅已交付、active、未到期且远端绑定完整的实例可提交电源操作。
+- 普通实例列表与详情只读本地事实。详情的运行面板通过独立 runtime 接口查询，显示查询时间；失败显示 unknown，不把历史 Active 当作实时运行。只投影状态枚举和白名单动作，不透传上游页面、域名、密码、原始响应或模块错误文本。
+- 核心仅依赖可选 `PowerDriverInterface`。魔方驱动使用冻结 Provider、远端资源 ID、商品 PID 和账期校验账号范围内的原资源，并读取 `/host/header` 的实际控制按钮及 DCIM 权限；CDN 等未声明能力的实例不开放操作。`start/stop/reboot` 分别映射 on/off/reboot，不降级为 hard_off 或 hard_reboot。
+- 客户必须使用本人有效会话且归属匹配；管理员 Token 不能调用客户接口，当前未交付的模拟登录运维流程拒绝电源写操作。管理员处理使用原有启用 super_admin、证据与审计要求。
+
+## 从网页到 Outbox
+
+1. runtime 在事务外读取上游能力/状态，事务内锁实例并重检版本与门禁；2 分钟 HMAC 确认绑定客户、实例、冻结身份、当前到期/状态、最新任务 ID 与当次可用动作。状态 on 只开放 stop/reboot，off 只开放 start，其余状态不开放写操作。
+2. 提交 action、operation_token 与独立 request_key。事务内重新检查归属、账号/Provider 启用、未到期、确认版本及未决/排队/资金门禁，写入 `tasks.action=power`、`invoice_id=NULL`，冻结 power_action/Provider/PID/远端 ID/账期/请求客户。不扣款、不创建假账单、不修改实例权益。
+3. 实例锁与最新任务 ID 使同一页面确认最多提交一次，数据库唯一请求键保留跨刷新防重；重复点击和冲突动作返回 409。所有 pending 动作阻止新电源请求；新增 pending power 也通过 TaskGate 阻止续费等冲突动作。租约过期不能解除业务占用。
+4. Worker 沿用实例优先锁、执行令牌与租约。调用前重新核验本地冻结身份和远端能力/状态；HTTP 线程不执行电源变更。下架或目录加价不影响存量实例操作，不读取新目录替换原身份。
+5. 上游正向响应仅证明**命令接受**；任务 success 不证明客户 OS 已完成启动/重启或网络健康，网页明确展示该边界，运行状态仍独立查询。
+
+## 超时、崩溃与人工核验
+
+- 传输失败、解析错误、模块返回不成功均按结果未知处理；先 investigating，原任务持有实例占用。旧租约接管只调查同任务，不调用 executePower。
+- 魔方接口没有本次电源请求的可查流水。queryPower 只读核验原资源后返回 NON_QUERYABLE，进入持久 `failed + MANUAL_AUDIT_REQUIRED` 并告警。当前 on/off 不能证明原重启执行或不存在延迟请求，因此不凭电源状态自动完成未知任务。
+- power 的 max_retries 为 0；不存在通用重试或自动补偿。管理员可继续只读调查、凭上游操作记录确认原命令（fulfill，仅结束任务且核对原资源），或确认**未执行且无排队/延迟请求**后 close_unexecuted。后者保留 failed 历史和 `ADMIN_VERIFIED:POWER_NOT_EXECUTED`，释放占用，但不伪造命令成功。新操作必须重新刷新、确认并生成独立请求。
+- 人工动作保留旧 execution_token CAS、同事务不可变审计，递增令牌使旧 Worker 无法覆盖终态；不能绕过退款/其他任务门禁。资金和实例原账期始终不变。
+
+## 契约变更与兼容
+
+变更原因是 tasks 原 action 枚举没有电源动作；不能把关机复用为 suspend，或把重启塞入 upgrade。新增一个 power action，通过 payload 区分三种命令；27 表不变，不新增状态副本或操作表。
+
+受影响模块：数据库枚举及增量迁移、可选驱动契约/魔方实现、TaskGate/Worker/人工裁决、客户实例面板、管理员筛选/证据弹窗。原 create/renew 与冻结销售数据保持原协议；同步 [插件手册](PLUGIN_DEV.md#power-driver)、[API](API.md#instance-power)、[页面](FRONTEND.md#instance-power-panel)、[Outbox](TASKS_OUTBOX.md#power-tasks)、[字典](DATABASE.md#table-tasks)、[路线图](ROADMAP.md)。
+
+已有库上线前先备份，再执行 `php artisan migrate --force`（新增 `2026_11_08_000005_power_operations`），之后重启使用新代码的 Worker。空库 schema 已含 power；旧库迁移只扩展枚举，原任务/金额不改。降级不能直接删除枚举或电源历史，必须停止接单并核验所有在途任务后另行评审。本轮没有修改现有 M2 业务库或接管其 Worker。
+
+## 验证边界
+
+隔离 MySQL/Redis/HTTP/魔方协议夹具覆盖真实服务事务、并发提交、正常开关机/重启接受、丢响应、租约接管与旧令牌、归属/权限/任务和资金门禁、能力拒绝、目录下架、人工调查及审计。本机真实上游只读核验资源 4253 为 on，声明 on/off/reboot；CDN 4250 没有电源能力。本轮未对真实资源发出开机、关机或重启，不能将夹具结果称为真实电源操作验收。
+
+
+最终验证：完整回归 516 项业务检查（新增电源 57）和 22 项运行检查通过；私有 PHP-FPM 缓存前后认证隔离、前端 lint/类型/构建、PHP 语法、字典及文档链接通过。真实浏览器使用独立环境验证过期确认拒绝、关机确认→排队→状态 off→原任务命令接受、管理员查看无账单的未知电源任务并凭证据确认/留审计；390px 页宽无溢出。真实 M2 runtime 接口只读核验，未对真实资源执行电源操作。构建保留已有公共包体积提示。

@@ -202,3 +202,8 @@ REDIS_SERVER=/absolute/path/to/redis-server python3 scripts/test_integration.py
 
 
 M2 独立枚举配置销售已接入安全 Schema 投影、Element Plus 动态表单、服务端预检/加价、5 分钟报价确认、首期与续费价分别冻结及原 Outbox 参数透传。商品 14 首批完成真实只读/隔离验收；后续独立新账单 4 已实付 ¥16.00，实例 3 / host:4253 已由原 Worker 回填 Active，VNC 实测 1 CPU、1 GB 内存、60/30 GiB 双盘与 Debian 12。原单 3 / host:4252 在上游已为 Cancelled，本地仍已付待核验，未自动退款。新单创建响应丢失后，调查只找回原资源，上游原账单经人工单次支付后继续原任务，不代表自动续付异常已完整验收。新增付款前密码校验和按上游默认规则生成，新主机名规则随 Schema 冻结，历史调查不改身份。SSH 可达性、网络性能及完整阶段二仍未验收；配置范围、操作命令、契约兼容及证据见 [配置销售契约](docs/M2_CONFIG_SALES.md)。
+
+
+### 实例运行状态与电源操作
+
+客户实例详情新增运行状态查询、按实际产品能力开放的开机/关机/重启、确认弹窗和原任务结果跟踪；管理员原异常入口支持 power 任务核验。所有写操作先落 Outbox，超时或崩溃不盲目重发重启，不改资金、历史订单与实例权益；本站 VNC 继续单独待办。**已有数据库启用前必须运行 `php artisan migrate --force` 扩展任务枚举，再重启 Worker**，本轮没有变更 M2 业务库或真实实例电源。实现、兼容与验证见 [电源契约](docs/M2_INSTANCE_POWER.md)。

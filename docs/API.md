@@ -145,11 +145,17 @@
 
 ### 2. 实例详情与实时监控
 - **请求**：`GET /api/v1/instances/{id}`
-- **说明**：返回本地快照与远端状态（运行中/已关机、公网IP、到期时间、配置规格）。
+- **说明**：返回本地交付、权益与配置快照；实时运行状态通过独立 runtime 接口读取，不把 active 当作正在运行。
 
-### 3. 电源运维操作
+<a id="instance-power"></a>
+
+### 3. 电源运维操作（本批已实现）
 - **请求**：`POST /api/v1/instances/{id}/power`
-- **载荷**：`{ "action": "reboot" }`（支持 `reboot` / `start` / `stop`）
+- **状态及记录**：`GET /api/v1/instances/{id}/runtime` 返回 state、checked_at（UTC）、actions、blocked、2 分钟 operation_token 及最近 10 条安全 tasks。普通实例查询不访问上游。
+- **载荷**：`{ "action": "reboot", "operation_token": "<runtime确认>", "request_key": "<16–64位字母数字或下划线短横线>" }`，支持 reboot/start/stop。成功返回 task_id/status=pending/action，HTTP 不调用上游变更。
+- **授权与门禁**：本人有效客户身份、实例归属、active/已交付/未到期、真实产品能力和任务/退款门禁；模拟登录写操作本批拒绝。on 开放 stop/reboot，off 开放 start；重复请求/旧确认/冲突 409，越权资源 404，错误 Token 作用域 401。
+- **结果**：任务 success 仅证明命令被上游接受，状态查询与 OS 健康独立；丢响应或崩溃只读调查，无法证明结果则进入管理员待核验，不能盲目重启。管理员任务 action 筛选支持 power；super_admin 按原证据/令牌可 investigate/fulfill/close_unexecuted，无 retry/退款动作。
+- **历史不变量**：不修改资金、账单、冻结配置、实例续费价/账期/交付状态；目录下架不影响存量电源操作。完整兼容及枚举迁移见 [电源契约](M2_INSTANCE_POWER.md)。
 
 ### 4. 在线 Web VNC 访问（规划，尚未实现）
 - **请求**：`GET /api/v1/instances/{id}/vnc`

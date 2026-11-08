@@ -106,7 +106,7 @@ interface UpstreamDriverInterface
 }
 ```
 
-M2 已实现以上最小接口。电源、变配、重装与快照仍为后续能力，续费通过下述可选接口启用，不强迫首条 CDN 驱动编写空实现。变更原因及兼容边界见 [M2_CONTRACT_CHANGE.md](M2_CONTRACT_CHANGE.md)。
+M2 已实现以上最小接口。变配、重装与快照仍为后续能力；本批电源采用独立可选能力，续费通过下述可选接口启用，不强迫首条 CDN 驱动编写空实现。变更原因及兼容边界见 [M2_CONTRACT_CHANGE.md](M2_CONTRACT_CHANGE.md)。
 
 | DTO | 当前字段与语义 |
 |---|---|
@@ -294,3 +294,19 @@ class TelegramChannel implements NotificationChannelInterface
 `ConfigurableDriverInterface::describeForm(array $snapshot): array` 将原始快照投影为公开的独立枚举字段列表。核心只识别此接口与 `ConfigOptions` 验证器，驱动负责上游 Schema 语义和不支持能力的拒绝。`PreflightResult.context.schema_hash` 绑定同一安全表单语义；`recurringAmount` 与 `amount` 分别返回周期和首期成本。当前只在魔方实现，不要求其他驱动增加空实现；接口、兼容与验证见 [M2_CONFIG_SALES.md](M2_CONFIG_SALES.md)。
 
 输入约束复用可选 `context.password_policy`：min_length/max_length 为 12–72 范围内整数，可选 character_sets（upper/lower/digit/special）及 generation_length。`PasswordPolicy` 校验通用边界与字符集，核心不解析魔方原始规则；未提供时保留原 12–72。魔方自身将 Schema 转为密码生成策略及冻结的 hostname_policy/schema_v1；新执行前比对当前规则，变化在提交前拒绝。历史 alnum8/jy- 身份与 queryOrder 不改写，调查不生成新密码或重发。规则只在原 JSON 快照/context 中保存，无新实体或配置树。具体字符集、真实缺陷与兼容影响见 [配置销售契约](M2_CONFIG_SALES.md#后续一次真实开通与输入规则修正2026-11-08)。
+
+
+<a id="power-driver"></a>
+
+## 可选电源能力（2026-11-08）
+
+```php
+interface PowerDriverInterface
+{
+    public function inspectPower(array $instance, array $credentials): PowerState;
+    public function executePower(array $operation, array $credentials): DriverExecutionResult;
+    public function queryPower(array $operation, array $credentials): DriverExecutionResult;
+}
+```
+
+PowerState 仅有 state（on/off/transitioning/unknown/unsupported）与白名单 actions（start/stop/reboot）；不得返回原始模块字段。驱动按原资源绑定查实际产品能力，不因安装接口而为所有商品开放按钮。executePower 只由 Worker 调用一次；succeeded 表示上游明确接受命令，不能声称重启完成。queryPower 只读原请求，不能重发；无请求级流水时必须返回未知/NON_QUERYABLE，当前运行状态不构成重启证据。核心不引用具体驱动。兼容、部署与验收见 [电源契约](M2_INSTANCE_POWER.md)。

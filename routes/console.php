@@ -58,7 +58,7 @@ Artisan::command('outbox:work {--once}', function (): void {
         }
         if (!$this->option('once') && !$worked) { usleep(500000); }
     } while (!$this->option('once'));
-})->purpose('Run fenced create tasks; expired claims are investigated, never blindly recreated');
+})->purpose('Run fenced create, renew and power tasks; expired claims are investigated, never blindly repeated');
 
 Artisan::command('connections:install', function (): void {
     $input = json_decode(stream_get_contents(STDIN, 65536), true, 64, JSON_THROW_ON_ERROR);

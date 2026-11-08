@@ -2,10 +2,10 @@
 declare(strict_types=1);
 namespace Plugins\providers\zjmf;
 use App\Core\Money;
-use App\Plugins\Providers\{UpstreamDriverInterface, RenewalDriverInterface, DriverExecutionResult as R, PreflightResult, ConfigurableDriverInterface, ConfigOptions, PasswordPolicy};
+use App\Plugins\Providers\{UpstreamDriverInterface, RenewalDriverInterface, DriverExecutionResult as R, PreflightResult, ConfigurableDriverInterface, ConfigOptions, PasswordPolicy, PowerDriverInterface, PowerState};
 
 /** Magic Finance agent API. Stateless cart_data avoids clearing or sharing the upstream account's cart. */
-final class ZjmfDriver implements UpstreamDriverInterface, RenewalDriverInterface, ConfigurableDriverInterface
+final class ZjmfDriver implements UpstreamDriverInterface, RenewalDriverInterface, ConfigurableDriverInterface, PowerDriverInterface
 {
     public function getDriverId(): string { return 'zjmf'; }
     public function getQueryAuthority(): string { return 'EVENTUAL_CONSISTENCY'; }
@@ -297,4 +297,68 @@ final class ZjmfDriver implements UpstreamDriverInterface, RenewalDriverInterfac
         try{return $this->inspectRenewal($order,$credentials,$this->token($credentials),$operation);}
         catch(\Throwable){return new R('unknown',operationId:$operation,code:'RENEWAL_QUERY_UNAVAILABLE');}
     }
+    private function powerHost(array $o, array $c, string $token): array
+    {
+        // Use the frozen instance binding, never a customer-supplied upstream id or today's catalog.
+        $host = $this->renewalHost($o, $c, $token);
+        if (($host['domainstatus'] ?? '') !== 'Active') { throw new \RuntimeException('Remote resource is not active'); }
+        return $host;
+    }
+
+    public function inspectPower(array $instance, array $credentials): PowerState
+    {
+        $token = $this->token($credentials);
+        $host = $this->powerHost($instance, $credentials, $token);
+        $r = $this->request($credentials, '/host/header', ['host_id'=>$host['id']], token:$token);
+        $data = $r['data'] ?? [];
+        if (($r['status'] ?? 0) !== 200 || (string)($data['host_data']['id'] ?? '') !== (string)$host['id']
+            || (int)($data['host_data']['productid'] ?? 0) !== (int)$instance['remote_pid']) {
+            throw new \RuntimeException('Power capability resource mismatch');
+        }
+        if (($data['module_power_status'] ?? false) !== true && ($data['module_power_status'] ?? 0) !== 1) {
+            return new PowerState('unsupported');
+        }
+        $actions = [];
+        foreach ($data['module_button']['control'] ?? [] as $button) {
+            if (($button['type'] ?? '') !== 'default') { continue; }
+            $action = ['on'=>'start','off'=>'stop','reboot'=>'reboot'][$button['func'] ?? ''] ?? null;
+            // DCIM can additionally deny individual controls. Never replace off with hard_off.
+            $auth = $data['dcim']['auth'] ?? [];
+            if ($action !== null && (!isset($auth[$button['func']]) || $auth[$button['func']] === 'on')) { $actions[] = $action; }
+        }
+        $r = $this->request($credentials, '/provision/default', ['id'=>$host['id'],'func'=>'status','is_api'=>1], 'POST', $token);
+        if (($r['status'] ?? 0) !== 200) { throw new \RuntimeException('Power status unavailable'); }
+        $state = match ($r['data']['status'] ?? '') {
+            'on'=>'on', 'off'=>'off', 'waiting','process','cold_migrate','hot_migrate','paused'=>'transitioning',
+            'not_support'=>'unsupported', default=>'unknown',
+        };
+        return new PowerState($state, array_values(array_unique($actions)));
+    }
+
+    public function executePower(array $operation, array $credentials): R
+    {
+        $action = $operation['power_action'] ?? '';
+        $func = ['start'=>'on','stop'=>'off','reboot'=>'reboot'][$action] ?? null;
+        if ($func === null) { return new R('rejected', code:'POWER_UNSUPPORTED'); }
+        $state = $this->inspectPower($operation, $credentials);
+        if (!in_array($action, $state->actions, true)
+            || ($action === 'start' ? $state->state !== 'off' : $state->state !== 'on')) {
+            // No mutating request was sent; the original operation is never retried automatically.
+            return new R('rejected', code:'POWER_PRECONDITION_CHANGED');
+        }
+        preg_match('/^host:([0-9]+)$/D', $operation['remote_instance_id'], $m);
+        $r = $this->request($credentials, '/provision/default', ['id'=>$m[1],'func'=>$func,'is_api'=>1], 'POST', $this->token($credentials));
+        // Non-200 business responses can hide a module timeout: absence of acknowledgement is UNKNOWN.
+        return ($r['status'] ?? 0) === 200
+            ? new R('succeeded', $operation['remote_instance_id'], code:'POWER_ACCEPTED')
+            : new R('unknown', code:'POWER_RESULT_UNCONFIRMED');
+    }
+
+    public function queryPower(array $operation, array $credentials): R
+    {
+        $this->inspectPower($operation, $credentials);
+        // This API exposes no request-specific command receipt; even on->on does not prove a reboot.
+        return new R('unknown', code:'NON_QUERYABLE');
+    }
+
 }

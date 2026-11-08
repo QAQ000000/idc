@@ -264,3 +264,12 @@ renew 的人工 retry/fulfill 使用现有 resolve 入口和审计，fulfill 必
 页面不直接修改任务或调驱动；提交时不强制覆盖当前状态，不为 UI 放宽 Worker 令牌/租约门禁。旧弹窗及重复请求 409，失败操作不产生成功审计。续费调查保留原资源与上游操作编号、款项和已顺延本地权益，绝不套用新购取消。既有显式 cancel_compensate 仍只针对已证实永久未交付新购，且只退钱包；人工渠道退款继续按独立财务证据处理，不增加自动退款。
 
 变更原因是补齐运营入口，影响 TaskInspectionService、TaskController、管理员认证及单 Vue 页面；resolve 载荷兼容，未新增 schema/驱动能力。证据最短长度按有效非空白字节校验，非法 IP 返回 400。安全与并发验证见 tests/admin.php；没有操作真实待核验旧单。
+
+
+<a id="power-tasks"></a>
+
+## 实例电源任务增量（2026-11-08）
+
+新增 action=power，invoice_id=NULL，payload 冻结 power_action/Provider/PID/远端资源/账期/请求人，唯一键 instance_power:{instance_id}:{request_key}，max_retries=0。客户端请求仅在实例锁及确认/门禁通过后插入任务；pending power 即阻断冲突动作，运行、调查与人工核验继续沿用原业务占用和执行令牌。不能把关机复用 suspend 或通过开机解挂。
+
+Worker 成功只说明命令接受，不改实例状态/资金/日期；丢响应、重启/崩溃接管不得重新 executePower。魔方缺少请求级查询，读当前状态后仍不能证明原重启，转人工核验。专用人工选项保留证据、同事务审计及旧令牌，只有确认未执行且无延迟请求才允许结束占用；不提供通用重试。完整兼容和验证边界见 [电源契约](M2_INSTANCE_POWER.md)。

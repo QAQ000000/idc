@@ -13,7 +13,7 @@ from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 
 state = {'mode': 'normal', 'creates': 0, 'hosts': {}, 'host_counter': 700, 'wrong_host_id': False,
-         'renew_mode': 'normal', 'renew_calls': 0, 'renew_payments': 0, 'renew_invoices': {}, 'config_mode': 'normal', 'last_create_total': '0.01'}
+         'renew_mode': 'normal', 'renew_calls': 0, 'renew_payments': 0, 'renew_invoices': {}, 'config_mode': 'normal', 'last_create_total': '0.01', 'power_mode': 'normal', 'power_calls': 0}
 lock = threading.Lock()
 
 def next_due(stamp, cycle):
@@ -60,8 +60,14 @@ class Handler(BaseHTTPRequestHandler):
         elif path == '/__config_mode':
             state['config_mode'] = p['mode'][0]
             r = {'ok': True}
+        elif path == '/__power_mode':
+            state['power_mode'] = p['mode'][0]
+            r = {'ok': True}
+        elif path == '/__power_state':
+            state['hosts'][int(p['hostid'][0])]['power_state'] = p['state'][0]
+            r = {'ok': True}
         elif path == '/__state':
-            r = {'creates': state['creates'], 'hosts': len(state['hosts']), 'renew_calls': state['renew_calls'], 'renew_payments': state['renew_payments'], 'last_config': state.get('last_config', {})}
+            r = {'creates': state['creates'], 'hosts': len(state['hosts']), 'renew_calls': state['renew_calls'], 'renew_payments': state['renew_payments'], 'last_config': state.get('last_config', {}), 'power_calls': state['power_calls']}
         elif path == '/zjmf_api_login':
             r = {'status': 200, 'jwt': 'isolated-test-token'}
         elif self.headers.get('Authorization') != 'Bearer isolated-test-token':
@@ -156,6 +162,33 @@ class Handler(BaseHTTPRequestHandler):
             for row in rows:
                 row.pop('username'); row.pop('password')
             r = {'status': 200, 'data': {'sum': len(rows), 'list': rows}}
+        elif path == '/host/header':
+            h = dict(state['hosts'][int(p['host_id'][0])])
+            if state['power_mode'] == 'wrong_header': h['id'] += 1
+            r = {'status': 200, 'data': {'host_data': h, 'module_power_status': state['power_mode'] != 'unsupported',
+                 'module_button': {'control': [{'type': 'default', 'func': f} for f in ['on', 'off', 'reboot', 'hard_off', 'reinstall']]},
+                 'dcim': {'auth': {'off': 'off'}} if state['power_mode'] == 'deny_stop' else {},
+                 'supplier_secret': 'NEVER-EXPOSE-HEADER-SECRET'}}
+        elif path == '/provision/default':
+            h = state['hosts'][int(p['id'][0])]
+            func = p['func'][0]
+            if func == 'status':
+                if state['power_mode'] == 'unavailable':
+                    self.send_error(503)
+                    return
+                r = {'status': 200, 'data': {'status': h.get('power_state', 'on'), 'des': 'NEVER-EXPOSE-STATUS-SECRET'}}
+            else:
+                if func not in ['on', 'off', 'reboot'] or p.get('is_api') != ['1']:
+                    self.send_error(422)
+                    return
+                with lock:
+                    state['power_calls'] += 1
+                    h['power_state'] = 'off' if func == 'off' else 'on'
+                if state['power_mode'] == 'drop':
+                    self.close_connection = True
+                    return
+                if state['power_mode'] == 'hold': time.sleep(10)
+                r = {'status': 406 if state['power_mode'] == 'business_error' else 200, 'msg': 'NEVER-EXPOSE-OPERATION-SECRET'}
         elif path == '/cart/hostinfo':
             hosts = [dict(h) for h in state['hosts'].values() if str(h['id']) in p.get('hostid[0]', [])]
             if state['wrong_host_id']:

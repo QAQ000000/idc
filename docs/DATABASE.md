@@ -17,6 +17,8 @@
 
 **商品运营增量（2026-11-08）**：复用 products.config_cache 记录默认配置 reference_costs（first/recurring）与 recurring_prices，旧 JSON 可缺，按 [商品 API](API.md#admin-products) 只读补取或拒绝猜价。复用 admin_audit_logs，商品版本由销售字段/快照指纹与最新商品审计构成，不新增版本表/字段或同步副本。无 DDL/迁移与历史快照重写，27 表保持。
 
+**电源运维增量（2026-11-08）**：tasks.action 增加 power，invoice_id=NULL；payload 冻结命令、原资源绑定及请求客户，max_retries=0，沿用任务令牌/状态和管理员审计。无新表、实例状态副本或资金变更，27 表保持。已有库须执行 2026_11_08_000005 增量迁移；语义与兼容见 [电源契约](M2_INSTANCE_POWER.md)。
+
 **旧站数据库备份契约**：外置旧站插件必须按指定简云发布版本的完整 `database/schema.sql`（含初始化设置、外键、唯一键及保护触发器）生成 `schema.sql` 与目标表数据 `data.sql`，并附目标版本、schema 校验和及对账清单。SQL 恢复仅面向独立空库，不携带旧库查询或依赖新旧数据库同机，不默认覆盖或合并已有业务库；不为迁移增加物理表。本节 DDL 摘录不能作为完整恢复脚本。目标版本不匹配时重新导出并演练，细则见 [MIGRATION_RUNBOOK.md](MIGRATION_RUNBOOK.md)。
 
 ---
@@ -396,7 +398,7 @@ CREATE TABLE IF NOT EXISTS `tasks` (
     `instance_id` BIGINT UNSIGNED NOT NULL,
     `invoice_id` BIGINT UNSIGNED NULL,
     `idempotency_key` VARCHAR(100) NOT NULL UNIQUE COMMENT '业务幂等防重键 (如 instance_create:inv_1024)',
-    `action` ENUM('create', 'renew', 'upgrade', 'suspend', 'unsuspend', 'terminate', 'snapshot_create', 'snapshot_delete', 'backup_create', 'backup_delete') NOT NULL,
+    `action` ENUM('create', 'renew', 'upgrade', 'suspend', 'unsuspend', 'terminate', 'snapshot_create', 'snapshot_delete', 'backup_create', 'backup_delete', 'power') NOT NULL,
     `payload` JSON NULL COMMENT '固化的任务执行参数 (如确定的目标到期日 target_due_date)',
     `status` ENUM('pending', 'running', 'investigating', 'success', 'failed') NOT NULL DEFAULT 'pending' COMMENT 'investigating: 超时结果反查中',
     `worker_id` VARCHAR(50) NULL COMMENT '抢占此任务的 Worker 标识',

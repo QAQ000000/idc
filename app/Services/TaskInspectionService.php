@@ -18,11 +18,11 @@ final class TaskInspectionService
         $status = $query['status'] ?? 'attention';
         if (!is_string($status) || !in_array($status,['attention','manual','pending','running','investigating','failed','success','all'],true)) { throw new ApiException('Invalid task status'); }
         $where = []; $params = [];
-        if ($status === 'attention') { $where[] = "((t.status='failed' AND COALESCE(t.last_error,'') NOT LIKE 'PERMANENTLY_CANCELLED:%' AND COALESCE(t.last_error,'') NOT LIKE 'CANCELLED_BY_REFUND:%' AND COALESCE(t.last_error,'') <> 'CANCELLED_BY_RENEWAL') OR t.status='investigating' OR (t.status='running' AND (t.lease_until IS NULL OR t.lease_until<=UTC_TIMESTAMP())))"; }
+        if ($status === 'attention') { $where[] = "((t.status='failed' AND COALESCE(t.last_error,'') NOT LIKE 'PERMANENTLY_CANCELLED:%' AND COALESCE(t.last_error,'') NOT LIKE 'CANCELLED_BY_REFUND:%' AND COALESCE(t.last_error,'') <> 'CANCELLED_BY_RENEWAL' AND COALESCE(t.last_error,'') NOT LIKE 'ADMIN_VERIFIED:%') OR t.status='investigating' OR (t.status='running' AND (t.lease_until IS NULL OR t.lease_until<=UTC_TIMESTAMP())))"; }
         elseif ($status === 'manual') { $where[] = "(t.status='failed' AND t.last_error LIKE 'MANUAL_AUDIT_REQUIRED:%')"; }
         elseif ($status !== 'all') { $where[] = 't.status=?'; $params[] = $status; }
         if (isset($query['action']) && $query['action'] !== '') {
-            if (!is_string($query['action']) || !in_array($query['action'],['create','renew'],true)) { throw new ApiException('Invalid task action'); }
+            if (!is_string($query['action']) || !in_array($query['action'],['create','renew','power'],true)) { throw new ApiException('Invalid task action'); }
             $where[] = 't.action=?'; $params[] = $query['action'];
         }
         foreach (['task_id'=>'t.id','invoice_id'=>'t.invoice_id','instance_id'=>'t.instance_id'] as $key=>$column) {
@@ -48,7 +48,7 @@ final class TaskInspectionService
             $s=$db->prepare("SELECT id,user_id,amount,currency,status,refund_status,refund_amount,created_at,JSON_UNQUOTE(JSON_EXTRACT(payload,'$.settlement_purpose')) AS settlement_purpose FROM payment_records WHERE invoice_id=? ORDER BY id"); $s->execute([$task['invoice_id']]); $receipts=$s->fetchAll();
             $actions=TaskResolutionService::candidateActions($task,$instance,$invoice,$admin['role']);
             // Projection only: locked current reads in resolve remain the authorization and business gate.
-            $s=$db->prepare("SELECT id FROM tasks WHERE instance_id=? AND id<>? AND (status IN ('running','investigating') OR (status='failed' AND last_error LIKE 'MANUAL_AUDIT_REQUIRED:%')) LIMIT 1"); $s->execute([$instance['id'],$id]);
+            $s=$db->prepare("SELECT id FROM tasks WHERE instance_id=? AND id<>? AND (status IN ('running','investigating') OR (status='pending' AND action='power') OR (status='failed' AND last_error LIKE 'MANUAL_AUDIT_REQUIRED:%')) LIMIT 1"); $s->execute([$instance['id'],$id]);
             $blocked=(bool)$s->fetchColumn();
             $s=$db->prepare("SELECT id FROM invoices WHERE instance_id=? AND status='refund_pending' LIMIT 1"); $s->execute([$instance['id']]); $blocked=$blocked || (bool)$s->fetchColumn();
             $s=$db->prepare("SELECT r.id FROM payment_records r JOIN invoices v ON v.id=r.invoice_id WHERE v.instance_id=? AND COALESCE(JSON_UNQUOTE(JSON_EXTRACT(r.payload,'$.settlement_purpose')),'cloud_consumption')='cloud_consumption' AND (r.refund_status='pending' OR JSON_EXTRACT(r.payload,'$.awaiting_termination')=true) LIMIT 1"); $s->execute([$instance['id']]); $blocked=$blocked || (bool)$s->fetchColumn();

@@ -21,6 +21,8 @@ Route::middleware('client')->group(function (): void {
     Route::get('instances', [\App\Http\Controllers\InstanceController::class, 'index']);
     Route::get('instances/{id}', [\App\Http\Controllers\InstanceController::class, 'show']);
     Route::get('instances/{id}/credentials', [\App\Http\Controllers\InstanceController::class, 'credentials']);
+    Route::get('instances/{id}/runtime', [\App\Http\Controllers\InstanceController::class, 'runtime']);
+    Route::post('instances/{id}/power', [\App\Http\Controllers\InstanceController::class, 'power']);
     Route::post('instances/{id}/renew', [\App\Http\Controllers\InstanceController::class, 'renew']);
     Route::patch('instances/{id}/auto-renew', [\App\Http\Controllers\InstanceController::class, 'automatic']);
 });

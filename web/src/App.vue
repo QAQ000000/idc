@@ -21,10 +21,12 @@ const links = computed(() =>
     ? [
         { to: "/admin/products", label: "商品管理", mark: "◇" },
         { to: "/admin/tasks", label: "异常任务", mark: "≡" },
+        ...(["super_admin", "finance"].includes(adminAccount.admin?.role || "") ? [{to:"/admin/finance", label:"资金查询", mark:"¥"}] : []),
       ]
     : [
         { to: "/instances", label: "我的实例", mark: "▦" },
         { to: "/invoices", label: "我的账单", mark: "≡" },
+        { to: "/wallet", label: "余额与充值", mark: "¥" },
         { to: "/account/security", label: "账户安全", mark: "◇" },
       ],
 );
@@ -98,7 +100,7 @@ function adminLogout() {
           </RouterLink>
           <template v-if="account.user">
             <RouterLink to="/instances">控制台</RouterLink>
-            <span class="identity">余额 ¥{{ account.user.balance }}</span>
+            <RouterLink class="identity" to="/wallet">余额 ¥{{ account.user.balance }}</RouterLink>
             <el-button @click="logout">退出登录</el-button>
           </template>
           <template v-else>

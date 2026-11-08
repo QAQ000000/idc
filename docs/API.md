@@ -402,3 +402,21 @@ active 可新购，hidden/retired 均拒绝新配置/新报价/新下单。已�
 ## 单邮件通知接口边界（2026-11-08）
 
 本批无新增 HTTP 通知配置/发送/裁决接口。邮件链接只指向现有 `/admin/tasks/:id` 或 `/instances/:id`，必须独立登录并遵循原权限，消息与 Message-ID 均不是登录或操作凭证。配置、查看投递状态及未知结果人工收口使用受保护部署环境的 notifications:configure/inspect/resolve，仍校验当前 super_admin、状态与证据并记审计。原任务 HTTP 操作不因收到邮件而获得授权，退款继续人工办理，完整契约见 [通知](NOTIFICATIONS.md)。
+
+
+<a id="wallet-finance"></a>
+
+## 充值、钱包与管理员资金查询（M2）
+
+以下路径均在 `/api/v1` 下，沿用统一响应与金额字符串；客户与管理员 Token 不互通。
+
+| 方法／路径 | 权限、输入与结果 |
+|---|---|
+| GET /wallet | 当前启用客户，返回本人 balance、currency=CNY。 |
+| POST /wallet/recharges | 当前启用客户；amount 为 0.01–99999999.99 十进制字符串，request_key 为 16–48 位字母数字／下划线／短横线。返回原账单 DTO；同用户／键／规范化金额重放原单，换金额 409。无实例及报价到期日。 |
+| GET /wallet/transactions | 本人 wallet 分户流水；page 默认 1、per_page 默认 20（最多 100），可按 invoice_id、type 筛选。返回 items/total/page/per_page；行含金额、前后余额、账单、payment_record_id、UTC 时间。不接受切换归属。 |
+| POST /invoices/{id}/pay、/cancel | 充值复用原接口；pay 仅 gateway=epay，余额充值拒绝 400；取消 unpaid 幂等，已 paid 拒绝 409，取消后不再创建收银。回调仍走原易支付 notify；外部返回不结算。 |
+| GET /admin/finance/{invoices,receipts,transactions} | 当前启用 finance/super_admin；分页同上，按 user_id、精确 email、invoice_id、gateway_trade_no、channel、from/to 筛选；时间格式 YYYY-MM-DD HH:mm:ss（UTC）。账单按创建时间，凭证按 paid_at（未付按 created_at），流水按 created_at。 |
+| GET /admin/finance/invoices/{id} | 同上；返回 invoice、customer 和分页 receipts/transactions，页码 receipts_page/transactions_page 默认 1。customer 含当前钱包余额；不返回密钥、任意 JSON 或幂等键。 |
+
+客户无权跨账户付款或读流水；support/operator 读取全局资金返回 403。无登录／错误作用域 401、格式错误 400、不存在详情 404。pending 凭证只表示付款尝试；同账单可有多笔独立实收，按网关筛选钱包只命中对应入账。无改账、退款或删除接口。完整领域边界及证据见 [充值与资金查询](M2_WALLET_FINANCE.md)。

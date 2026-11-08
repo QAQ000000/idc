@@ -197,6 +197,15 @@ final class BillingService
     {
         return Database::transaction(function (PDO $db) use ($userId, $id, $onlyExpired): array {
             $invoice = $this->invoice($userId, $id);
+            if ($invoice['type'] === 'recharge' && $invoice['instance_id'] === null) {
+                $s=$db->prepare('SELECT status FROM invoices WHERE id=? FOR UPDATE');$s->execute([$id]);$status=$s->fetchColumn();
+                // A concurrent cancel may have committed after the initial snapshot read.
+                $invoice['status']=$status;
+                if ($onlyExpired || $status === 'cancelled') { return $invoice; }
+                if ($status !== 'unpaid') { throw new ApiException('Recharge invoice cannot be cancelled',409,409); }
+                $db->prepare("UPDATE invoices SET status='cancelled' WHERE id=? AND status='unpaid'")->execute([$id]);
+                return $this->invoice($userId,$id);
+            }
             if (!in_array($invoice['type'],['new','renew'],true) || !$invoice['instance_id']) {
                 throw new ApiException('Only purchase or renewal invoices can be cancelled');
             }

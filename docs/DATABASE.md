@@ -11,6 +11,8 @@
 
 **Laravel 13 适配边界**：M0 已使用框架同连接事务和标准迁移运行器；新增 `migrations` 仅承载升级版本元数据，审查记录见 [TECH_STACK.md §7](TECH_STACK.md#7-m0-实施中的-schema-边界审查)。不安装默认 users/sessions/cache/jobs 表。`invoices.checkout_key/checkout_hash` 是原账单实体的幂等属性；可空兼容旧数据，摘要为 HMAC，唯一键按用户隔离。schema.sql 是空库完整结构，版本 PHP 迁移是已有库增量升级记录，禁止双份手写完整模型。
 
+**充值与资金查询增量**：复用原 invoices.type=recharge、instance_id=NULL，checkout_key 使用 recharge: 命名空间、checkout_hash 为用途／金额 HMAC；payment_records 仍同时承载待付尝试和实际收款。transactions.trade_no 新入钱包流水关联原收款 trade_no，旧只追加事实不重写，查询按原键回溯。仅 account_type=wallet 进入本批钱包查询；不增财务汇总副本、实体、DDL 或迁移，27 表保持，见 [本批契约](M2_WALLET_FINANCE.md)。
+
 **退款字段交付边界（2026-11-08）**：退款由管理员手动办理，现有 `refund_*` 字段及退款用途说明不代表已实现自动退款、自动网关调用或人工登记接口。本次仅调整交付范围，27 表、DDL、触发器与历史数据均不变；退款证据、防重记账和审计要求见 [人工退款策略](PAYMENTS_LEDGER.md#manual-refund-policy)。
 
 **运营后台第一批（2026-11-08）**：复用 admins、tasks、instances、invoices、payment_records 与 admin_audit_logs，27 表与 DDL 无变化，不需要迁移。admins.role 当前用于所有启用管理员只读、仅 super_admin 裁决；列表/详情不读取凭据或原始任务载荷，处理记录来自原审计表，不增加同步副本。登录仅签发 admin 作用域 Token，既有二次认证配置不能被绕过；接口边界见 [API](API.md#admin-operations)。

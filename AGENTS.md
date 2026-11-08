@@ -69,7 +69,7 @@
 2. `providers`：统一上游服务提供方（包含魔方财务、Easypanel、Sub2API、人工运维）。
 3. `products`：商品目录定义、绑定 Provider、加价策略、配置项快照 JSON。
 4. `instances`：用户已购云资源实例、状态机、到期日、续费价格覆盖（`override_price`）。
-5. `invoices`：账单流水（新购、续费、升级补差），唯一索引防重。
+5. `invoices`：账单流水（新购、续费、充值、升级补差），唯一索引防重。
 6. `transactions`：资金账本变动明细（充值、消费、退款、佣金冲正）。
 7. `tasks` (Outbox)：可靠任务队列（开通、续费、升降级、暂停、销毁）。
 8. `commissions`：推广返利明细与冻结状态机。
@@ -93,6 +93,8 @@
 **单邮件通知已实现**：通知表异步发送管理员人工核验告警、客户未来 7 天临期提醒及客户主动密码重置，原表增加 admin_id/context、user_id 可空，27 表保持。分钟 sweep 只占位/恢复，独立 mail Worker 认领后才做 SMTP，不能阻塞金融 Worker/调度；结果未知停止发送并转持久核验，CLI 证据/超级管理员/审计收口不重发、不改原业务。配置通过私有 stdin 加密写 system_settings。真实客户提醒须显式开启，具体启用/验收边界见 [通知契约](docs/NOTIFICATIONS.md)。
 
 **客户自助已实现**：本人账单分页/筛选继续原单；账户修改/邮件找回密码只递增 users.auth_version 撤销旧会话和重置凭据，不增重置表。重置 JWT 独立用途、15 分钟、单次成功，通知 context 仅暂存密文，认领后清除；不得明文入库/日志或作主登录。上线先迁移 000007 再加载认证代码/重启邮件 Worker，旧无 av Token 仅兼容版本 0。真实 VPS 的 SSH/联网可用性须按 [本批证据](docs/M2_CUSTOMER_SELF_SERVICE.md) 区分，不能由 Active/VNC 推定。
+
+**充值与资金查询已实现**：客户 /wallet 及原账单页复用易支付，正常充值以凭证唯一身份、账单 CAS、余额和流水同事务结算；迟到／额外实收独立入钱包。纯充值不建实例、不投 Outbox、不计消费／佣金，余额不可给自身充值。后台 /admin/finance 仅当前启用 finance/super_admin 可读，按原账单／凭证／wallet 流水关联，不增同步副本或改账入口。27 表与 DDL 保持，历史只追加流水不重写；退款人工、充值秒级唤醒延期，见 [充值与资金查询](docs/M2_WALLET_FINANCE.md)。
 
 ## 四、 统一 Provider（上游驱动）开发规范
 

@@ -37,7 +37,7 @@ watch(() => route.fullPath, load, { immediate: true });
       <el-table-column label="金额" width="110"><template #default="{row}">¥{{ row.total }}</template></el-table-column>
       <el-table-column label="状态" width="130"><template #default="{row}">{{ statuses[row.status] || row.status }}<span v-if="row.status === 'unpaid' && row.quote_expired">（报价已过期）</span></template></el-table-column>
       <el-table-column label="创建时间" min-width="200"><template #default="{row}">{{ row.created_at }} UTC</template></el-table-column>
-      <el-table-column label="操作" width="130"><template #default="{row}"><RouterLink :to="`/invoices/${row.invoice_id}`">{{ row.status === 'unpaid' && !row.quote_expired && ['new','renew'].includes(row.type) ? '继续原单' : '查看详情' }}</RouterLink></template></el-table-column>
+      <el-table-column label="操作" width="130"><template #default="{row}"><RouterLink :to="`/invoices/${row.invoice_id}`">{{ row.status === 'unpaid' && !row.quote_expired && ['new','renew','recharge'].includes(row.type) ? '继续原单' : '查看详情' }}</RouterLink></template></el-table-column>
     </el-table>
     <el-pagination v-if="result" layout="prev, pager, next, total" :pager-count="5" :total="result.total" :page-size="result.per_page" :current-page="result.page" @current-change="turn" />
   </section>

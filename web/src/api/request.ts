@@ -58,7 +58,7 @@ export interface Product {
 }
 export interface Invoice {
   invoice_id: number;
-  instance_id: number;
+  instance_id: number | null;
   type: string;
   total: string;
   status: string;

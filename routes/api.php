@@ -11,6 +11,9 @@ Route::get('products', [ApiController::class, 'products']);
 Route::get('products/{id}/config', [ApiController::class, 'configuration']);
 Route::post('products/{id}/calculate', [ApiController::class, 'calculate']);
 Route::middleware('client')->group(function (): void {
+    Route::get('wallet', [\App\Http\Controllers\WalletController::class, 'show']);
+    Route::post('wallet/recharges', [\App\Http\Controllers\WalletController::class, 'recharge']);
+    Route::get('wallet/transactions', [\App\Http\Controllers\WalletController::class, 'transactions']);
     Route::get('auth/me', [ApiController::class, 'me']);
     Route::post('auth/password',[ApiController::class,'changePassword']);
     Route::post('orders/checkout', [ApiController::class, 'checkout']);
@@ -34,6 +37,8 @@ Route::middleware('client')->group(function (): void {
 });
 Route::post('admin/auth/login', [\App\Http\Controllers\AdminAuthController::class, 'login'])->middleware('captcha:login');
 Route::middleware('admin')->group(function (): void {
+    Route::get('admin/finance/invoices/{id}', [\App\Http\Controllers\FinanceController::class, 'show']);
+    Route::get('admin/finance/{kind}', [\App\Http\Controllers\FinanceController::class, 'index'])->whereIn('kind',['invoices','receipts','transactions']);
     Route::get('admin/providers', [\App\Http\Controllers\AdminProductController::class, 'providers']);
     Route::get('admin/products', [\App\Http\Controllers\AdminProductController::class, 'index']);
     Route::post('admin/products/preview', [\App\Http\Controllers\AdminProductController::class, 'preview']);

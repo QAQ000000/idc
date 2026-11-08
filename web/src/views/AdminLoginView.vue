@@ -17,7 +17,7 @@ async function submit() {
     });
     account.establish(result.token, result.admin); password.value = "";
     const target = route.query.redirect;
-    await router.push(typeof target === "string" && /^\/admin\/(?:tasks(?:\/\d+)?|products(?:\/(?:\d+|import))?)(?:\?.*)?$/.test(target) ? target : "/admin/tasks");
+    await router.push(typeof target === "string" && /^\/admin\/(?:tasks(?:\/\d+)?|finance(?:\/invoices\/\d+)?|products(?:\/(?:\d+|import))?)(?:\?.*)?$/.test(target) ? target : "/admin/tasks");
   } catch (e) { error.value = message(e); await captcha.value?.refresh(); }
   finally { busy.value = false; }
 }

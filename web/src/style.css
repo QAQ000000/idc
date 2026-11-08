@@ -804,3 +804,15 @@ p {
     scroll-behavior: auto !important;
   }
 }
+.wallet-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; margin-bottom: 24px; }
+.wallet-columns > *, .finance-results { min-width: 0; }
+.finance-results { margin-top: 24px; }
+.finance-toolbar { max-width: 260px; margin-bottom: 20px; }
+.amount-shortcuts { display: flex; flex-wrap: wrap; gap: 8px; }
+.amount-shortcuts .el-button { margin-left: 0; }
+.money-in { color: #16734d; }
+.money-out { color: #bd3434; }
+@media (max-width: 767px) {
+  .wallet-columns { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  .finance-page .page-heading { flex-wrap: wrap; }
+}

@@ -162,6 +162,7 @@ def main():
                     time.sleep(0.1)
             run_checks(php, 'tests/notifications.php', env, r'Notification checks: \d+')
             run_checks(php, 'tests/customer_self_service.php', env, r'Customer self-service checks: \d+')
+            run_checks(php, 'tests/wallet_finance.php', env, r'Wallet finance checks: \d+')
             subprocess.run([php, 'artisan', 'migrate', '--force'], cwd=ROOT, env=env, check=True)
             subprocess.run([php, 'tests/browser_fixture.php'], cwd=ROOT, env=env, check=True)
             fpm_socket = directory / 'fpm.sock'

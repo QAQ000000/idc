@@ -6,6 +6,8 @@
 
 ## 1. 总体分层架构 (Layered Architecture)
 
+**充值运营增量**：WalletService 只创建原 invoices 的 recharge 账单，PaymentService 复用支付插件验签、凭证唯一键和账单 CAS，以同连接事务提交充值余额及 LedgerService 只追加流水；纯充值无实例、消费、佣金或 Outbox。FinanceQueryService 只投影原账单／凭证／钱包流水，不建同步副本；客户仅本人，管理员限当前启用 finance/super_admin。27 表保持，无迁移。接口和冻结契约变化见 [充值与资金查询](M2_WALLET_FINANCE.md)。
+
 系统采用 **“极简内核 + 驱动抽象 + 异步可靠任务”** 的清晰三层结构：
 
 **已确认技术底座**：PHP 8.4 + Laravel 13、MySQL 8.0+、Redis，以及单一 Vue 3/Vite/TypeScript/Element Plus 前端。HTTP 首版采用普通 PHP-FPM；Laravel 承接路由、校验、配置、日志、命令和调度，领域服务保留财务与履约规则。当前 MVP 已接入 Laravel 及单一前端，已验证范围为模拟余额交易闭环；M2 已实现可靠新购/续费 Worker、魔方固定商品驱动、易支付收单和最小实例页面，首个固定 CDN 商品已完成真实支付与交付回填，其他能力仍依路线图验收，适配边界见 [TECH_STACK.md](TECH_STACK.md)。

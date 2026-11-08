@@ -48,6 +48,8 @@ function consoleHttp(string $path, ?string $token=null):array{
 foreach(['','/check'] as $suffix){$path="/instances/$id/console".$suffix;consoleCheck(consoleHttp($path)[0]===401,'HTTP main login required for '.$suffix);consoleCheck(consoleHttp($path,$admin)[0]===401,'HTTP admin scope rejected for '.$suffix);consoleCheck(consoleHttp($path,$otherToken)[0]===404,'HTTP cross-owner rejected for '.$suffix);}
 $redis->command('DEL',$rate);[$status,$response]=consoleHttp("/instances/$id/console",$token);consoleCheck($status===200 && isset($response['data']['websocket_url']) && !isset($response['data']['path']),'HTTP direct contract replaces relay ticket contract');
 consoleCheck(consoleHttp("/instances/$id/console/check",$token)[1]['data']['binding']===$a['binding'],'HTTP continuity check matches original binding');
+// Restore timestamps changed by the fixture's own status/binding exercises before comparing all rows.
+foreach($before['instances'] as $row){if((int)$row['id']===$id){$db->prepare('UPDATE instances SET updated_at=? WHERE id=?')->execute([$row['updated_at'],$id]);}}
 foreach($before as $table=>$rows){consoleCheck($db->query("SELECT * FROM $table ORDER BY id")->fetchAll()===$rows,'console authorization does not mutate '.$table);}
 $redis->command('DEL',$rate);
 echo "Console checks: $checks\n";

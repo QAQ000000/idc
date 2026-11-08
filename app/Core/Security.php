@@ -142,6 +142,13 @@ class Security
         return $payload;
     }
 
+    /** Missing av is compatible only with the pre-revocation version zero. */
+    public static function assertUserVersion(array $claims,int $current):void
+    {
+        $version=$claims['av']??0;
+        if (!is_int($version) || $version!==$current) { throw new ApiException('Session revoked; log in again',401,401); }
+    }
+
     /**
      * 仅信任明确配置的代理，沿 X-Forwarded-For 从右向左剥离受信跳点。
      */

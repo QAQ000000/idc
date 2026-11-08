@@ -21,13 +21,13 @@ function adminLogout() { adminAccount.logout(); void router.push("/admin/login")
         </template>
         <template v-else>
           <RouterLink to="/">选购产品</RouterLink>
-          <template v-if="account.user"><RouterLink to="/instances">我的实例</RouterLink><span>{{ account.user.email }} · 余额 ¥{{ account.user.balance }}</span><el-button @click="logout">退出登录</el-button></template>
+          <template v-if="account.user"><RouterLink to="/instances">我的实例</RouterLink><RouterLink to="/invoices">我的账单</RouterLink><RouterLink to="/account/security">账户安全</RouterLink><span>{{ account.user.email }} · 余额 ¥{{ account.user.balance }}</span><el-button @click="logout">退出登录</el-button></template>
           <template v-else><RouterLink to="/login">登录</RouterLink><RouterLink to="/register">注册</RouterLink></template>
           <RouterLink to="/admin/tasks">管理后台</RouterLink>
         </template>
       </nav>
     </el-header>
-    <el-main><RouterView :key="$route.fullPath" /></el-main>
+    <el-main><RouterView :key="$route.path === '/reset-password' ? $route.path : $route.fullPath" /></el-main>
     <el-footer>简云 · 云产品服务</el-footer>
   </el-container>
 </template>

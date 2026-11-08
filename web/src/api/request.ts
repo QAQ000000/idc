@@ -67,6 +67,9 @@ export interface Invoice {
   recurring_price: string | null;
   config_options: Record<string, string>;
   configuration: { label: string; value: string }[];
+  created_at: string;
+  paid_at: string | null;
+  quote_expired: number | null;
 }
 export interface Captcha {
   enabled: boolean;

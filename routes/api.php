@@ -5,12 +5,16 @@ use Illuminate\Support\Facades\Route;
 Route::get('captcha/config', [ApiController::class, 'captcha']);
 Route::post('auth/register', [ApiController::class, 'register'])->middleware('captcha:register');
 Route::post('auth/login', [ApiController::class, 'login'])->middleware('captcha:login');
+Route::post('auth/password/forgot',[ApiController::class,'forgot'])->middleware('captcha:password_reset');
+Route::post('auth/password/reset',[ApiController::class,'resetPassword']);
 Route::get('products', [ApiController::class, 'products']);
 Route::get('products/{id}/config', [ApiController::class, 'configuration']);
 Route::post('products/{id}/calculate', [ApiController::class, 'calculate']);
 Route::middleware('client')->group(function (): void {
     Route::get('auth/me', [ApiController::class, 'me']);
+    Route::post('auth/password',[ApiController::class,'changePassword']);
     Route::post('orders/checkout', [ApiController::class, 'checkout']);
+    Route::get('invoices', [ApiController::class, 'invoices']);
     Route::get('invoices/{id}', [ApiController::class, 'invoice']);
     Route::post('invoices/{id}/pay', [ApiController::class, 'pay']);
     Route::post('invoices/{id}/cancel', [ApiController::class, 'cancel']);

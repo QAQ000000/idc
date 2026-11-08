@@ -78,6 +78,7 @@ CREATE TABLE IF NOT EXISTS `users` (
     `email` VARCHAR(100) NOT NULL UNIQUE COMMENT '登录邮箱',
     `phone` VARCHAR(30) NULL UNIQUE COMMENT '手机号',
     `password` VARCHAR(255) NOT NULL COMMENT '密码哈希',
+    `auth_version` BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '客户认证版本，改密递增以撤销旧登录和重置凭据',
     `balance` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '可用钱包余额',
     `frozen_commission` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '冻结中的推广佣金',
     `available_commission` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '可提现的推广佣金',
@@ -758,3 +759,7 @@ CREATE TABLE IF NOT EXISTS `migrations` (
 ### M2 配置销售 JSON 边界（2026-11-08）
 
 复用 products.config_cache 的 schema/configurable/default_config/prices/order_namespace；prices 是默认选择参考售价。instances.config_snapshot 与 invoices.price_snapshot 冻结 config_options、可读 configuration、upstream_total/upstream_recurring、total/recurring_price、加价规则与 driver_context。instances.recurring_price 使用独立续费售价，不再把含初装费首期价写成续费价。已有固定快照缺少新字段时保留旧语义；无物理表、字段或迁移变化。完整约束见 [配置销售契约](M2_CONFIG_SALES.md)。
+
+### 客户认证版本增量（2026-11-08）
+
+`users.auth_version` 为认证撤销事实，000007 迁移在旧库增加默认 0 的 BIGINT UNSIGNED；密码更新与版本递增在同一用户行锁事务。兼容旧无 av 登录仅限版本 0，禁止自动回滚删除已有撤销记录。复用 notification_deliveries 的 pending context 密文暂存短效重置凭据，认领及终态清理，无新增表，仍 27 张。设计原因、影响模块及证据见 [客户自助](M2_CUSTOMER_SELF_SERVICE.md)。

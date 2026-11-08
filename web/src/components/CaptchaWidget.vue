@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
 import { api, message, type Captcha } from "../api/request";
-const props = defineProps<{ scene: "login" | "register" }>();
+const props = defineProps<{ scene: "login" | "register" | "password_reset" }>();
 const config = ref<Captcha | null>(null);
 const answer = ref("");
 const error = ref("");

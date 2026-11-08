@@ -94,6 +94,7 @@ async function submit() {
 </el-form
     >
     <p>
+      <RouterLink v-if="scene === 'login'" to="/forgot-password">忘记密码？</RouterLink>
       <RouterLink
         v-if="scene === 'login'"
         :to="{ path: '/register', query: route.query }"

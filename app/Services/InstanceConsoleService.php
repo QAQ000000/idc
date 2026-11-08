@@ -15,8 +15,9 @@ final class InstanceConsoleService
         if (!$p || ($p['sub_type']??'user')!=='user' || !empty($p['is_impersonated'])) {
             throw new ApiException('Console requires an owner session',401,401);
         }
-        $s=Database::getInstance()->prepare('SELECT status FROM users WHERE id=?');$s->execute([$p['uid']]);
-        if ($s->fetchColumn()!=='active') { throw new ApiException('Account unavailable',403,403); }
+        $s=Database::getInstance()->prepare('SELECT status,auth_version FROM users WHERE id=?');$s->execute([$p['uid']]);$user=$s->fetch();
+        if (!$user || $user['status']!=='active') { throw new ApiException('Account unavailable',403,403); }
+        Security::assertUserVersion($p,(int)$user['auth_version']);
         return $p['uid'];
     }
 

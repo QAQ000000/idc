@@ -78,6 +78,16 @@
 }
 ```
 
+### 4. 客户账单与账户自助（已实现）
+
+- `GET /api/v1/invoices?page=1&per_page=20&status=all`：仅本人客户主会话；分页 1–100000、每页 1–100。状态 all/unpaid/paid/cancelled/refund_pending/refunded；返回 items/total/page/per_page，按编号倒序，行含 invoice_id、instance_id/name、type、total、status、payment_method、created_at/paid_at/quote_expired_at、quote_expired；金额字符串，时间 UTC，不返回冻结配置或上游凭据。查询中的 user_id 不改变归属。原详情新增 created_at/quote_expired；支付仍使用原账单接口与最终门禁。
+- `POST /api/v1/auth/password`：客户本人主登录，禁止模拟登录；`{current_password,new_password}`。旧密码正确且认证版本仍一致才更新，成功 `{changed:true}`，当前及其他旧登录同时失效。
+- `POST /api/v1/auth/password/forgot`：公开，`{email,captcha_payload}`，独立 password_reset 验证码场景；IP 10 次/小时、邮箱冷却 60 秒且 5 次/小时。合法请求统一 `{accepted:true}`，不暴露账号存在/禁用或邮件配置状态，不承诺已送达。
+- `POST /api/v1/auth/password/reset`：公开，`{token,new_password}`；独立用途 JWT 自申请 15 分钟有效，只允许一次成功，并发/重放/邮箱或认证版本改变拒绝。成功 `{changed:true}`，不自动登录。每次明确申请独立邮件，成功改密前同版本多条链接可并存；首次成功一起失效。无“最新申请立即废除旧链接”承诺。
+- 新密码 12–72 UTF-8 字节、拒绝 NUL；接口敏感成功响应 no-store。邮件链接 `/reset-password#token=...`，前端取入内存后清 fragment，不存本地、不作为主登录。`users.auth_version` 在改密行锁事务递增；原无 av 客户 JWT 只兼容版本 0。VNC 后续资格检查同样比较版本；已发出的云凭据无法本站强撤销。
+
+完整设计、迁移与验收边界见 [客户自助契约](M2_CUSTOMER_SELF_SERVICE.md)。
+
 ### 5. 软件与常用工具下载中心
 - **列表接口**：`GET /api/v1/downloads?category={category}`
   - **响应**：返回资源列表（按 `order_num DESC, id DESC` 排序），包含标题、简介、文件大小、SHA256 校验和及权限要求。

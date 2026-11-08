@@ -65,10 +65,23 @@ final class NotificationService
             $s=$db->prepare("SELECT * FROM notification_deliveries WHERE id=? AND channel='mail' AND status='pending'");$s->execute([$id]);$preview=$s->fetch();
             if (!$preview) { return null; }
             $c=json_decode($preview['context']??'{}',true,32,JSON_THROW_ON_ERROR);
-            $s=$db->prepare('SELECT *,due_date>UTC_TIMESTAMP() AND due_date<=DATE_ADD(UTC_TIMESTAMP(),INTERVAL 7 DAY) AS due_now FROM instances WHERE id=? FOR UPDATE');
-            $s->execute([$c['instance_id']??0]);$i=$s->fetch();
+            $i=null;
+            if (($c['kind']??null)!=='password_reset') {
+                $s=$db->prepare('SELECT *,due_date>UTC_TIMESTAMP() AND due_date<=DATE_ADD(UTC_TIMESTAMP(),INTERVAL 7 DAY) AS due_now FROM instances WHERE id=? FOR UPDATE');
+                $s->execute([$c['instance_id']??0]);$i=$s->fetch();
+            }
             $valid=false;$message=null;
-            if (($c['kind']??null)==='task_manual' && $settings['task_alerts'] && $preview['user_id']===null && $preview['admin_id']!==null) {
+            if (($c['kind']??null)==='password_reset' && $preview['admin_id']===null && $preview['user_id']!==null) {
+                $s=$db->prepare('SELECT id,email,status,auth_version FROM users WHERE id=? FOR UPDATE');$s->execute([$preview['user_id']]);$u=$s->fetch();
+                $token=Security::decrypt($c['encrypted_token']??'');$p=$token===null?null:PasswordService::resetClaims($token);
+                $valid=$u && $p && $u['status']==='active' && $u['email']===$preview['target'] && (int)$u['id']===$p['uid']
+                    && (int)$u['auth_version']===$p['av'] && hash_equals(Security::requestFingerprint($u['email']),$p['email_hash']);
+                if ($valid) {
+                    $message=new NotificationMessage($preview['fingerprint'],($settings['subject_prefix']??'').'重置账户登录密码',
+                        "你申请了重置账户登录密码。链接自申请起 15 分钟内有效，一次成功后所有旧登录和旧重置链接失效。\n".
+                        $settings['site_url'].'/reset-password#token='.rawurlencode($token)."\n如果不是你本人申请，请忽略本邮件；账户密码不会因此改变。请勿转发此链接。");
+                }
+            } elseif (($c['kind']??null)==='task_manual' && $settings['task_alerts'] && $preview['user_id']===null && $preview['admin_id']!==null) {
                 $s=$db->prepare('SELECT id,instance_id,status,execution_token,last_error,action,invoice_id FROM tasks WHERE id=? FOR UPDATE');$s->execute([$c['task_id']??0]);$t=$s->fetch();
                 $s=$db->prepare("SELECT email,status FROM admins WHERE id=? FOR UPDATE");$s->execute([$preview['admin_id']]);$a=$s->fetch();
                 $valid=$i && $t && (int)$t['instance_id']===(int)$i['id'] && $t['status']==='failed'
@@ -97,7 +110,7 @@ final class NotificationService
             foreach (['fingerprint','target','user_id','admin_id','context'] as $key) {
                 if ($d[$key]!==$preview[$key]) { throw new \RuntimeException('Notification identity changed'); }
             }
-            $s=$db->prepare("UPDATE notification_deliveries SET status=?,error_message=?,updated_at=UTC_TIMESTAMP() WHERE id=? AND status='pending'");
+            $s=$db->prepare("UPDATE notification_deliveries SET status=?,error_message=?,context=JSON_REMOVE(context,'$.encrypted_token'),updated_at=UTC_TIMESTAMP() WHERE id=? AND status='pending'");
             $s->execute([$valid?'sending':'failed',$valid?null:'STALE_BUSINESS_CONTEXT',$id]);
             return $valid ? ['id'=>$id,'target'=>$d['target'],'message'=>$message] : null;
         });
@@ -106,7 +119,7 @@ final class NotificationService
     public function finish(int $id,NotificationResult $result): bool
     {
         $status=match($result->status) {'accepted'=>'success','rejected'=>'failed',default=>'pending_manual_check'};
-        $s=Database::getInstance()->prepare("UPDATE notification_deliveries SET status=?,error_message=?,sent_at=IF(?='success',UTC_TIMESTAMP(),NULL),updated_at=UTC_TIMESTAMP() WHERE id=? AND status='sending'");
+        $s=Database::getInstance()->prepare("UPDATE notification_deliveries SET status=?,error_message=?,context=JSON_REMOVE(context,'$.encrypted_token'),sent_at=IF(?='success',UTC_TIMESTAMP(),NULL),updated_at=UTC_TIMESTAMP() WHERE id=? AND status='sending'");
         $s->execute([$status,$result->code,$status,$id]);$changed=$s->rowCount()===1;
         if ($changed && $status==='pending_manual_check') { logger()->critical('Notification manual review required',['delivery_id'=>$id,'channel'=>'mail','result_code'=>$result->code]); }
         return $changed;
@@ -114,7 +127,7 @@ final class NotificationService
 
     public function recover(): int
     {
-        $s=Database::getInstance()->prepare("UPDATE notification_deliveries SET status='pending_manual_check',error_message='SEND_OUTCOME_UNKNOWN',updated_at=UTC_TIMESTAMP()
+        $s=Database::getInstance()->prepare("UPDATE notification_deliveries SET status='pending_manual_check',error_message='SEND_OUTCOME_UNKNOWN',context=JSON_REMOVE(context,'$.encrypted_token'),updated_at=UTC_TIMESTAMP()
             WHERE channel='mail' AND status='sending' AND updated_at<DATE_SUB(UTC_TIMESTAMP(),INTERVAL 15 MINUTE)");$s->execute();$count=$s->rowCount();
         if ($count) { logger()->critical('Stale notification claims require manual review',['count'=>$count,'channel'=>'mail']); }
         return $count;

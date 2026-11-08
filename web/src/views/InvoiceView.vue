@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useRoute } from "vue-router";
 import { api, message, type Invoice } from "../api/request";
 import { useUser } from "../stores/user";
@@ -15,6 +15,8 @@ const labels: Record<string, string> = {
   refunded: "已退款",
   refund_pending: "退款处理中",
 };
+const types: Record<string, string> = {new: "新购", renew: "实例续费", upgrade: "变配补差", recharge: "充值"};
+const actionable = computed(() => invoice.value?.status === "unpaid" && ["new", "renew"].includes(invoice.value.type));
 async function load() {
   busy.value = true;
   error.value = "";
@@ -90,7 +92,7 @@ onMounted(load);
       role="alert"
     /><el-card v-if="invoice" v-loading="busy">
       <el-descriptions :column="1" border>
-        <el-descriptions-item label="账单类型">{{ invoice.type === 'renew' ? '实例续费' : '新购' }}</el-descriptions-item>
+        <el-descriptions-item label="账单类型">{{ types[invoice.type] || invoice.type }}</el-descriptions-item>
         <el-descriptions-item label="账单编号">
           {{ invoice.invoice_id }}
 </el-descriptions-item
@@ -116,13 +118,14 @@ onMounted(load);
         <el-descriptions-item v-for="(item, index) in invoice.configuration" :key="index" :label="item.label">{{ item.value }}</el-descriptions-item>
       </el-descriptions>
       <p v-if="invoice.status === 'paid'" class="muted">
-        {{ invoice.type === 'renew' ? '续费权益已记账，请查看实例的上游确认状态。欠费暂停不会仅凭付款解除。' : '付款成功，请等待交付。付款状态不代表资源已经开通。' }}
+        {{ invoice.type === 'renew' ? '续费权益已记账，请查看实例的上游确认状态。欠费暂停不会仅凭付款解除。' : invoice.type === 'recharge' ? '充值款项已记账。' : invoice.type === 'upgrade' ? '补差款项已记账，实际变更以实例及处理记录为准。' : '付款成功，请等待交付。付款状态不代表资源已经开通。' }}
       </p>
       <div class="actions">
-        <RouterLink :to="'/instances/' + invoice.instance_id"
+        <RouterLink to="/invoices">返回我的账单</RouterLink>
+        <RouterLink v-if="invoice.instance_id" :to="'/instances/' + invoice.instance_id"
           >查看实例与交付状态</RouterLink
         ><el-button
-          v-if="invoice.status === 'unpaid'"
+          v-if="actionable && !invoice.quote_expired"
           :disabled="busy"
           @click="epay"
           >
@@ -130,7 +133,7 @@ onMounted(load);
 </el-button
         >
         <el-button
-          v-if="invoice.status === 'unpaid'"
+          v-if="actionable && !invoice.quote_expired"
           type="primary"
           :disabled="busy"
           @click="action('pay')"
@@ -138,7 +141,7 @@ onMounted(load);
           余额付款
 </el-button
         ><el-popconfirm
-          v-if="invoice.status === 'unpaid'"
+          v-if="actionable"
           title="确认取消这笔未付订单？"
           @confirm="action('cancel')"
         >
@@ -148,6 +151,7 @@ onMounted(load);
 </el-popconfirm
         ><el-button :disabled="busy" @click="load">刷新状态</el-button>
       </div>
+      <el-alert v-if="invoice.status === 'unpaid' && invoice.quote_expired" title="此新购报价已过期，不能继续付款。请取消原单后重新选购。" type="warning" :closable="false" />
 </el-card
     ><el-button v-else :loading="busy" @click="load">重新加载</el-button>
   </section>

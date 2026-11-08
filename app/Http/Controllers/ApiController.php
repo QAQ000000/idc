@@ -36,6 +36,22 @@ final class ApiController
     }
     public function checkout(BillingService $billing): JsonResponse { return ApiResponse::success($billing->checkout((int)AuthMiddleware::user()['id'], Request::body())); }
     public function invoice(string $id, BillingService $billing): JsonResponse { return ApiResponse::success($billing->invoice((int)AuthMiddleware::user()['id'], Request::id($id))); }
+    public function invoices(BillingService $billing):JsonResponse { return ApiResponse::success($billing->listing((int)AuthMiddleware::user()['id'],request()->query())); }
+    public function forgot(\App\Services\PasswordService $passwords):JsonResponse
+    {
+        $passwords->request(Request::body());
+        return ApiResponse::success(['accepted'=>true])->header('Cache-Control','no-store');
+    }
+    public function resetPassword(\App\Services\PasswordService $passwords):JsonResponse
+    {
+        $passwords->reset(Request::body());
+        return ApiResponse::success(['changed'=>true])->header('Cache-Control','no-store');
+    }
+    public function changePassword(\App\Services\PasswordService $passwords):JsonResponse
+    {
+        $passwords->change((int)AuthMiddleware::user()['id'],AuthMiddleware::authVersion(),Request::body());
+        return ApiResponse::success(['changed'=>true])->header('Cache-Control','no-store');
+    }
     public function pay(string $id, BillingService $billing): JsonResponse
     {
         $gateway = Request::text(Request::body(), 'gateway', 1, 50);

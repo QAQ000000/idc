@@ -80,10 +80,11 @@ final class AuthService
 
     private function session(PDO $db, int $id): array
     {
-        $stmt = $db->prepare('SELECT id, email, balance FROM users WHERE id = ?');
+        $stmt = $db->prepare('SELECT id, email, balance,auth_version FROM users WHERE id = ?');
         $stmt->execute([$id]);
         $user = $stmt->fetch();
+        $version=(int)$user['auth_version'];unset($user['auth_version']);
         $user['role'] = 'client';
-        return ['token' => Security::generateToken(['uid' => $id, 'sub_type' => 'user']), 'user' => $user];
+        return ['token' => Security::generateToken(['uid' => $id, 'sub_type' => 'user','av'=>$version]), 'user' => $user];
     }
 }

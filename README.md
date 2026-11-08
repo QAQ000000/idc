@@ -218,3 +218,9 @@ M2 独立枚举配置销售已接入安全 Schema 投影、Element Plus 动态�
 已实现管理员人工核验告警与客户未来 7 天到期提醒，邮件链接分别进入原任务详情/实例详情。先 `php artisan migrate --force`，再通过私有 stdin 使用 `notifications:configure ADMIN_ID` 加密配置 SMTP；两个场景可独立启用。现有分钟调度调用 `notifications:sweep` 补扫及恢复，独立 `notifications:work` 发送，避免 SMTP 拖住出账、代扣和金融 Worker。部署增加同环境的 mail.service，模板生成器现在输出四个单元。
 
 按 fingerprint/channel 唯一占位并持久认领；发送前重查完整到期时间、归属/邮箱及原任务核验轮次，旧消息保留并跳过。SMTP 接受只记 success，不代表收件箱必达或已读；网络结果未知或发送进程崩溃转 pending_manual_check，notifications:inspect/resolve 用证据受审计收口，不提供重发。客户真实提醒须显式启用，详细配置/运行及本轮证据见 [通知契约](docs/NOTIFICATIONS.md)。
+
+### 客户账单与密码自助（2026-11-08）
+
+同一客户控制台新增“我的账单”和“账户安全”：本人分页/状态筛选、刷新后继续原账单；修改密码、验证码保护的邮件找回、15 分钟单次成功重置。成功改密递增认证版本，旧登录及同版本旧重置链接失效，不自动登录；重置凭据不作登录、不明文存库或进 URL 查询串。仍为 27 表，只增加 users.auth_version。**已有库须先 `php artisan migrate --force`，再加载新 HTTP 代码及重启独立邮件 Worker**；金融 Worker 无新增执行分支。旧无 av 客户 Token 仅在版本 0 兼容。页面、兼容、隔离验收与真实 VPS 支持范围见 [客户自助契约](docs/M2_CUSTOMER_SELF_SERVICE.md)。正式部署/邀请试用后续安排。
+
+本批实际核验：694 项业务检查 + 25 项运行检查、私有 FPM 配置缓存前后身份隔离、前端类型/lint/构建及桌面/390px 网页流程通过。用户另行授权实例 3 重装后，已通过 Debian 12 / 公网 root:22 SSH、DNS 和两个 HTTPS 站点验证；本站仅加密回填新实例密码，冻结价格/账期/资金/原任务保持。数据盘未挂载，吞吐/线路/长期稳定性仍未验收，通用重装页面/任务能力仍延期。详见上述本批契约。

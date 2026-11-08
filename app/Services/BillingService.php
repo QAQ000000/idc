@@ -7,6 +7,21 @@ use PDO;
 
 final class BillingService
 {
+    public function listing(int $user,array $query):array
+    {
+        $page=Request::id($query['page']??1);$size=Request::id($query['per_page']??20);$status=$query['status']??'all';
+        if ($page>100000 || $size>100 || !is_string($status) || !in_array($status,['all','unpaid','paid','cancelled','refund_pending','refunded'],true)) {
+            throw new ApiException('Invalid invoice filter or pagination');
+        }
+        $params=[$user];$where='v.user_id=?';
+        if ($status!=='all') { $where.=' AND v.status=?';$params[]=$status; }
+        $db=Database::getInstance();$s=$db->prepare('SELECT COUNT(*) FROM invoices v WHERE '.$where);$s->execute($params);$total=(int)$s->fetchColumn();
+        $offset=($page-1)*$size;
+        $s=$db->prepare("SELECT v.id AS invoice_id,v.instance_id,v.type,v.total,v.status,v.payment_method,v.created_at,v.paid_at,v.quote_expired_at,i.name AS instance_name,
+            (v.type='new' AND v.quote_expired_at<=UTC_TIMESTAMP()) AS quote_expired FROM invoices v LEFT JOIN instances i ON i.id=v.instance_id AND i.user_id=v.user_id
+            WHERE {$where} ORDER BY v.id DESC LIMIT {$size} OFFSET {$offset}");$s->execute($params);
+        return ['items'=>$s->fetchAll(),'total'=>$total,'page'=>$page,'per_page'=>$size];
+    }
     public function checkout(int $userId, array $input): array
     {
         $productId = Request::id($input['product_id'] ?? null);
@@ -101,7 +116,8 @@ final class BillingService
 
     public function invoice(int $userId, int $id): array
     {
-        $stmt = Database::getInstance()->prepare('SELECT id AS invoice_id, user_id, instance_id, type, total, status, payment_method, paid_at, quote_expired_at, price_snapshot FROM invoices WHERE id = ?');
+        $stmt = Database::getInstance()->prepare("SELECT id AS invoice_id, user_id, instance_id, type, total, status, payment_method, created_at,paid_at, quote_expired_at, price_snapshot,
+            (type='new' AND quote_expired_at<=UTC_TIMESTAMP()) AS quote_expired FROM invoices WHERE id = ?");
         $stmt->execute([$id]);
         $invoice = $stmt->fetch();
         if (!$invoice) {

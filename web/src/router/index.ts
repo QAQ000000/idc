@@ -11,6 +11,10 @@ const router = createRouter({
     { path: "/admin/tasks", component: () => import("../views/AdminTasksView.vue"), meta: { admin: true } },
     { path: "/admin/tasks/:id", component: () => import("../views/AdminTaskView.vue"), meta: { admin: true } },
     { path: "/", component: () => import("../views/CatalogView.vue") },
+    { path: "/invoices", component: () => import("../views/InvoicesView.vue"), meta: { client: true } },
+    { path: "/account/security", component: () => import("../views/PasswordView.vue"), meta: { client: true } },
+    { path: "/forgot-password", component: () => import("../views/ForgotPasswordView.vue") },
+    { path: "/reset-password", component: () => import("../views/PasswordView.vue"), props: { reset: true } },
     {
       path: "/login",
       component: () => import("../views/AuthView.vue"),

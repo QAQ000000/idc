@@ -11,12 +11,14 @@ class AuthMiddleware
     private static ?array $currentUser = null;
     private static bool $isImpersonated = false;
     private static ?int $operatorAdminId = null;
+    private static int $authVersion = 0;
 
     public static function reset(): void
     {
         self::$currentUser = null;
         self::$isImpersonated = false;
         self::$operatorAdminId = null;
+        self::$authVersion = 0;
     }
 
     public function handle(): bool
@@ -39,7 +41,7 @@ class AuthMiddleware
         }
 
         $db = Database::getInstance();
-        $stmt = $db->prepare("SELECT id, email, phone, balance, frozen_commission, available_commission, status FROM users WHERE id = ?");
+        $stmt = $db->prepare("SELECT id, email, phone, balance, frozen_commission, available_commission, status,auth_version FROM users WHERE id = ?");
         $stmt->execute([$payload['uid']]);
         $user = $stmt->fetch();
 
@@ -50,6 +52,9 @@ class AuthMiddleware
         if ($user['status'] === 'suspended') {
             throw new ApiException('Account suspended', 403, 403);
         }
+        Security::assertUserVersion($payload,(int)$user['auth_version']);
+        self::$authVersion=(int)$user['auth_version'];
+        unset($user['auth_version']);
 
         self::$isImpersonated = !empty($payload['is_impersonated']);
         self::$operatorAdminId = $payload['operator_admin_id'] ?? null;
@@ -90,6 +95,7 @@ class AuthMiddleware
     {
         return self::$currentUser;
     }
+    public static function authVersion():int { return self::$authVersion; }
 
     public static function isImpersonated(): bool
     {

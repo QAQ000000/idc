@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS `users` (
     `email` VARCHAR(100) NOT NULL UNIQUE COMMENT '登录邮箱',
     `phone` VARCHAR(30) NULL UNIQUE COMMENT '手机号',
     `password` VARCHAR(255) NOT NULL COMMENT '密码哈希',
+    `auth_version` BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '客户认证版本，改密递增以撤销旧登录和重置凭据',
     `balance` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '可用钱包余额',
     `frozen_commission` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '冻结中的推广佣金',
     `available_commission` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '可提现的推广佣金',

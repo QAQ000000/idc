@@ -816,3 +816,25 @@ p {
   .wallet-columns { grid-template-columns: minmax(0, 1fr); gap: 20px; }
   .finance-page .page-heading { flex-wrap: wrap; }
 }
+
+.checkout-columns { display:grid; grid-template-columns:minmax(0,1.3fr) minmax(300px,1fr); gap:24px; align-items:start; }
+.checkout-columns > *, .invoice-detail-columns > * { min-width:0; }
+.checkout-page > .el-form { margin-top:0; }
+.checkout-summary h3 { margin:4px 0 8px; overflow-wrap:anywhere; }
+.quote-prices { min-height:155px; margin:24px 0; }
+.price-line { display:flex; gap:12px; flex-wrap:wrap; justify-content:space-between; }
+.checkout-submit { width:100%; height:auto; min-height:40px; white-space:normal; line-height:1.5; }
+.invoice-filters { display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin-bottom:24px; }
+.invoice-filters .el-select { width:180px; }
+.invoice-tags { display:flex; flex-wrap:wrap; gap:6px; }
+.cell-note { margin:8px 0 0; color:var(--muted); font-size:12px; }
+.invoice-summary { display:grid; grid-template-columns:1fr 1fr 1.5fr; gap:24px; background:white; border:1px solid #e4e9f2; border-radius:12px; padding:24px; margin-bottom:24px; }
+.invoice-summary > div { min-width:0; }
+.invoice-detail-columns { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(0,1fr); gap:24px; }
+.primary-link { font-weight:600; }
+@media (max-width:767px) {
+ .checkout-columns,.invoice-detail-columns,.invoice-summary { grid-template-columns:minmax(0,1fr); gap:20px; }
+ .checkout-page .page-heading,.billing-page .page-heading { flex-wrap:wrap; }
+ .invoice-filters .el-select { width:100%; }
+ .invoice-summary { padding:20px; }
+}

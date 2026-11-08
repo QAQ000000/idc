@@ -100,6 +100,7 @@ final class CatalogService
         $q=$this->quote(Database::getInstance(),$id,$cycle,$options,false,$preflight);
         $expires=time()+300;
         $q['quote_token']=$expires.'.'.$this->signature($q,$preflight,$expires);
+        $q['quote_expires_at']=gmdate('Y-m-d H:i:s',$expires);
         unset($q['product']); return $q;
     }
     public function assertConfirmed(array $quote, ?array $preflight, mixed $token): void

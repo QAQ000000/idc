@@ -13,14 +13,47 @@ final class BillingService
         if ($page>100000 || $size>100 || !is_string($status) || !in_array($status,['all','unpaid','paid','cancelled','refund_pending','refunded'],true)) {
             throw new ApiException('Invalid invoice filter or pagination');
         }
+        $type=$query['type']??'all';
+        if (!is_string($type) || !in_array($type,['all','new','renew','upgrade','recharge'],true)) { throw new ApiException('Invalid invoice type'); }
         $params=[$user];$where='v.user_id=?';
         if ($status!=='all') { $where.=' AND v.status=?';$params[]=$status; }
+        if ($type!=='all') { $where.=' AND v.type=?';$params[]=$type; }
         $db=Database::getInstance();$s=$db->prepare('SELECT COUNT(*) FROM invoices v WHERE '.$where);$s->execute($params);$total=(int)$s->fetchColumn();
         $offset=($page-1)*$size;
         $s=$db->prepare("SELECT v.id AS invoice_id,v.instance_id,v.type,v.total,v.status,v.payment_method,v.created_at,v.paid_at,v.quote_expired_at,i.name AS instance_name,
-            (v.type='new' AND v.quote_expired_at<=UTC_TIMESTAMP()) AS quote_expired FROM invoices v LEFT JOIN instances i ON i.id=v.instance_id AND i.user_id=v.user_id
+            (v.type='new' AND v.quote_expired_at<=UTC_TIMESTAMP()) AS quote_expired,".self::progressColumns()." FROM invoices v ".self::progressJoins()."
             WHERE {$where} ORDER BY v.id DESC LIMIT {$size} OFFSET {$offset}");$s->execute($params);
-        return ['items'=>$s->fetchAll(),'total'=>$total,'page'=>$page,'per_page'=>$size];
+        return ['items'=>array_map(self::projectProgress(...),$s->fetchAll()),'total'=>$total,'page'=>$page,'per_page'=>$size];
+    }
+
+    /** Only original facts: the task belongs to this invoice and its owner-bound instance. */
+    private static function progressJoins(): string
+    {
+        return "LEFT JOIN instances i ON i.id=v.instance_id AND i.user_id=v.user_id
+            LEFT JOIN tasks t ON t.id=(SELECT task.id FROM tasks task WHERE task.invoice_id=v.id AND task.instance_id=i.id
+                AND task.action=CASE v.type WHEN 'new' THEN 'create' WHEN 'renew' THEN 'renew' WHEN 'upgrade' THEN 'upgrade' ELSE NULL END ORDER BY task.id DESC LIMIT 1)";
+    }
+
+    private static function progressColumns(): string
+    {
+        return "t.status AS fulfillment_task_status,
+            COALESCE((SELECT SUM(w.amount) FROM transactions w WHERE w.invoice_id=v.id AND w.user_id=v.user_id AND w.account_type='wallet' AND w.amount>0 AND w.type IN ('recharge','late_payment_credit','refund_to_balance')),0.00) AS wallet_credit_total,
+            COALESCE((SELECT SUM(w.amount) FROM transactions w WHERE w.invoice_id=v.id AND w.user_id=v.user_id AND w.account_type='wallet' AND w.amount>0 AND (w.type='late_payment_credit' OR (w.type='refund_to_balance' AND LEFT(w.idempotency_key,16)='late_credit:pay_'))),0.00) AS late_credit_total";
+    }
+
+    private static function projectProgress(array $row): array
+    {
+        $row['fulfillment_status']=null;
+        if ($row['status']==='paid' && in_array($row['type'],['new','renew','upgrade'],true)) {
+            $row['fulfillment_status']=match($row['fulfillment_task_status']) {
+                'pending','running'=>'provisioning',
+                'investigating'=>'investigating',
+                'success'=>match($row['type']) {'new'=>'delivered','renew'=>'renewed',default=>'updated'},
+                default=>'needs_review',
+            };
+        }
+        unset($row['fulfillment_task_status']);
+        return $row;
     }
     public function checkout(int $userId, array $input): array
     {
@@ -116,8 +149,8 @@ final class BillingService
 
     public function invoice(int $userId, int $id): array
     {
-        $stmt = Database::getInstance()->prepare("SELECT id AS invoice_id, user_id, instance_id, type, total, status, payment_method, created_at,paid_at, quote_expired_at, price_snapshot,
-            (type='new' AND quote_expired_at<=UTC_TIMESTAMP()) AS quote_expired FROM invoices WHERE id = ?");
+        $stmt = Database::getInstance()->prepare("SELECT v.id AS invoice_id,v.user_id,v.instance_id,v.type,v.total,v.status,v.payment_method,v.created_at,v.paid_at,v.quote_expired_at,v.price_snapshot,i.name AS instance_name,
+            (v.type='new' AND v.quote_expired_at<=UTC_TIMESTAMP()) AS quote_expired,".self::progressColumns()." FROM invoices v ".self::progressJoins()." WHERE v.id = ?");
         $stmt->execute([$id]);
         $invoice = $stmt->fetch();
         if (!$invoice) {
@@ -131,7 +164,7 @@ final class BillingService
         $invoice['config_options'] = $snapshot['config_options'] ?? [];
         $invoice['configuration'] = $snapshot['configuration'] ?? [];
         unset($invoice['user_id'], $invoice['price_snapshot']);
-        return $invoice;
+        return self::projectProgress($invoice);
     }
 
     public static function assertPayable(PDO $db, array $instance, array $invoice): void

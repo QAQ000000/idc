@@ -59,6 +59,10 @@ export interface Product {
 export interface Invoice {
   invoice_id: number;
   instance_id: number | null;
+  instance_name: string | null;
+  fulfillment_status: string | null;
+  wallet_credit_total: string;
+  late_credit_total: string;
   type: string;
   total: string;
   status: string;
@@ -117,5 +121,8 @@ export interface Quote {
   total: string;
   recurring_price: string;
   quote_token: string;
+  quote_expires_at: string;
+  billing_cycle: string;
+  configuration: { label: string; value: string }[];
   password_policy: { min_length: number; max_length: number; character_sets?: string[]; generation_length?: number };
 }

@@ -420,3 +420,14 @@ active 可新购，hidden/retired 均拒绝新配置/新报价/新下单。已�
 | GET /admin/finance/invoices/{id} | 同上；返回 invoice、customer 和分页 receipts/transactions，页码 receipts_page/transactions_page 默认 1。customer 含当前钱包余额；不返回密钥、任意 JSON 或幂等键。 |
 
 客户无权跨账户付款或读流水；support/operator 读取全局资金返回 403。无登录／错误作用域 401、格式错误 400、不存在详情 404。pending 凭证只表示付款尝试；同账单可有多笔独立实收，按网关筛选钱包只命中对应入账。无改账、退款或删除接口。完整领域边界及证据见 [充值与资金查询](M2_WALLET_FINANCE.md)。
+
+
+## 第三批结账与账单展示增量
+
+POST /products/{id}/calculate 增加 quote_expires_at（UTC，YYYY-MM-DD HH:mm:ss），与原 quote_token 的签名期限相同；前端不改签名或服务端预检规则，设备时钟只用于禁用过期提交，服务端仍最终裁决。Quote 同时继续返回 billing_cycle、configuration、首期和 recurring_price；刷新报价不重置购买请求键，输入变更才视为新意图。
+
+GET /invoices 追加 type=all|new|renew|upgrade|recharge，与原 status、page/per_page 组合；格式错误 400。列表／详情只读增加 fulfillment_status、wallet_credit_total、late_credit_total（金额字符串），详情增加 instance_name；其他字段及权限保持兼容。fulfillment_status 在已付消费单上按本账单／归属匹配实例／对应动作的原任务投影：pending/running→provisioning、investigating→investigating、failed 或缺任务→needs_review、success→delivered|renewed|updated；其他资金状态或充值为 null。该字段只描述本单履约记录，不证明当前电源／可用性，也不作为付款授权或资金门禁。无新状态列、表或后台状态副本。
+
+wallet_credit_total 只汇总本客户／本账单 wallet 分户的正向 recharge、late_payment_credit、refund_to_balance；late_credit_total 只汇总 late_payment_credit 或 late_credit:pay_ 键的 SC-L02 保护入款，不把新购取消的钱包补偿算作迟到款。均为历史累计入账，不是当前可用余额，也不代表退款或本单结清；旧流水不重写。详情继续用本人 /wallet/transactions 查询分页资金去向。钱包读取失败单独重试，不能把已读取的账单隐藏或把失败当作零到账。
+
+本轮仅只读 API 增量和页面整理，付款 CAS、收款唯一身份、Outbox、租约／令牌和资金归属规则不变。无数据库迁移或 Worker 重启，真实 M2 资金链路继续保留独立人工验收。实施原因与页面／手机／异常证据见 [前端整理设计](FRONTEND_MODERNIZATION_DESIGN.md#第三批结账与账单页面)。

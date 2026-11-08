@@ -157,10 +157,13 @@
 - **结果**：任务 success 仅证明命令被上游接受，状态查询与 OS 健康独立；丢响应或崩溃只读调查，无法证明结果则进入管理员待核验，不能盲目重启。管理员任务 action 筛选支持 power；super_admin 按原证据/令牌可 investigate/fulfill/close_unexecuted，无 retry/退款动作。
 - **历史不变量**：不修改资金、账单、冻结配置、实例续费价/账期/交付状态；目录下架不影响存量电源操作。完整兼容及枚举迁移见 [电源契约](M2_INSTANCE_POWER.md)。
 
-### 4. 在线 Web VNC 访问（规划，尚未实现）
-- **请求**：`GET /api/v1/instances/{id}/vnc`
-- **响应示意**：`{ "vnc_url": "/instances/10024/vnc" }`，仅返回本站控制台入口；页面路由及短效授权细节在实施时确定，不返回上游原始控制台 URL、密码或 host_token。
-- **访问边界**：本站校验登录态、实例归属与连接授权，页面资源及 WebSocket 也不得直接指向上游供应商域名；完整要求见 [本站域名 VNC 访问要求](FRONTEND.md#本站域名-vnc-访问要求2026-11-08待实现)。本次仅修订规划，不能据此认定现有实例页面已有 VNC 按钮或代理能力。
+### 4. 本站 Web VNC（可选驱动）
+
+- **签发**：`POST /api/v1/instances/{id}/console`，本人客户主 Token；空 JSON 请求体。响应仅 `{path:"/console/ws/<一次性随机票据>", expires_in:60, max_duration:900}`，`Cache-Control: no-store`。未启用返回 503，能力/状态/门禁不满足 409，频繁签发 429。
+- **页面**：`/instances/{id}/console`，本地打包 noVNC；不会返回旧规划中的 `vnc_url` 或实现旧 GET `/vnc`。
+- **连接**：本站 WS 路径，子协议头依次 `binary, jianyun.<原主Token>`，服务端只选择 `binary`；精确 Origin + 主登录 + 归属/状态 + 单次票据共同验证，拒绝返回 403。不将主 Token 放入 URL；票据不是登录凭证。连接最长 15 分钟/主会话到期前，周期核验封禁/归属/任务门禁；断线必须重新签发。
+- 上游 URL、VNC 密码、host_token 留在服务端；PHP 中继替客户完成上游 RFB 认证并替换桌面标题。目标白名单、TLS/DNS 边界、反向代理与兼容见 [VNC 契约](M2_INSTANCE_VNC.md)。不增加任务、资金变动或 schema。
+
 
 ### 5. 一键重装系统
 - **请求**：`POST /api/v1/instances/{id}/reinstall`
@@ -313,7 +316,7 @@
 | GET /instances/{id}/credentials | 当前所有者且 active；返回远端 username/password，仅独立点击加载，所有响应 no-store。 |
 | POST /admin/tasks/{id}/resolve | admin Token 且数据库中启用的 super_admin；动作/材料/旧 token 规则见 Outbox 契约。 |
 
-CDN 交付可没有 IP，不以缺 IP 判定失败。不包含 M4 电源、重装等未实现接口。详情与凭据对非所有者均返回 404。
+CDN 交付可没有 IP，不以缺 IP 判定失败。电源与本站 VNC 由独立能力接口提供，重装仍未实现。详情与凭据对非所有者均返回 404。
 
 ## 固定套餐续费当前接口补充
 

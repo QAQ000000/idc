@@ -2,10 +2,10 @@
 declare(strict_types=1);
 namespace Plugins\providers\zjmf;
 use App\Core\Money;
-use App\Plugins\Providers\{UpstreamDriverInterface, RenewalDriverInterface, DriverExecutionResult as R, PreflightResult, ConfigurableDriverInterface, ConfigOptions, PasswordPolicy, PowerDriverInterface, PowerState};
+use App\Plugins\Providers\{UpstreamDriverInterface, RenewalDriverInterface, DriverExecutionResult as R, PreflightResult, ConfigurableDriverInterface, ConfigOptions, PasswordPolicy, PowerDriverInterface, PowerState, ConsoleDriverInterface, ConsoleTarget};
 
 /** Magic Finance agent API. Stateless cart_data avoids clearing or sharing the upstream account's cart. */
-final class ZjmfDriver implements UpstreamDriverInterface, RenewalDriverInterface, ConfigurableDriverInterface, PowerDriverInterface
+final class ZjmfDriver implements UpstreamDriverInterface, RenewalDriverInterface, ConfigurableDriverInterface, PowerDriverInterface, ConsoleDriverInterface
 {
     public function getDriverId(): string { return 'zjmf'; }
     public function getQueryAuthority(): string { return 'EVENTUAL_CONSISTENCY'; }
@@ -303,6 +303,31 @@ final class ZjmfDriver implements UpstreamDriverInterface, RenewalDriverInterfac
         $host = $this->renewalHost($o, $c, $token);
         if (($host['domainstatus'] ?? '') !== 'Active') { throw new \RuntimeException('Remote resource is not active'); }
         return $host;
+    }
+
+    public function openConsole(array $instance, array $credentials): ConsoleTarget
+    {
+        $token=$this->token($credentials);$host=$this->powerHost($instance,$credentials,$token);
+        $header=$this->request($credentials,'/host/header',['host_id'=>$host['id']],token:$token);
+        $data=$header['data']??[];
+        if (($header['status']??0)!==200 || (string)($data['host_data']['id']??'')!==(string)$host['id']
+            || (int)($data['host_data']['productid']??0)!==(int)$instance['remote_pid']) { throw new \RuntimeException('Console binding mismatch'); }
+        $supported=false;
+        foreach($data['module_button']['console']??[] as $button){
+            if(($button['type']??'')==='default' && ($button['func']??'')==='vnc'){$supported=true;}
+        }
+        if(!$supported || (isset($data['dcim']['auth']['vnc']) && $data['dcim']['auth']['vnc']!=='on')){throw new \RuntimeException('Console unsupported');}
+        $r=$this->request($credentials,'/provision/default',['id'=>$host['id'],'func'=>'vnc','is_api'=>1],'POST',$token);
+        if(($r['status']??0)!==200 || !empty($r['data']['zjmfcloud_out_vnc'])){throw new \RuntimeException('Console mode unsupported');}
+        $page=$r['data']['url']??'';$p=parse_url($page);$endpoint=parse_url($credentials['endpoint']);
+        if(!$p || ($p['scheme']??'')!==($endpoint['scheme']??'') || ($p['host']??'')!==($endpoint['host']??'')
+            || ($p['port']??null)!==($endpoint['port']??null) || ($p['path']??'')!=='/dcim/novnc' || isset($p['user']) || isset($p['fragment'])){throw new \RuntimeException('Console page unsupported');}
+        parse_str($p['query']??'',$q);
+        $url=is_string($q['url']??null)?base64_decode($q['url'],true):false;
+        $password=$q['password']??$r['data']['pass']??null;
+        if(!$url || !is_string($password) || strlen($password)>128){throw new \RuntimeException('Console response invalid');}
+        $origin=$p['scheme'].'://'.$p['host'].(isset($p['port'])?':'.$p['port']:'');
+        return new ConsoleTarget($url,$password,$origin);
     }
 
     public function inspectPower(array $instance, array $credentials): PowerState

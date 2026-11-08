@@ -12,7 +12,8 @@
         "ext-openssl": "*",
         "ext-pdo_mysql": "*",
         "ext-redis": "*",
-        "laravel/framework": "^13.0"
+        "laravel/framework": "^13.0",
+        "workerman/workerman": "^5.2"
     },
     "autoload": {"psr-4": {"App\\": "app/", "Plugins\\": "plugins/"}},
     "scripts": {

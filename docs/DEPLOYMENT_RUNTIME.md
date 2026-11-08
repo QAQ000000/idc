@@ -106,3 +106,17 @@ REDIS_SERVER=/absolute/path/to/redis-server python3 -B scripts/test_integration.
 验收环境初始化独立 `m2-admin` 超级管理员，邮箱 `m2-admin@example.invalid` 仅作本环境占位（尚无外部通知），启用真实通知前更换为经确认邮箱。随机凭据位于 `/root/.local/state/jianyun-m2-acceptance/admin.json`（0600，父目录 0700，未入 Git），使用私有 stdin 的 admin:create 写入原 admins 并追加本地初始化审计。真实认证只读查询已验证当前原待办可见；网页裁决、重放、过期操作与并发只在独立 fixture 验收。正式环境按 README 另行创建账号，不复制测试账号或此环境凭据。
 
 仅启用 super_admin 可以提交裁决，管理员需为证据真实性负责；上游取消不证明扣款退回或底层资源清理。续费未知只读调查与告警，无自动退款。外部推送未接入，后台仍需有人值守；失败/成功人工裁决可从原审计查证，Worker 过程继续查 journal。
+
+## 可选本站 VNC 中继
+
+本能力不使用 Outbox，不占用 FPM 长连接，也不引入 Node 后端；Vue 仅打包 noVNC。PHP CLI 需 pcntl/posix/openssl/sockets，Composer 安装锁定的 Workerman，Redis 需 6.2+（原子 GETDEL）。HTTP API 与中继必须使用同一 APP_KEY、DB、Redis 和控制台配置；不能只给中继设置环境变量。正式环境仍单独部署，本批只接 M2。
+
+1. 在受保护的运行环境文件设置 `CONSOLE_LISTEN=127.0.0.1:18213`、`CONSOLE_ORIGINS=https://本站域名`（精确 scheme/host/port，可逗号分隔）、`CONSOLE_TARGETS=经运营核准的上游WS主机:443`。不填白名单则不能签发。该 WS 主机可能与 Provider API 域名不同，须通过服务端核验原资源响应后人工配置，不能自动信任返回目标。只允许 wss、公网 IPv4、有效证书，解析后固定 IP 并保留 TLS SNI/Host；不支持的外置控制台拒绝开放。`CONSOLE_TEST_LOOPBACK` 只在 APP_ENV=test 的独立夹具生效，部署不得使用 test。
+2. 用原 `render_systemd.py` 参数加 `--console` 生成额外的 `<name>-console.service`，审阅后只安装需要的单元。中继默认写 `storage/framework/console-relay.pid`，服务用户须有写权限；多个环境配置不同 `CONSOLE_PID_FILE`。启动前检查监听端口，不能覆盖现有 Redis/其他进程。
+3. 生产站点配置参考 `deploy/nginx/console.conf.example`，在本站 HTTPS server 转发 `/console/ws/`，保留原 Vue fallback 与 PHP API。必须传原始 Origin/WS 子协议，禁止把 Origin 重写为可信常量；仅 loopback 可访问中继。该路径关闭 access/error 日志（含任何上层流量采集），不得采集子协议头或票据。TLS 终止在本站反向代理；若经额外网关，同样禁用票据路径和头部记录。
+4. 重载本环境 API 的配置缓存/进程，使其读取配置；独立启用/重启 console 单元。Vite 开发代理默认 loopback 18213，可通过 `CONSOLE_PROXY_TARGET` 覆盖，仍保留浏览器同源路径。更改 APP_KEY/中继配置时重启中继，旧连接结束并重新授权；不要重启共享数据库/Redis。
+5. 以本人登录访问 `/instances/:id/console`，显式连接；验收 API 仅返回本站路径、WS 101、真实画面及浏览器没有供应商 HTTP/WS 请求。断开或主会话失效须结束连接，重放票据、跨 Origin 和跨用户连接须拒绝。中继日志仅有静态错误码；Workerman 原始帧诊断被关闭，避免协议异常把数据写日志。关闭/重启中继不应改变资金/实例/Outbox。
+
+每个连接上限 15 分钟且不超过主 Token 的到期，每 15 秒核验账号、归属、权益和任务门禁；非 Token 到期的封禁/归属变化最多有一个检查周期延迟。单进程最多 32 个连接（含未认证握手）、每实例最多一个连接，握手/认证 20 秒超时，帧 4 MiB、发送缓冲 8 MiB 超限断开；当前是 M2 单进程小规模部署，横向扩容须另审连接占用与容量。Redis 丢失/不可用只使短效授权失败关闭，不能解除 MySQL 任务占用。
+
+M2 单元：`jianyun-m2-console.service`，只监听 127.0.0.1:18213；原 18212 是 Redis，保持原服务。M2 API、Worker、调度及中继的实际结果以 [电源契约](M2_INSTANCE_POWER.md) 与 [VNC 契约](M2_INSTANCE_VNC.md) 为准。

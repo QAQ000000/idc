@@ -310,3 +310,10 @@ interface PowerDriverInterface
 ```
 
 PowerState 仅有 state（on/off/transitioning/unknown/unsupported）与白名单 actions（start/stop/reboot）；不得返回原始模块字段。驱动按原资源绑定查实际产品能力，不因安装接口而为所有商品开放按钮。executePower 只由 Worker 调用一次；succeeded 表示上游明确接受命令，不能声称重启完成。queryPower 只读原请求，不能重发；无请求级流水时必须返回未知/NON_QUERYABLE，当前运行状态不构成重启证据。核心不引用具体驱动。兼容、部署与验收见 [电源契约](M2_INSTANCE_POWER.md)。
+
+
+## 可选控制台能力（2026-11-08）
+
+`App\Plugins\Providers\ConsoleDriverInterface::openConsole(array $instance, array $credentials): ConsoleTarget` 只返回服务端 DTO（url/password/origin），不得直接序列化给客户。输入复用冻结实例 Provider/PID/远端 ID/账期；必须在上游账号范围核对原资源、Active 状态及该产品的 VNC 按钮/权限，不读取当前商品目录替换绑定。无此能力的驱动无需空实现。
+
+魔方驱动只解析同源 `/dcim/novnc` 的标准 WebSocket 模式，拒绝外置控制台；host_token 不传给浏览器，也不作为主会话。中继还需独立部署的目标白名单和公网 DNS/TLS 校验，不因驱动返回 URL 就信任任意目标。新购/续费接口不变，无 schema/历史身份迁移。详见 [VNC 契约](M2_INSTANCE_VNC.md)。

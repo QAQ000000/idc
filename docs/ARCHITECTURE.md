@@ -176,3 +176,8 @@ sequenceDiagram
 ## 实例常用运维增量（2026-11-08）
 
 电源作为可选 Provider 能力，真实按钮/运行状态通过事务外只读查询投影，变更写入 action=power 的原 Outbox（无账单/资金动作），复用 Worker 与原任务业务占用。排队 power 阻断冲突操作，执行租约过期只转调查；当前运行状态不能证明丢响应的重启结果。人工处理沿用原证据/令牌/审计，不直接写实例生命周期状态，不自动重发或退款。核心与插件仍物理隔离，27 表保持，仅扩展任务枚举。页面、兼容与部署门禁见 [电源契约](M2_INSTANCE_POWER.md)。
+
+
+## 本站控制台运行边界
+
+VNC 使用可选 Provider 能力和独立 PHP CLI 中继，Vue 本地 noVNC → 本站反向代理 → WebSocket/RFB 桥 → 白名单上游。主登录与 Redis 加密、60 秒单次授权共同验证；上游密码认证由服务端完成，不占用 FPM 长连接或追加 Node 后端。Redis 临时授权可丢失且失败关闭，不改变 MySQL Outbox/资源归属/资金事实。实现、威胁边界及验证见 [M2_INSTANCE_VNC.md](M2_INSTANCE_VNC.md)。

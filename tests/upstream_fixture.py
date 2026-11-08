@@ -1,10 +1,13 @@
 """Isolated ZJMF protocol/fault fixture. Never used by application runtime."""
+import os
+import base64
 import json
 import re
 import sys
 import threading
 import time
 import calendar
+from urllib.parse import urlencode
 from pathlib import Path
 import copy
 CONFIG_SCHEMA = json.loads((Path(__file__).parent / "fixtures/zjmf-product-14.json").read_text())
@@ -166,13 +169,18 @@ class Handler(BaseHTTPRequestHandler):
             h = dict(state['hosts'][int(p['host_id'][0])])
             if state['power_mode'] == 'wrong_header': h['id'] += 1
             r = {'status': 200, 'data': {'host_data': h, 'module_power_status': state['power_mode'] != 'unsupported',
-                 'module_button': {'control': [{'type': 'default', 'func': f} for f in ['on', 'off', 'reboot', 'hard_off', 'reinstall']]},
+                 'module_button': {'console': [{'type': 'default', 'func': 'vnc'}], 'control': [{'type': 'default', 'func': f} for f in ['on', 'off', 'reboot', 'hard_off', 'reinstall']]},
                  'dcim': {'auth': {'off': 'off'}} if state['power_mode'] == 'deny_stop' else {},
                  'supplier_secret': 'NEVER-EXPOSE-HEADER-SECRET'}}
         elif path == '/provision/default':
             h = state['hosts'][int(p['id'][0])]
             func = p['func'][0]
-            if func == 'status':
+            if func == 'vnc':
+                target = os.getenv('CONSOLE_TEST_WS_URL', 'ws://127.0.0.1:1/vnc')
+                query = urlencode({'url': base64.b64encode(target.encode()).decode(), 'password': 'password', 'host_token': 'SECRET-HOST-TOKEN'})
+                page = os.environ['UPSTREAM_TEST_URL'] + '/dcim/novnc?' + query
+                r = {'status': 200, 'data': {'url': page, 'pass': 'password', 'zjmfcloud_out_vnc': False}}
+            elif func == 'status':
                 if state['power_mode'] == 'unavailable':
                     self.send_error(503)
                     return

@@ -36,6 +36,7 @@ const router = createRouter({
       component: () => import("../views/InstancesView.vue"),
       meta: { client: true },
     },
+    { path: "/instances/:id/console", component: () => import("../views/ConsoleView.vue"), meta: { client: true } },
     {
       path: "/instances/:id",
       component: () => import("../views/InstanceView.vue"),

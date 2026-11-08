@@ -159,6 +159,7 @@ v-if="instance.status === 'suspended' && instance.suspend_type !== 'billing'"
         <el-descriptions-item v-for="(item, index) in instance.configuration" :key="index" :label="item.label">{{ item.value }}</el-descriptions-item>
       </el-descriptions>
       <div class="actions">
+        <RouterLink v-if="instance.status === 'active' && instance.remote_instance_id" :to="`/instances/${instance.id}/console`">VNC 控制台</RouterLink>
         <el-button v-if="instance.renewal_eligible" :disabled="busy || powerBlocked || ['provisioning','investigating','needs_review'].includes(instance.renewal_status)" type="primary" @click="renew">续费一个账期</el-button>
         <RouterLink v-if="instance.renewal_invoice_id" :to="'/invoices/' + instance.renewal_invoice_id">查看续费账单</RouterLink>
         <el-button :disabled="busy" @click="load">刷新状态</el-button

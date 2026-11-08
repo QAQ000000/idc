@@ -96,7 +96,7 @@ PHP);
 
 // 持续守住核心业务对具体插件的依赖边界，插件实现只能通过装配层接入。
 $files = [dirname(__DIR__) . '/public/index.php'];
-foreach (['Services', 'Middlewares', 'Http', 'Controllers', 'Models'] as $layer) {
+foreach (['Services', 'Middlewares', 'Http', 'Controllers', 'Models', 'ConsoleRelay'] as $layer) {
     $path = dirname(__DIR__) . '/app/' . $layer;
     if (!is_dir($path)) { continue; }
     foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($path, FilesystemIterator::SKIP_DOTS)) as $file) {

@@ -44,7 +44,11 @@ Schedule::command('renewals:debit')->everyFifteenMinutes()->after($scheduledOutp
 Artisan::command('outbox:work {--once}', function (): void {
     $worker = 'worker:' . bin2hex(random_bytes(12));
     do {
-        try { $worked = app(\App\Services\OutboxWorker::class)->runOnce($worker); }
+        try {
+            $woken = app(\App\Services\RenewalWakeupService::class)->runOnce();
+            $delivered = app(\App\Services\OutboxWorker::class)->runOnce($worker);
+            $worked = $woken || $delivered;
+        }
         catch (Throwable) {
             logger()->error('Outbox scan failed'); $worked = false;
             \Illuminate\Support\Facades\DB::purge(); // The next scan reconnects after a database outage.

@@ -15,6 +15,8 @@
 
 **账单展示增量**：fulfillment_status、wallet_credit_total、late_credit_total 仅为原任务／流水的即时查询结果，不是数据库新列或汇总表。任务按本账单、动作及资源归属限定，钱包按本客户、账单及 wallet 分户限定；历史流水不改写，27 表与 DDL 保持，见 [第三批 API](API.md#第三批结账与账单展示增量)。
 
+**充值唤醒增量**：Redis 集合只保存提交后待扫描的客户 ID，不新增账单、事件事实表、业务锁或汇总列。原 invoices CAS／周期唯一键、transactions 幂等键、users 钱包锁及 renew Outbox 事务继续裁决；丢失提示由 15 分钟 MySQL 扫描恢复。27 表与 DDL 不变，无迁移，见 [充值唤醒](M2_RENEWAL_CONTRACT.md#充值到账后的异步唤醒)。
+
 **退款字段交付边界（2026-11-08）**：退款由管理员手动办理，现有 `refund_*` 字段及退款用途说明不代表已实现自动退款、自动网关调用或人工登记接口。本次仅调整交付范围，27 表、DDL、触发器与历史数据均不变；退款证据、防重记账和审计要求见 [人工退款策略](PAYMENTS_LEDGER.md#manual-refund-policy)。
 
 **运营后台第一批（2026-11-08）**：复用 admins、tasks、instances、invoices、payment_records 与 admin_audit_logs，27 表与 DDL 无变化，不需要迁移。admins.role 当前用于所有启用管理员只读、仅 super_admin 裁决；列表/详情不读取凭据或原始任务载荷，处理记录来自原审计表，不增加同步副本。登录仅签发 admin 作用域 Token，既有二次认证配置不能被绕过；接口边界见 [API](API.md#admin-operations)。

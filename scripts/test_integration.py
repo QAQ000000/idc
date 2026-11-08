@@ -164,6 +164,7 @@ def main():
             run_checks(php, 'tests/customer_self_service.php', env, r'Customer self-service checks: \d+')
             run_checks(php, 'tests/wallet_finance.php', env, r'Wallet finance checks: \d+')
             run_checks(php, 'tests/billing_presentation.php', env, r'Billing presentation checks: \d+')
+            run_checks(php, 'tests/renewal_wakeup.php', env, r'Renewal wake-up checks: \d+')
             subprocess.run([php, 'artisan', 'migrate', '--force'], cwd=ROOT, env=env, check=True)
             subprocess.run([php, 'tests/browser_fixture.php'], cwd=ROOT, env=env, check=True)
             fpm_socket = directory / 'fpm.sock'

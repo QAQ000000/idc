@@ -154,11 +154,13 @@ final class RenewalService
         return $count;
     }
 
-    public function debitDue(): int
+    public function debitDue(?int $userId = null): int
     {
+        if ($userId !== null && $userId < 1) { throw new \InvalidArgumentException('Invalid renewal customer'); }
         $count=0;$cursor=0;$db=Database::getInstance();
         do {
-            $s=$db->prepare("SELECT v.id,v.user_id FROM invoices v JOIN instances i ON i.id=v.instance_id WHERE v.id>? AND v.type='renew' AND v.status='unpaid' AND i.auto_renew=1 AND i.due_date<=DATE_ADD(UTC_TIMESTAMP(),INTERVAL 7 DAY) ORDER BY v.id LIMIT 100");$s->execute([$cursor]);$rows=$s->fetchAll();
+            $scope=$userId === null ? '' : ' AND v.user_id=?';
+            $s=$db->prepare("SELECT v.id,v.user_id FROM invoices v JOIN instances i ON i.id=v.instance_id AND i.user_id=v.user_id WHERE v.id>? AND v.type='renew' AND v.status='unpaid' AND i.auto_renew=1 AND i.due_date<=DATE_ADD(UTC_TIMESTAMP(),INTERVAL 7 DAY){$scope} ORDER BY v.id LIMIT 100");$s->execute($userId === null ? [$cursor] : [$cursor,$userId]);$rows=$s->fetchAll();
             foreach($rows as $v) { $cursor=(int)$v['id'];try{(new BillingService())->pay((int)$v['user_id'],$cursor,true);$count++;}catch(ApiException $e){if(!in_array($e->httpStatus,[403,409],true)){throw $e;}} }
         } while(count($rows)===100);
         return $count;

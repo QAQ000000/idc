@@ -431,3 +431,7 @@ GET /invoices 追加 type=all|new|renew|upgrade|recharge，与原 status、page/
 wallet_credit_total 只汇总本客户／本账单 wallet 分户的正向 recharge、late_payment_credit、refund_to_balance；late_credit_total 只汇总 late_payment_credit 或 late_credit:pay_ 键的 SC-L02 保护入款，不把新购取消的钱包补偿算作迟到款。均为历史累计入账，不是当前可用余额，也不代表退款或本单结清；旧流水不重写。详情继续用本人 /wallet/transactions 查询分页资金去向。钱包读取失败单独重试，不能把已读取的账单隐藏或把失败当作零到账。
 
 本轮仅只读 API 增量和页面整理，付款 CAS、收款唯一身份、Outbox、租约／令牌和资金归属规则不变。无数据库迁移或 Worker 重启，真实 M2 资金链路继续保留独立人工验收。实施原因与页面／手机／异常证据见 [前端整理设计](FRONTEND_MODERNIZATION_DESIGN.md#第三批结账与账单页面)。
+
+## 充值提前续费增量
+
+不新增 HTTP 接口或前端自动扣款请求。原易支付充值回调成功仅确认充值账单／实收凭证／余额和流水已提交，提交后发布 Redis 客户提示，由现有 Worker 异步检查本人原自动续费单；不能把充值响应当作续费已付或上游已完成。客户继续查原续费账单、本单 fulfillment_status 和实例账期，资金去向沿用本人钱包流水及后台只读查询。Redis 故障不把已提交充值变成 fail，提示丢失靠原 15 分钟扫描；重复通知仍按原网关流水幂等，不重复入款／派 renew。兼容、运行及证据见 [充值唤醒契约](M2_RENEWAL_CONTRACT.md#充值到账后的异步唤醒)。

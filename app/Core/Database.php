@@ -18,8 +18,8 @@ final class Database
         return DB::connection()->getPdo();
     }
 
-    public static function transaction(callable $callback): mixed
+    public static function transaction(callable $callback, int $attempts = 1): mixed
     {
-        return DB::connection()->transaction(static fn() => $callback(self::getInstance()));
+        return DB::connection()->transaction(static fn() => $callback(self::getInstance()), $attempts);
     }
 }

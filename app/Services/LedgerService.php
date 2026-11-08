@@ -26,5 +26,8 @@ final class LedgerService
         $db->prepare('UPDATE users SET balance = ? WHERE id = ?')->execute([$after, $userId]);
         $db->prepare('INSERT INTO transactions (user_id, invoice_id, account_type, type, amount, balance_before, balance_after, idempotency_key, remark, trade_no) VALUES (?, ?, \'wallet\', ?, ?, ?, ?, ?, ?, ?)')
             ->execute([$userId, $invoiceId, $type, $amount, $user['balance'], $after, $key, $type, $tradeNo]);
+        if ($type === 'recharge' && bccomp($amount, '0', 2) > 0) {
+            (new RenewalWakeupService())->afterRecharge($userId);
+        }
     }
 }

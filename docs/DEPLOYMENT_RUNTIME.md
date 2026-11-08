@@ -17,6 +17,8 @@
 
 定时器只负责每分钟唤起，业务频率仍唯一维护在 `routes/console.php`：过期单每分钟、续费出账每小时、余额代扣每 15 分钟；通知来源补扫和悬空认领恢复每分钟，不在调度进程内发送邮件。应用时区为 UTC；不复制业务 cron 表达式到另一套调度器。已安装 timer 的同一环境不再同时配置 cron 或 `schedule:work`。重复扫描仍由账单唯一键、付款 CAS 和 MySQL 锁兜底，不能依赖单进程替代资金保证。
 
+**充值唤醒增量**：原 Worker 每轮先消费一个 Redis 客户提示，复用原代扣服务检查其已有续费单，再处理原 Outbox；无新增 unit 或调度。HTTP 与 Worker 须使用同一 APP_KEY、DB 和 Redis 环境。更新目标环境后按本规程核验归属并重启原 Worker；不用迁移数据库、重置任务或补发已收款通知。Redis 故障会记录 `Renewal wake-up unavailable; scheduled MySQL debit remains active`，当前进程退避 60 秒但继续原 Outbox；信号丢失仍由 15 分钟扫描恢复。该 warning 仅表示提前扫描降级，不表示充值失败或需要重复付款，见 [完整边界](M2_RENEWAL_CONTRACT.md#充值到账后的异步唤醒)。
+
 Worker 被终止后不会清理或重置业务占用；过期 running 租约只允许接管同任务调查，不重发不明结果的续费或付款。普通停止不是上游请求撤销证明；发布重启也须保留原任务。失败人工核验任务重启后继续保留，不自动退款。
 
 ## 配置与安装

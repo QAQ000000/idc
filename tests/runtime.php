@@ -35,6 +35,9 @@ if ($mode==='seed') {
 } elseif ($mode==='expire-order') {
     $r=(new BillingService())->checkout($uid,['product_id'=>$pid,'hostname'=>'expire-runtime','password'=>'RuntimeFixture!2026','billing_cycle'=>'monthly']);
     $db->prepare('UPDATE invoices SET quote_expired_at=DATE_SUB(UTC_TIMESTAMP(),INTERVAL 1 DAY) WHERE id=?')->execute([$r['invoice_id']]);
+} elseif ($mode==='wakeup-fund') {
+    $s=$db->prepare('UPDATE instances SET auto_renew=1 WHERE user_id=? AND auto_renew=0');$s->execute([$uid]);
+    (new App\Services\DemoService())->recharge($uid,'0.01','runtime-wakeup');
 } elseif ($mode==='fail-expiration') {
     $db->exec("CREATE TRIGGER runtime_expiration_fault BEFORE UPDATE ON invoices FOR EACH ROW BEGIN IF NEW.status='cancelled' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='isolated scheduler failure'; END IF; END");
 } elseif ($mode==='clear-expiration-fault') {

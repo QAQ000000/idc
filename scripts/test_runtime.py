@@ -167,6 +167,18 @@ def verify_runtime(env, directory, php):
               and task(fixture(), unknown)['status'] == 'failed' and fixture()['refunds'] == 0,
               'operator task survives a service restart without refunding or retrying unknown execution')
 
+        # The already running supervisor consumes a post-commit hint without a timer tick.
+        state = fixture()
+        waiting = next(v['id'] for v in renewals(state) if v['status'] == 'unpaid')
+        wallet_before = state['balance']
+        upstream('/__renew_mode?mode=normal')
+        fixture('wakeup-fund')
+        wait_for(lambda: next(v for v in renewals(fixture()) if v['id'] == waiting)['status'] == 'paid')
+        wait_for(lambda: task(fixture(), waiting)['status'] == 'success')
+        check(fixture()['balance'] == wallet_before
+              and len([t for t in fixture()['tasks'] if int(t['invoice_id']) == waiting]) == 1,
+              'managed Worker wakes on committed recharge and settles the original renewal before a timer tick')
+
         # A real calendar tick runs the unchanged schedule:run entry, not the controlled clock wrapper.
         state = fixture('expire-order')
         expired = max(v['id'] for v in state['invoices'] if v['type'] == 'new')

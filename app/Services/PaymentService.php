@@ -105,6 +105,6 @@ final class PaymentService
                 if($terminationBlocked){$db->prepare("UPDATE invoices SET status='refunded',cycle_marker=NULL WHERE id=? AND status='unpaid'")->execute([$inv['id']]);}
                 (new LedgerService())->wallet($db, (int)$attempt['user_id'], (int)$inv['id'], $n->amount, $terminationBlocked?'refund_to_balance':'late_payment_credit', 'late_credit:pay_' . $receiptId, $receiptTrade);
             }
-        });
+        }, 5); // SQL-only settlement: retry database deadlocks, never gateway or upstream requests.
     }
 }

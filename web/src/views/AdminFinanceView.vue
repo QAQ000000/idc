@@ -29,6 +29,7 @@ const filters = reactive(
     [
       "user_id",
       "email",
+      "instance_id",
       "invoice_id",
       "gateway_trade_no",
       "channel",
@@ -108,6 +109,9 @@ onMounted(load);
             aria-label="客户邮箱筛选"
             maxlength="100"
           />
+        </el-form-item>
+        <el-form-item label="实例 ID">
+          <el-input v-model="filters.instance_id" aria-label="实例ID筛选" inputmode="numeric" />
         </el-form-item>
         <el-form-item label="账单编号">
           <el-input
@@ -196,9 +200,7 @@ onMounted(load);
           </el-table-column>
           <el-table-column label="客户" min-width="190">
             <template #default="{ row }">
-              #{{ row.user_id }}
-              <br>
-              {{ row.user_email }}
+              <RouterLink :to="`/admin/customers/${row.user_id}`">#{{ row.user_id }}<br>{{ row.user_email }}</RouterLink>
             </template>
           </el-table-column>
           <el-table-column label="类型" width="130">

@@ -27,8 +27,9 @@ export interface Audit {
 }
 export interface TaskDetail {
   task: Task; user: { id: number; email: string };
-  invoice: { id: number; user_id: number; instance_id: number; type: string; status: string; total: string; payment_method: string | null; paid_at: string | null } | null;
-  instance: { id: number; status: string; remote_instance_id: string | null; ip_address: string | null; billing_cycle: string; due_date: string | null; suspend_type: string; recurring_price: string; override_price: string | null };
+  invoice: { id: number; user_id: number; instance_id: number; type: string; status: string; total: string | null; payment_method: string | null; paid_at: string | null } | null;
+  instance: { id: number; status: string; remote_instance_id: string | null; ip_address: string | null; billing_cycle: string; due_date: string | null; suspend_type: string; recurring_price: string | null; override_price: string | null };
+  can_view_finance: boolean;
   receipts: { id: number; amount: string; currency: string; status: string; refund_status: string; refund_amount: string; settlement_purpose: string | null }[];
   allowed_actions: Resolution[]; blocked_by_other_operation: boolean; audit: Page<Audit>;
 }

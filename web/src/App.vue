@@ -19,6 +19,8 @@ const workspace = computed(() =>
 const links = computed(() =>
   adminArea.value
     ? [
+        { to: "/admin/customers", label: "客户查询", mark: "◎" },
+        { to: "/admin/instances", label: "实例查询", mark: "▦" },
         { to: "/admin/products", label: "商品管理", mark: "◇" },
         { to: "/admin/tasks", label: "异常任务", mark: "≡" },
         ...(["super_admin", "finance"].includes(adminAccount.admin?.role || "") ? [{to:"/admin/finance", label:"资金查询", mark:"¥"}] : []),

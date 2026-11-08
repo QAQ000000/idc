@@ -838,3 +838,13 @@ p {
  .invoice-filters .el-select { width:100%; }
  .invoice-summary { padding:20px; }
 }
+
+.admin-query-page { min-width: 0; }
+.query-results { margin-top: 24px; }
+.query-links { display: flex; flex-wrap: wrap; gap: 12px 24px; margin-top: 16px; }
+.admin-query-page .el-descriptions__content, .admin-query-page .el-table .cell { overflow-wrap: anywhere; }
+@media (max-width: 640px) {
+  .admin-query-page .page-heading { flex-wrap: wrap; }
+  .admin-query-page .task-filters { grid-template-columns: minmax(0, 1fr); }
+  .query-links { flex-direction: column; align-items: flex-start; gap: 14px; }
+}

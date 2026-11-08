@@ -96,6 +96,8 @@
 
 **充值与资金查询已实现**：客户 /wallet 及原账单页复用易支付，正常充值以凭证唯一身份、账单 CAS、余额和流水同事务结算；迟到／额外实收独立入钱包。纯充值不建实例、不投 Outbox、不计消费／佣金，余额不可给自身充值。后台 /admin/finance 仅当前启用 finance/super_admin 可读，按原账单／凭证／wallet 流水关联，不增同步副本或改账入口。27 表与 DDL 保持，历史只追加流水不重写；退款人工；正常 recharge 流水提交后通过 Redis 客户提示，由原 Worker 复用代扣服务提前处理本人原单，提示丢失仍由 15 分钟扫描恢复，无迁移，运行时需重启原 Worker。迟到／额外入款和补偿不触发本批提示；详见 [充值唤醒](docs/M2_RENEWAL_CONTRACT.md#充值到账后的异步唤醒) 与 [充值与资金查询](docs/M2_WALLET_FINANCE.md)。
 
+**管理员客户／实例只读查询**：同一 Vue `/admin/customers`、`/admin/instances` 及详情只读原事实，四种启用管理员可读，无驱动调用或写动作。关联账单仅投影编号／类型／状态／时间，金额／收款／钱包继续限 finance/super_admin；旧任务投影亦裁剪非财务角色的结构化财务字段。筛选与分页、当前身份重核、原账单／实例归属、敏感字段白名单与 no-store 不可绕过，27 表／DDL 保持，见 [查询契约](docs/M2_ADMIN_QUERIES.md)。
+
 ## 四、 统一 Provider（上游驱动）开发规范
 
 所有上游系统对接必须遵守 `App\Plugins\Providers\UpstreamDriverInterface`，完整接口与 DTO 只在 [插件开发手册](docs/PLUGIN_DEV.md) 维护；M2 已实现最小新购与可选续费接口、魔方财务固定/独立枚举配置商品驱动、易支付收单和可靠 Worker（商品 14 独立新单已实付、开通回填并经 VNC 核对基础规格；丢响应后的原上游账单由人工单次支付恢复，旧单仍待核验，见 docs/M2_CONFIG_SALES.md）。新订单输入规则由驱动投影上游 Schema 并冻结；历史任务身份/已知远端 ID 调查不得被新生成规则改写。真实资金及上游交付验收须以路线图证据为准，不把协议夹具当作真实开通。

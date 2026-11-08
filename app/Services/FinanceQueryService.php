@@ -69,6 +69,10 @@ final class FinanceQueryService
         elseif(isset($query['user_id']) && $query['user_id']!=='') { $where[]="$alias.user_id=?";$params[]=Request::id($query['user_id']); }
         if($owner===null && isset($query['email']) && $query['email']!=='') { $where[]='u.email=?';$params[]=Request::text($query,'email',1,100); }
         if(isset($query['invoice_id']) && $query['invoice_id']!=='') { $where[]=($kind==='invoices'?'v.id':"$alias.invoice_id").'=?';$params[]=Request::id($query['invoice_id']); }
+        if($owner===null && isset($query['instance_id']) && $query['instance_id']!=='') {
+            $where[]=$kind==='invoices'?"EXISTS(SELECT 1 FROM instances i WHERE i.id=v.instance_id AND i.user_id=v.user_id AND i.id=?)":"EXISTS(SELECT 1 FROM invoices v JOIN instances i ON i.id=v.instance_id AND i.user_id=v.user_id WHERE v.id=$alias.invoice_id AND v.user_id=$alias.user_id AND i.id=?)";
+            $params[]=Request::id($query['instance_id']);
+        }
         if(isset($query['type']) && $query['type']!=='') {
             $type=Request::text($query,'type',1,50);
             if($kind!=='transactions' || !in_array($type,self::TYPES,true)) { throw new ApiException('Invalid ledger type'); }

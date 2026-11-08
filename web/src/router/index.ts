@@ -1,10 +1,15 @@
 import { createRouter, createWebHistory } from "vue-router";
 import { useAdmin } from "../stores/admin";
+import { ApiError } from "../api/request";
 const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: "/admin", redirect: "/admin/tasks" },
     { path: "/admin/login", component: () => import("../views/AdminLoginView.vue") },
+    { path: "/admin/customers", component: () => import("../views/AdminDirectoryView.vue"), props: { kind: "customers" }, meta: { admin: true } },
+    { path: "/admin/customers/:id", component: () => import("../views/AdminCustomerView.vue"), meta: { admin: true } },
+    { path: "/admin/instances", component: () => import("../views/AdminDirectoryView.vue"), props: { kind: "instances" }, meta: { admin: true } },
+    { path: "/admin/instances/:id", component: () => import("../views/AdminInstanceView.vue"), meta: { admin: true } },
     { path: "/admin/finance", component: () => import("../views/AdminFinanceView.vue"), meta: { admin: true } },
     { path: "/admin/finance/invoices/:id", component: () => import("../views/AdminFinanceInvoiceView.vue"), meta: { admin: true } },
     { path: "/admin/products", component: () => import("../views/AdminProductsView.vue"), meta: { admin: true } },
@@ -58,7 +63,10 @@ const router = createRouter({
 router.beforeEach(async (to) => {
   if (to.meta.admin) {
     const account = useAdmin();
-    try { await account.load(); } catch { account.logout(); }
+    try { await account.load(); } catch (error) {
+      if (error instanceof ApiError && [401, 403].includes(error.status)) account.logout();
+      else account.admin = null; // A failed read cannot establish a role or invalidate a signed session.
+    }
     if (!account.admin) return { path: "/admin/login", query: { redirect: to.fullPath } };
   }
   if (to.meta.client && !sessionStorage.getItem("jianyun_token"))

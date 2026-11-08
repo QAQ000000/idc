@@ -10,6 +10,7 @@ const filters = reactive({
   task_id: typeof route.query.task_id === "string" ? route.query.task_id : "",
   invoice_id: typeof route.query.invoice_id === "string" ? route.query.invoice_id : "",
   instance_id: typeof route.query.instance_id === "string" ? route.query.instance_id : "",
+  user_id: typeof route.query.user_id === "string" ? route.query.user_id : "",
 });
 const page = ref(Number(route.query.page) || 1), data = ref<Page<Task>>(), busy = ref(false), error = ref("");
 async function load(nextPage = page.value) {
@@ -47,13 +48,14 @@ onMounted(() => load());
       <el-form-item label="任务 ID"><el-input v-model="filters.task_id" aria-label="任务 ID" inputmode="numeric" /></el-form-item>
       <el-form-item label="账单 ID"><el-input v-model="filters.invoice_id" aria-label="账单 ID" inputmode="numeric" /></el-form-item>
       <el-form-item label="实例 ID"><el-input v-model="filters.instance_id" aria-label="实例 ID" inputmode="numeric" /></el-form-item>
+      <el-form-item label="客户 ID"><el-input v-model="filters.user_id" aria-label="客户 ID" inputmode="numeric" /></el-form-item>
       <el-form-item label="查询"><el-button type="primary" native-type="submit" :disabled="busy">筛选</el-button><el-button :loading="busy" @click="load()">刷新</el-button></el-form-item>
     </el-form>
     <el-table v-loading="busy" :data="data?.items || []" empty-text="没有匹配的任务" row-key="id" style="width:100%">
       <el-table-column label="任务" width="110"><template #default="{ row }"><RouterLink :to="`/admin/tasks/${row.id}`">#{{ row.id }} 详情</RouterLink></template></el-table-column>
       <el-table-column prop="action" label="类型" width="90" /><el-table-column prop="status" label="状态" width="125" />
-      <el-table-column label="账单 / 实例" width="150"><template #default="{ row }">账单 #{{ row.invoice_id }}<br>实例 #{{ row.instance_id }}</template></el-table-column>
-      <el-table-column label="收款" width="130"><template #default="{ row }">{{ row.invoice_status || '无账单' }}<br>¥{{ row.total || '—' }}</template></el-table-column>
+      <el-table-column label="账单 / 实例" width="150"><template #default="{ row }">账单 {{ row.invoice_id ? '#' + row.invoice_id : '—' }}<br><RouterLink :to="`/admin/instances/${row.instance_id}`">实例 #{{ row.instance_id }}</RouterLink></template></el-table-column>
+      <el-table-column label="账单状态" width="130"><template #default="{ row }">{{ row.invoice_status || '无账单' }}<template v-if="row.total !== null"><br>¥{{ row.total }}</template></template></el-table-column>
       <el-table-column prop="product_name" label="商品" min-width="150" />
       <el-table-column label="上游编号" min-width="170"><template #default="{ row }">{{ row.upstream_task_id || row.remote_instance_id || '未取得' }}</template></el-table-column>
       <el-table-column prop="last_error" label="异常码" min-width="260" /><el-table-column prop="updated_at" label="更新时间 (UTC)" width="180" />

@@ -357,13 +357,15 @@ CDN 交付可没有 IP，不以缺 IP 判定失败。电源与本站 VNC 由独�
 |---|---|
 | POST /admin/auth/login | `{username,password,captcha_payload}`；复用 login 验证码策略，按可信客户端 IP 由 Redis 限制每分钟 10 次密码校验；返回 `{token,admin:{id,username,email,role,status}}`。不存在账号与错误密码均 401，禁用账号 403；已有二次认证配置的账号因本批未实现二次认证登录而拒绝 403，绝不绕过。 |
 | GET /admin/auth/me | 有效 admin Token；每次读取 admins 当前角色与状态，不信任前端角色。 |
-| GET /admin/tasks | 所有启用管理员可读；`page` 默认 1、最大 100000，`per_page` 默认 20、最大 100。可筛选 `status=attention/manual/pending/running/investigating/failed/success/all`、`action=create/renew` 及精确 task_id/invoice_id/instance_id。返回 `{items,total,page,per_page}`，按任务 ID 倒序。默认 attention 包括未按永久取消/退款/续费取消结案的 failed、investigating、租约为空/过期的 running；已结案记录仍可按 failed/all 查阅；manual 仅 failed+人工核验前缀。不存在匹配项返回空页。 |
-| GET /admin/tasks/{id} | 所有启用管理员可读；返回 task、instance、invoice、user、receipts、allowed_actions、blocked_by_other_operation、audit。audit_page 默认 1，每页 20，最大页 100000。无任务 404。 |
+| GET /admin/tasks | 所有启用管理员可读；`page` 默认 1、最大 100000，`per_page` 默认 20、最大 100。可筛选 `status=attention/manual/pending/running/investigating/failed/success/all`、`action=create/renew/power` 及精确 task_id/invoice_id/instance_id/user_id。返回 `{items,total,page,per_page}`，按任务 ID 倒序。默认 attention 包括未按永久取消/退款/续费取消结案的 failed、investigating、租约为空/过期的 running；已结案记录仍可按 failed/all 查阅；manual 仅 failed+人工核验前缀。不存在匹配项返回空页；非财务角色 total=null。 |
+| GET /admin/tasks/{id} | 所有启用管理员可读；返回 task、instance、invoice、user、receipts、can_view_finance、allowed_actions、blocked_by_other_operation、audit。非财务角色 task/invoice.total、invoice.payment_method、instance.recurring_price/override_price 为 null，receipts=[]，audit.context 不含 amount/payment_record_id；原账单状态与付款时间保留。audit_page 默认 1，每页 20，最大页 100000。无任务 404。 |
 | POST /admin/tasks/{id}/resolve | 仍是唯一已实现裁决入口；仅启用 super_admin，沿用 `action,evidence,expected_execution_token` 与既有确认要求。成功 `{resolved:true}`；无材料/错误参数 400、普通管理员 403、过期令牌/状态/实例业务门禁 409。客户 Token 一律 401。 |
 
-客户与管理员 Token 的 sub_type 分离，管理员 Token 不能调用客户身份 API，客户 Token 不能调用后台。所有启用角色（super_admin/finance/support/operator）可查看本批任务上下文；只有 super_admin 可裁决，没有新增 RBAC 实体。令牌仍为原 2 小时格式，修改角色或禁用账号即时生效。
+客户与管理员 Token 的 sub_type 分离，管理员 Token 不能调用客户身份 API，客户 Token 不能调用后台。所有启用角色（super_admin/finance/support/operator）可查看本批任务上下文；只有 super_admin 可裁决，没有新增 RBAC 实体。令牌仍为原 2 小时格式，修改角色或禁用账号即时生效。前端导航鉴权网络失败／503 时保留令牌但清空角色并返回管理员登录，恢复后仍须重查身份；401／403 清除令牌，不据旧角色放行。
 
 查询仅投影定位所需字段：账单收款状态/金额、客户编号与邮箱、实例账期/状态、商品与上游名称、操作/资源编号、异常码、分页人工审计。不会回传原始 payload、价格/配置快照、网关报文、连接地址、密文或密码；任意历史错误文本替换为 DETAILS_REDACTED，审计 context 仅投影 evidence、previous_execution_token、remote_instance_id、payment_record_id、amount。核验材料不得填写密钥。上游原始业务错误仍需查受控运维证据。
+
+金额／收款和审计结构化财务字段现仅当前启用 finance/super_admin 可见；客服／运维仅查看非财务定位信息，原自由文本核验材料继续按原权限展示，不自动解析或重写。任务与账单关联核验客户和实例归属，详情收款同时限定该客户；查询响应 no-store。此为本次只读关联入口发现的权限缺口修正，原裁决请求、证据和执行令牌契约保持，见 [只读查询契约](M2_ADMIN_QUERIES.md)。
 
 allowed_actions 是当前一致性快照下的候选操作，不能当作授权令牌：运行/调查/成功/永久取消无操作，普通管理员无操作，有其他 blocker 或退款冻结无操作。failed+人工核验、已付且归属吻合时，新购候选 fulfill/retry/cancel_compensate，续费候选 investigate/fulfill/retry；新购补偿另查唯一收款凭证与佣金等门禁。写服务仍以锁定读校验全部条件；页面打开后发生变化会拒绝，不自动使用新 token 重发。
 
@@ -416,7 +418,7 @@ active 可新购，hidden/retired 均拒绝新配置/新报价/新下单。已�
 | POST /wallet/recharges | 当前启用客户；amount 为 0.01–99999999.99 十进制字符串，request_key 为 16–48 位字母数字／下划线／短横线。返回原账单 DTO；同用户／键／规范化金额重放原单，换金额 409。无实例及报价到期日。 |
 | GET /wallet/transactions | 本人 wallet 分户流水；page 默认 1、per_page 默认 20（最多 100），可按 invoice_id、type 筛选。返回 items/total/page/per_page；行含金额、前后余额、账单、payment_record_id、UTC 时间。不接受切换归属。 |
 | POST /invoices/{id}/pay、/cancel | 充值复用原接口；pay 仅 gateway=epay，余额充值拒绝 400；取消 unpaid 幂等，已 paid 拒绝 409，取消后不再创建收银。回调仍走原易支付 notify；外部返回不结算。 |
-| GET /admin/finance/{invoices,receipts,transactions} | 当前启用 finance/super_admin；分页同上，按 user_id、精确 email、invoice_id、gateway_trade_no、channel、from/to 筛选；时间格式 YYYY-MM-DD HH:mm:ss（UTC）。账单按创建时间，凭证按 paid_at（未付按 created_at），流水按 created_at。 |
+| GET /admin/finance/{invoices,receipts,transactions} | 当前启用 finance/super_admin；分页同上，按 user_id、精确 email、instance_id、invoice_id、gateway_trade_no、channel、from/to 筛选；instance_id 核验实例、账单、收款／流水归属一致。时间格式 YYYY-MM-DD HH:mm:ss（UTC）。账单按创建时间，凭证按 paid_at（未付按 created_at），流水按 created_at。 |
 | GET /admin/finance/invoices/{id} | 同上；返回 invoice、customer 和分页 receipts/transactions，页码 receipts_page/transactions_page 默认 1。customer 含当前钱包余额；不返回密钥、任意 JSON 或幂等键。 |
 
 客户无权跨账户付款或读流水；support/operator 读取全局资金返回 403。无登录／错误作用域 401、格式错误 400、不存在详情 404。pending 凭证只表示付款尝试；同账单可有多笔独立实收，按网关筛选钱包只命中对应入账。无改账、退款或删除接口。完整领域边界及证据见 [充值与资金查询](M2_WALLET_FINANCE.md)。
@@ -435,3 +437,18 @@ wallet_credit_total 只汇总本客户／本账单 wallet 分户的正向 rechar
 ## 充值提前续费增量
 
 不新增 HTTP 接口或前端自动扣款请求。原易支付充值回调成功仅确认充值账单／实收凭证／余额和流水已提交，提交后发布 Redis 客户提示，由现有 Worker 异步检查本人原自动续费单；不能把充值响应当作续费已付或上游已完成。客户继续查原续费账单、本单 fulfillment_status 和实例账期，资金去向沿用本人钱包流水及后台只读查询。Redis 故障不把已提交充值变成 fail，提示丢失靠原 15 分钟扫描；重复通知仍按原网关流水幂等，不重复入款／派 renew。兼容、运行及证据见 [充值唤醒契约](M2_RENEWAL_CONTRACT.md#充值到账后的异步唤醒)。
+
+<a id="admin-queries"></a>
+
+## 管理员客户与实例只读查询
+
+沿用 `/api/v1`、admin 中间件和当前启用管理员身份；四种管理员角色可读。四个 GET 接口均返回 no-store，不调用驱动、不写资金或任务，详情不存在 404；匿名／客户 Token 401、停用管理员 403、参数错误 400。列表按 ID 倒序，page 默认 1（最大 100000）、per_page 默认 20（最大 100），返回 items/total/page/per_page。
+
+| 路径 | 输入与返回 |
+|---|---|
+| /admin/customers | user_id、精确 email（最长 100）组合过滤；id/email/status/created_at，不含余额／消费／认证字段 |
+| /admin/customers/{id} | customer 与分页 instances；page/per_page 仅控制关联实例，归属固定路径客户，不能用 query.user_id 切换 |
+| /admin/instances | instance_id、user_id、name 字面子串（最长 100）、ip_address 精确合法 IP（最长 45）、remote_instance_id 精确编号（最长 100）组合过滤 |
+| /admin/instances/{id} | instance 与分页 invoices；账单仅本实例／客户一致的 invoice_id/type/status/created_at/paid_at，不含金额／渠道 |
+
+instance 投影 id/user_id/user_email/product_id/product_name/provider_id/provider_name/name/status/remote_instance_id/ip_address/billing_cycle/start_date/due_date/suspend_type/auto_renew/created_at；不返回主机密码、上游地址／账号／密钥或配置快照。状态为本地服务状态。账单、凭证、流水继续使用原 finance 接口；任务链接使用原任务接口。无新写接口／表／迁移，权限收紧与兼容见 [本批契约](M2_ADMIN_QUERIES.md)。

@@ -9,11 +9,11 @@ final class TaskController
 {
     public function index(\Illuminate\Http\Request $request, TaskInspectionService $service): \Illuminate\Http\JsonResponse
     {
-        return ApiResponse::success($service->listing($request->query()));
+        return ApiResponse::success($service->listing($request->query(), (int)AdminAuthMiddleware::admin()['id']))->header('Cache-Control','no-store');
     }
     public function show(string $id, \Illuminate\Http\Request $request, TaskInspectionService $service): \Illuminate\Http\JsonResponse
     {
-        return ApiResponse::success($service->detail(Request::id($id), AdminAuthMiddleware::admin(), $request->query()));
+        return ApiResponse::success($service->detail(Request::id($id), AdminAuthMiddleware::admin(), $request->query()))->header('Cache-Control','no-store');
     }
     public function resolve(string $id, TaskResolutionService $s): \Illuminate\Http\JsonResponse
     {

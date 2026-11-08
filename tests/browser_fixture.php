@@ -18,12 +18,13 @@ echo json_encode(['product_id' => $product], JSON_THROW_ON_ERROR), PHP_EOL;
 $admins = new App\Services\AdminAuthService();
 $admins->create(['username'=>'browser-admin','email'=>'browser-admin@example.test','password'=>'BrowserAdmin!2026','role'=>'super_admin']);
 $admins->create(['username'=>'browser-support','email'=>'browser-support@example.test','password'=>'BrowserSupport!2026','role'=>'support']);
+$admins->create(['username'=>'browser-finance','email'=>'browser-finance@example.test','password'=>'BrowserFinance!2026','role'=>'finance']);
 $billing = new App\Services\BillingService();
 $taskIds=[];
 foreach (['网页核验样本 A','网页核验样本 B'] as $label) {
     $invoice=$billing->checkout((int)$session['user']['id'],['product_id'=>$product,'hostname'=>'browser-host','password'=>'BrowserRoot!2026','billing_cycle'=>'monthly','use_balance'=>true]);
     $db->prepare("UPDATE tasks SET status='failed',execution_token=7,last_error='MANUAL_AUDIT_REQUIRED:NON_QUERYABLE',upstream_task_id='host:browser-fixture' WHERE invoice_id=?")->execute([$invoice['invoice_id']]);
-    $db->prepare('UPDATE instances SET name=? WHERE id=?')->execute([$label,$invoice['instance_id']]);
+    $db->prepare('UPDATE instances SET name=?,ip_address=?,remote_instance_id=? WHERE id=?')->execute([$label,'2001:db8:85a3:8d3:1319:8a2e:370:7348','host:browser-fixture-long-resource-'.$invoice['instance_id'],$invoice['instance_id']]);
     $s=$db->prepare('SELECT id FROM tasks WHERE invoice_id=?');$s->execute([$invoice['invoice_id']]);$taskIds[]=(int)$s->fetchColumn();
 }
 echo json_encode(['admin_fixture_tasks'=>$taskIds],JSON_THROW_ON_ERROR),PHP_EOL;

@@ -66,22 +66,22 @@ onMounted(() => load());
       <el-card>
         <h2>关联上下文</h2>
         <el-descriptions :column="1" border>
-          <el-descriptions-item label="客户">#{{ detail.user.id }} · {{ detail.user.email }}</el-descriptions-item>
-          <el-descriptions-item label="账单"><template v-if="detail.invoice">#{{ detail.task.invoice_id }} · {{ detail.invoice.type }} · {{ detail.invoice.status }} · ¥{{ detail.invoice.total }}</template><span v-else>无关联账单（非财务操作）</span></el-descriptions-item>
+          <el-descriptions-item label="客户"><RouterLink :to="`/admin/customers/${detail.user.id}`">#{{ detail.user.id }} · {{ detail.user.email }}</RouterLink></el-descriptions-item>
+          <el-descriptions-item label="账单"><template v-if="detail.invoice"><RouterLink v-if="detail.can_view_finance" :to="`/admin/finance/invoices/${detail.invoice.id}`">#{{ detail.invoice.id }}</RouterLink><span v-else>#{{ detail.invoice.id }}</span> · {{ detail.invoice.type }} · {{ detail.invoice.status }}<span v-if="detail.can_view_finance"> · ¥{{ detail.invoice.total }}</span></template><span v-else>无关联账单（非财务操作）</span></el-descriptions-item>
           <el-descriptions-item label="付款时间 (UTC)">{{ detail.invoice?.paid_at || '—' }} · {{ detail.invoice?.payment_method || '—' }}</el-descriptions-item>
-          <el-descriptions-item label="实例">#{{ detail.instance.id }} · {{ detail.task.instance_name }} · {{ detail.instance.status }}</el-descriptions-item>
+          <el-descriptions-item label="实例"><RouterLink :to="`/admin/instances/${detail.instance.id}`">#{{ detail.instance.id }} · {{ detail.task.instance_name }}</RouterLink> · {{ detail.instance.status }}</el-descriptions-item>
           <el-descriptions-item label="商品 / 上游">{{ detail.task.product_name }} / #{{ detail.task.provider_id }} {{ detail.task.provider_name }}</el-descriptions-item>
           <el-descriptions-item label="IP / 暂停类型">{{ detail.instance.ip_address || '—' }} / {{ detail.instance.suspend_type }}</el-descriptions-item>
           <el-descriptions-item label="账期 / 到期 (UTC)">{{ detail.instance.billing_cycle }} / {{ detail.instance.due_date || '尚未起租' }}</el-descriptions-item>
-          <el-descriptions-item label="续费价格">¥{{ detail.instance.override_price ?? detail.instance.recurring_price }}</el-descriptions-item>
+          <el-descriptions-item v-if="detail.can_view_finance" label="续费价格">¥{{ detail.instance.override_price ?? detail.instance.recurring_price }}</el-descriptions-item>
         </el-descriptions>
-        <h2>本地收款凭证</h2>
-        <el-table :data="detail.receipts" empty-text="暂无收款凭证">
+        <h2 v-if="detail.can_view_finance">本地收款凭证</h2>
+        <el-table v-if="detail.can_view_finance" :data="detail.receipts" empty-text="暂无收款凭证">
           <el-table-column prop="id" label="编号" width="85" /><el-table-column prop="amount" label="金额" width="100" />
           <el-table-column prop="status" label="状态" min-width="150" /><el-table-column prop="settlement_purpose" label="用途" min-width="180" />
           <el-table-column prop="refund_status" label="退款状态" min-width="120" /><el-table-column prop="refund_amount" label="已退金额" min-width="100" />
         </el-table>
-        <p class="muted">本地收款不证明上游已扣款。渠道退款由管理员人工办理；不要把上游取消状态当作退款凭证。</p>
+        <p class="muted">{{ detail.can_view_finance ? '本地收款不证明上游已扣款。渠道退款由管理员人工办理；不要把上游取消状态当作退款凭证。' : '金额、收款凭证与钱包流水仅财务／超级管理员可查看。' }}</p>
       </el-card>
       <el-card>
         <h2>受控人工处理</h2>

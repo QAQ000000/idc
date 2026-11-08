@@ -37,6 +37,10 @@ Route::middleware('client')->group(function (): void {
 });
 Route::post('admin/auth/login', [\App\Http\Controllers\AdminAuthController::class, 'login'])->middleware('captcha:login');
 Route::middleware('admin')->group(function (): void {
+    Route::get('admin/customers', [\App\Http\Controllers\AdminQueryController::class, 'customers']);
+    Route::get('admin/customers/{id}', [\App\Http\Controllers\AdminQueryController::class, 'customer']);
+    Route::get('admin/instances', [\App\Http\Controllers\AdminQueryController::class, 'instances']);
+    Route::get('admin/instances/{id}', [\App\Http\Controllers\AdminQueryController::class, 'instance']);
     Route::get('admin/finance/invoices/{id}', [\App\Http\Controllers\FinanceController::class, 'show']);
     Route::get('admin/finance/{kind}', [\App\Http\Controllers\FinanceController::class, 'index'])->whereIn('kind',['invoices','receipts','transactions']);
     Route::get('admin/providers', [\App\Http\Controllers\AdminProductController::class, 'providers']);

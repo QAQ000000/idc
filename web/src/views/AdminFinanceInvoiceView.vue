@@ -85,11 +85,8 @@ onMounted(load);
               {{ data.invoice.payment_method || "—" }}
             </el-descriptions-item>
             <el-descriptions-item label="关联实例">
-              {{
-                data.invoice.instance_id
-                  ? "#" + data.invoice.instance_id
-                  : "无实例（独立充值）"
-              }}
+              <RouterLink v-if="data.invoice.instance_id" :to="`/admin/instances/${data.invoice.instance_id}`">#{{ data.invoice.instance_id }}</RouterLink>
+              <span v-else>无实例（独立充值）</span>
             </el-descriptions-item>
             <el-descriptions-item label="付款时间UTC">
               {{ data.invoice.paid_at || "—" }}
@@ -99,7 +96,7 @@ onMounted(load);
         <el-card shadow="never">
           <template #header><h2>客户与当前钱包</h2></template>
           <p class="muted">
-            客户 #{{ data.customer.id }} · {{ data.customer.email }}
+            <RouterLink :to="`/admin/customers/${data.customer.id}`">客户 #{{ data.customer.id }} · {{ data.customer.email }}</RouterLink>
           </p>
           <p class="field-label">当前可用余额 · CNY</p>
           <p class="renewal-price">¥{{ data.customer.balance }}</p>

@@ -73,4 +73,27 @@ def verify(socket_path, root):
     assert request(socket_path, root, 'GET', '/api/v1/auth/me', token=client_token)[0] == 200
     assert request(socket_path, root, 'GET', '/api/v1/admin/tasks', token=client_token)[0] == 401
     assert request(socket_path, root, 'GET', '/api/v1/admin/auth/me')[0] == 401
+    for path in ['/admin/customers', '/admin/instances']:
+        assert request(socket_path, root, 'GET', '/api/v1' + path, token=admin_token)[0] == 200
+        assert request(socket_path, root, 'GET', '/api/v1' + path, token=client_token)[0] == 401
+        assert request(socket_path, root, 'GET', '/api/v1' + path)[0] == 401
+    status, customer = request(socket_path, root, 'GET', '/api/v1/admin/customers?email=browser%40example.test', token=admin_token)
+    assert status == 200 and customer['data']['total'] == 1
+    customer_id = customer['data']['items'][0]['id']
+    status, customer = request(socket_path, root, 'GET', f'/api/v1/admin/customers/{customer_id}', token=admin_token)
+    assert status == 200 and customer['data']['instances']['total'] == 2
+    instance_id = customer['data']['instances']['items'][0]['id']
+    assert request(socket_path, root, 'GET', f'/api/v1/admin/instances/{instance_id}', token=admin_token)[0] == 200
+    status, support = request(socket_path, root, 'POST', '/api/v1/admin/auth/login', {
+        'username': 'browser-support', 'password': 'BrowserSupport!2026',
+    })
+    assert status == 200
+    support_token = support['data']['token']
+    status, tasks = request(socket_path, root, 'GET', f'/api/v1/admin/tasks?user_id={customer_id}', token=support_token)
+    assert status == 200 and all(t['total'] is None for t in tasks['data']['items'])
+    task_id = tasks['data']['items'][0]['id']
+    status, task = request(socket_path, root, 'GET', f'/api/v1/admin/tasks/{task_id}', token=support_token)
+    assert status == 200 and not task['data']['can_view_finance'] and task['data']['receipts'] == []
+    assert request(socket_path, root, 'GET', '/api/v1/admin/finance/invoices', token=support_token)[0] == 403
     print('PASS: isolated PHP-FPM client/admin authentication, anonymous and cross-scope identity isolation')
+    print('PASS: isolated PHP-FPM customer/instance navigation and finance role isolation')

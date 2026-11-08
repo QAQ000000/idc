@@ -9,10 +9,11 @@ use PDO;
 final class TaskInspectionService
 {
     private const COLUMNS = 't.id,t.instance_id,t.invoice_id,t.action,t.status,t.execution_token,t.upstream_task_id,t.last_error,t.retry_count,t.max_retries,t.lease_until,t.next_retry_at,t.created_at,t.updated_at,i.user_id,i.name AS instance_name,i.status AS instance_status,i.remote_instance_id,v.status AS invoice_status,v.total,p.name AS product_name,r.id AS provider_id,r.name AS provider_name';
-    private const JOINS = ' FROM tasks t JOIN instances i ON i.id=t.instance_id LEFT JOIN invoices v ON v.id=t.invoice_id JOIN products p ON p.id=i.product_id JOIN providers r ON r.id=i.provider_id';
+    private const JOINS = ' FROM tasks t JOIN instances i ON i.id=t.instance_id LEFT JOIN invoices v ON v.id=t.invoice_id AND v.instance_id=i.id AND v.user_id=i.user_id JOIN products p ON p.id=i.product_id JOIN providers r ON r.id=i.provider_id';
 
-    public function listing(array $query): array
+    public function listing(array $query, int $admin): array
     {
+        $finance=$this->finance($admin);
         $page = $this->page($query['page'] ?? '1');
         $size = $this->page($query['per_page'] ?? '20', 100);
         $status = $query['status'] ?? 'attention';
@@ -25,7 +26,7 @@ final class TaskInspectionService
             if (!is_string($query['action']) || !in_array($query['action'],['create','renew','power'],true)) { throw new ApiException('Invalid task action'); }
             $where[] = 't.action=?'; $params[] = $query['action'];
         }
-        foreach (['task_id'=>'t.id','invoice_id'=>'t.invoice_id','instance_id'=>'t.instance_id'] as $key=>$column) {
+        foreach (['task_id'=>'t.id','invoice_id'=>'t.invoice_id','instance_id'=>'t.instance_id','user_id'=>'i.user_id'] as $key=>$column) {
             if (isset($query[$key]) && $query[$key] !== '') { $where[] = $column.'=?'; $params[] = Request::id($query[$key]); }
         }
         $sql = self::JOINS.($where ? ' WHERE '.implode(' AND ', $where) : '');
@@ -33,19 +34,20 @@ final class TaskInspectionService
         $s = $db->prepare('SELECT COUNT(*)'.$sql); $s->execute($params); $total = (int)$s->fetchColumn();
         $offset = ($page-1)*$size;
         $s = $db->prepare('SELECT '.self::COLUMNS.$sql." ORDER BY t.id DESC LIMIT {$size} OFFSET {$offset}"); $s->execute($params);
-        return ['items'=>array_map($this->safeTask(...),$s->fetchAll()),'total'=>$total,'page'=>$page,'per_page'=>$size];
+        return ['items'=>array_map(function(array $task) use($finance):array { if (!$finance) { $task['total']=null; }return $this->safeTask($task); },$s->fetchAll()),'total'=>$total,'page'=>$page,'per_page'=>$size];
     }
 
     public function detail(int $id, array $admin, array $query): array
     {
+        $finance=$this->finance((int)$admin['id']);
         $page = $this->page($query['audit_page'] ?? '1');
-        return Database::transaction(function (PDO $db) use ($id,$admin,$page): array {
+        return Database::transaction(function (PDO $db) use ($id,$admin,$page,$finance): array {
             $s=$db->prepare('SELECT '.self::COLUMNS.self::JOINS.' WHERE t.id=?'); $s->execute([$id]); $task=$s->fetch();
             if (!$task) { throw new ApiException('Task not found',404,404); }
             $s=$db->prepare('SELECT id,user_id,product_id,provider_id,name,status,remote_instance_id,ip_address,billing_cycle,recurring_price,override_price,suspend_type,start_date,due_date FROM instances WHERE id=?'); $s->execute([$task['instance_id']]); $instance=$s->fetch();
-            $s=$db->prepare('SELECT id,user_id,instance_id,type,status,total,payment_method,created_at,paid_at FROM invoices WHERE id=?'); $s->execute([$task['invoice_id']]); $invoice=$s->fetch() ?: null;
+            $s=$db->prepare('SELECT id,user_id,instance_id,type,status,total,payment_method,created_at,paid_at FROM invoices WHERE id=? AND instance_id=? AND user_id=?'); $s->execute([$task['invoice_id'],$instance['id'],$instance['user_id']]); $invoice=$s->fetch() ?: null;
             $s=$db->prepare('SELECT id,email FROM users WHERE id=?'); $s->execute([$instance['user_id']]); $user=$s->fetch();
-            $s=$db->prepare("SELECT id,user_id,amount,currency,status,refund_status,refund_amount,created_at,JSON_UNQUOTE(JSON_EXTRACT(payload,'$.settlement_purpose')) AS settlement_purpose FROM payment_records WHERE invoice_id=? ORDER BY id"); $s->execute([$task['invoice_id']]); $receipts=$s->fetchAll();
+            $s=$db->prepare("SELECT id,user_id,amount,currency,status,refund_status,refund_amount,created_at,JSON_UNQUOTE(JSON_EXTRACT(payload,'$.settlement_purpose')) AS settlement_purpose FROM payment_records WHERE invoice_id=? AND user_id=? ORDER BY id"); $s->execute([$invoice['id']??null,$instance['user_id']]); $receipts=$s->fetchAll();
             $actions=TaskResolutionService::candidateActions($task,$instance,$invoice,$admin['role']);
             // Projection only: locked current reads in resolve remain the authorization and business gate.
             $s=$db->prepare("SELECT id FROM tasks WHERE instance_id=? AND id<>? AND (status IN ('running','investigating') OR (status='pending' AND action='power') OR (status='failed' AND last_error LIKE 'MANUAL_AUDIT_REQUIRED:%')) LIMIT 1"); $s->execute([$instance['id'],$id]);
@@ -67,12 +69,25 @@ final class TaskInspectionService
                 $context=json_decode($row['context']??'{}',true,32,JSON_THROW_ON_ERROR);
                 // Explicit fields, never dump arbitrary context introduced by another audit producer.
                 $row['context']=array_intersect_key($context,array_flip(['evidence','previous_execution_token','remote_instance_id','payment_record_id','amount']));
+                if (!$finance) { unset($row['context']['amount'],$row['context']['payment_record_id']); }
                 $audit[]=$row;
             }
-            return ['task'=>$this->safeTask($task),'instance'=>$instance,'invoice'=>$invoice,'user'=>$user,'receipts'=>$receipts,
+            if (!$finance) {
+                $task['total']=null;$instance['recurring_price']=null;$instance['override_price']=null;
+                if ($invoice) { $invoice['total']=null;$invoice['payment_method']=null; }
+                $receipts=[];
+            }
+            return ['task'=>$this->safeTask($task),'instance'=>$instance,'invoice'=>$invoice,'user'=>$user,'receipts'=>$receipts,'can_view_finance'=>$finance,
                 'allowed_actions'=>$actions,'blocked_by_other_operation'=>$blocked,
                 'audit'=>['items'=>$audit,'total'=>$total,'page'=>$page,'per_page'=>20]];
         });
+    }
+
+    private function finance(int $admin): bool
+    {
+        $s=Database::getInstance()->prepare("SELECT role FROM admins WHERE id=? AND status='active'");$s->execute([$admin]);$role=$s->fetchColumn();
+        if (!in_array($role,['super_admin','finance','support','operator'],true)) { throw new ApiException('Active administrator required',403,403); }
+        return in_array($role,['super_admin','finance'],true);
     }
 
     private function page(mixed $value, int $max=100000): int

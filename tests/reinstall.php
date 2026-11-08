@@ -41,6 +41,13 @@ $other=(new AuthService())->register(['email'=>'reinstall-other@example.test','p
 check(http('GET',"/instances/$iid/reinstall")[0]===401,'anonymous cannot inspect');
 check(http('GET',"/instances/$iid/reinstall",null,$at)[0]===401,'admin scope cannot impersonate owner API');
 check(http('GET',"/instances/$iid/reinstall",null,$ot)[0]===404,'foreign customer cannot inspect');
+check(http('GET',"/instances/$iid/reinstall?view=tasks")[0]===401,'local task tracking still requires authentication');
+check(http('GET',"/instances/$iid/reinstall?view=tasks",null,$at)[0]===401,'administrator token cannot read owner task tracking');
+check(http('GET',"/instances/$iid/reinstall?view=tasks",null,$ot)[0]===404,'local task tracking retains resource ownership isolation');
+check(http('GET',"/instances/$iid/reinstall?view=other",null,$token)[0]===400&&http('GET',"/instances/$iid/reinstall?view[]=tasks",null,$token)[0]===400,'unknown and array tracking modes are rejected');
+$counts=fixture('/__request_counts');
+[$s,$tracking]=http('GET',"/instances/$iid/reinstall?view=tasks",null,$token);
+check($s===200&&$tracking['data']===['blocked'=>false,'tasks'=>[]]&&fixture('/__request_counts')===$counts,'empty history tracking reads MySQL only without calling or logging into upstream');
 $v=reinstallView();$b=body($v);
 check($v['available']&&$v['images'][0]['id']==='1173023'&&$v['password_mode']==='upstream_generated'&&$v['data_disk']==='no_format_requested','explicit cloud capability supplies upstream image ids and honest credential/disk modes');
 check(!str_contains(json_encode($v),'SECRET')&&!str_contains(json_encode($v),'fixture-secret')&&!str_contains(json_encode($v),'endpoint'),'safe projection hides provider metadata and passwords');
@@ -65,6 +72,11 @@ do{curl_multi_exec($multi,$active);if($active){curl_multi_select($multi,1);}}whi
 check($codes===[200,409,409,409]&&$tid>0,'four concurrent submissions create exactly one task');
 check(task($tid)['invoice_id']===null&&(int)task($tid)['max_retries']===0,'nonfinancial Outbox never enables automatic resend');
 check(reinstallView()['blocked']&&!reinstallView()['available'],'pending reinstall holds business gate');
+$counts=fixture('/__request_counts');fixture('/__reinstall_mode?mode=unavailable');
+[$s,$tracking]=http('GET',"/instances/$iid/reinstall?view=tasks",null,$token);
+check($s===200&&$tracking['data']['blocked']&&$tracking['data']['tasks'][0]['id']===$tid&&fixture('/__request_counts')===$counts,'queued task tracking remains available without querying unavailable upstream capabilities');
+check(array_keys($tracking['data'])===['blocked','tasks']&&!str_contains(json_encode($tracking),'password')&&!str_contains(json_encode($tracking),'SECRET'),'tracking omits credentials, images and operation confirmation tokens');
+fixture('/__reinstall_mode?mode=normal');
 check(http('GET',"/instances/$iid/credentials",null,$token)[0]===409,'old credentials hidden before any upstream call');
 rejects(fn()=>(new RenewalService())->issue($uid,$iid),'pending reinstall blocks renewal');
 $r=http('GET',"/instances/$iid/runtime",null,$token)[1]['data'];check($r['blocked']&&$r['actions']===[],'pending reinstall blocks power actions');
@@ -145,6 +157,8 @@ fixture('/__reinstall_mode?mode=missed_execution');[$s,$r]=submit();$missed=(int
 check(task($missed)['status']==='investigating'&&reinstallView()['tasks'][0]['result']==='accepted','accepted but never observed execution remains honestly waiting, not success or immediate review');
 phase('unrelated');poll($missed,'reinstall-unrelated');phase('idle');poll($missed,'reinstall-after-unrelated');
 check(task($missed)['status']==='investigating'&&!isset(json_decode(task($missed)['payload'],true)['reinstall_execution_observed']),'unrelated cloud task must not become proof of this reinstall');
+phase('generic');poll($missed,'reinstall-generic');phase('idle');poll($missed,'reinstall-after-generic');
+check(task($missed)['status']==='investigating'&&!isset(json_decode(task($missed)['payload'],true)['reinstall_execution_observed']),'supplier-sanitized generic process description cannot prove this reinstall executed');
 expireInvestigation($missed);$workerService->runOnce('reinstall-missed-timeout');closeTask($missed);fixture('/__reinstall_mode?mode=normal');
 // Lost acknowledgement must remain uncertain even if a reinstall task and idle are visible.
 [$s,$r]=submit();$unknown=(int)$r['data']['task_id'];fixture('/__reinstall_mode?mode=drop');$workerService->runOnce('reinstall-unknown');poll($unknown,'reinstall-unknown-executing');phase('idle');poll($unknown,'reinstall-unknown-idle');

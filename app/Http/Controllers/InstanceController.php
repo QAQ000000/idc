@@ -24,7 +24,11 @@ final class InstanceController
     public function power(string $id, \App\Services\InstancePowerService $s): \Illuminate\Http\JsonResponse
     { return ApiResponse::success($s->submit((int)AuthMiddleware::user()['id'],Request::id($id),Request::body())); }
     public function reinstallOptions(string $id, \App\Services\InstanceReinstallService $s): \Illuminate\Http\JsonResponse
-    { return ApiResponse::success($s->view((int)AuthMiddleware::user()['id'],Request::id($id)))->header('Cache-Control','no-store'); }
+    {
+        $view=request()->query('view','full');
+        if(!in_array($view,['full','tasks'],true)){throw new \App\Core\ApiException('Invalid reinstall view');}
+        return ApiResponse::success($s->view((int)AuthMiddleware::user()['id'],Request::id($id),$view==='tasks'))->header('Cache-Control','no-store');
+    }
     public function reinstall(string $id, \App\Services\InstanceReinstallService $s): \Illuminate\Http\JsonResponse
     { return ApiResponse::success($s->submit((int)AuthMiddleware::user()['id'],Request::id($id),Request::body()))->header('Cache-Control','no-store'); }
     public function renew(string $id,RenewalService $s): \Illuminate\Http\JsonResponse

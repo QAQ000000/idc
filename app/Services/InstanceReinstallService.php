@@ -31,21 +31,25 @@ final class InstanceReinstallService
         return $driver instanceof ReinstallDriverInterface ? $driver->inspectReinstall(InstancePowerService::context($i),$credentials) : new ReinstallOptions();
     }
     /** Local durable history is available even when the upstream is unavailable. */
-    public function view(int $user,int $id): array
+    public function view(int $user,int $id,bool $tasksOnly=false): array
     {
-        $i=$this->owned($user,$id);$version=$this->version($i);$state='available';
-        try{$options=$this->inspect($i);if(!$options->images){$state='unsupported';}}
-        catch(\Throwable){$options=new ReinstallOptions();$state='unavailable';}
-        return Database::transaction(function(PDO $db)use($user,$id,$version,$options,$state):array{
-            $i=$this->owned($user,$id,true);$current=$this->version($i);$blocked=false;
+        $i=$this->owned($user,$id);$version=$tasksOnly?'':$this->version($i);$state='available';$options=new ReinstallOptions();
+        if(!$tasksOnly){
+            try{$options=$this->inspect($i);if(!$options->images){$state='unsupported';}}
+            catch(\Throwable){$state='unavailable';}
+        }
+        return Database::transaction(function(PDO $db)use($user,$id,$version,$options,$state,$tasksOnly):array{
+            $i=$this->owned($user,$id,true);$blocked=false;
             try{self::clear($db,$id);}catch(ApiException $e){if($e->httpStatus!==409){throw $e;}$blocked=true;}
-            $available=InstancePowerService::eligible($i)&&!$blocked&&hash_equals($version,$current)&&$options->images;
-            $claims=['user'=>$user,'instance'=>$id,'version'=>$current,'expires'=>time()+120,'options'=>$available?Security::requestFingerprint(json_encode($options->projection(),JSON_THROW_ON_ERROR)):null];
-            $body=rtrim(strtr(base64_encode(json_encode($claims,JSON_THROW_ON_ERROR)),'+/','-_'),'=');
             $s=$db->prepare("SELECT id,status,last_error,payload,updated_at FROM tasks WHERE instance_id=? AND action='reinstall' ORDER BY id DESC LIMIT 10");$s->execute([$id]);$tasks=[];
             foreach($s->fetchAll() as $t){$p=json_decode($t['payload'],true,32,JSON_THROW_ON_ERROR);$tasks[]=['id'=>(int)$t['id'],'status'=>$t['status'],'image_name'=>$p['image_name']??'',
                 'result'=>self::result($t,$p),
                 'accepted'=>($p['reinstall_accepted']??false)===true,'updated_at'=>$t['updated_at']];}
+            if($tasksOnly){return ['blocked'=>$blocked,'tasks'=>$tasks];}
+            $current=$this->version($i);
+            $available=InstancePowerService::eligible($i)&&!$blocked&&hash_equals($version,$current)&&$options->images;
+            $claims=['user'=>$user,'instance'=>$id,'version'=>$current,'expires'=>time()+120,'options'=>$available?Security::requestFingerprint(json_encode($options->projection(),JSON_THROW_ON_ERROR)):null];
+            $body=rtrim(strtr(base64_encode(json_encode($claims,JSON_THROW_ON_ERROR)),'+/','-_'),'=');
             return ['state'=>hash_equals($version,$current)?$state:'unavailable','available'=>(bool)$available,'blocked'=>$blocked,
                 ...$options->projection(),'operation_token'=>$body.'.'.Security::requestFingerprint('reinstall:'.$body),'tasks'=>$tasks];
         });

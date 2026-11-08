@@ -16,7 +16,7 @@ from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 
 state = {'mode': 'normal', 'creates': 0, 'hosts': {}, 'host_counter': 700, 'wrong_host_id': False,
-         'renew_mode': 'normal', 'renew_calls': 0, 'renew_payments': 0, 'renew_invoices': {}, 'config_mode': 'normal', 'last_create_total': '0.01', 'power_mode': 'normal', 'power_calls': 0, 'reinstall_mode': 'normal', 'reinstall_calls': 0}
+         'renew_mode': 'normal', 'renew_calls': 0, 'renew_payments': 0, 'renew_invoices': {}, 'config_mode': 'normal', 'last_create_total': '0.01', 'power_mode': 'normal', 'power_calls': 0, 'reinstall_mode': 'normal', 'reinstall_calls': 0, 'request_counts': {}}
 lock = threading.Lock()
 
 def next_due(stamp, cycle):
@@ -38,6 +38,9 @@ class Handler(BaseHTTPRequestHandler):
         u = urlparse(self.path)
         p = parse_qs(u.query if method == 'GET' else self.rfile.read(int(self.headers.get('Content-Length', 0))).decode())
         path = u.path
+        if not path.startswith('/__'):
+            with lock:
+                state['request_counts'][path] = state['request_counts'].get(path, 0) + 1
         if path == '/__mode':
             with lock:
                 state.update(mode=p['mode'][0], creates=0, hosts={}, wrong_host_id=False,
@@ -78,6 +81,8 @@ class Handler(BaseHTTPRequestHandler):
             r = {'ok': True}
         elif path == '/__state':
             r = {'creates': state['creates'], 'hosts': len(state['hosts']), 'renew_calls': state['renew_calls'], 'renew_payments': state['renew_payments'], 'last_config': state.get('last_config', {}), 'power_calls': state['power_calls'], 'reinstall_calls': state['reinstall_calls'], 'last_reinstall': state.get('last_reinstall', {})}
+        elif path == '/__request_counts':
+            r = dict(state['request_counts'])
         elif path == '/zjmf_api_login':
             r = {'status': 200, 'jwt': 'isolated-test-token'}
         elif self.headers.get('Authorization') != 'Bearer isolated-test-token':
@@ -217,6 +222,7 @@ class Handler(BaseHTTPRequestHandler):
                 status, description = h.get('power_state', 'on'), 'NEVER-EXPOSE-STATUS-SECRET'
                 if phase == 'executing': status, description = 'process', '重装系统中'
                 elif phase == 'unrelated': status, description = 'process', '创建快照中'
+                elif phase == 'generic': status, description = 'process', '任务处理中'
                 elif phase == 'unknown': status = 'unknown'
                 r = {'status': 200, 'data': {'status': status, 'des': description}}
             else:

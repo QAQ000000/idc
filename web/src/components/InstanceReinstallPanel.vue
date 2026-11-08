@@ -12,12 +12,15 @@ interface View {
 const view = ref<View>(), busy = ref(false), error = ref(""), notice = ref(""), image = ref(""), confirmed = ref(false);
 const results: Record<string, string> = { pending: "已排队", running: "提交中", accepted: "上游已受理，自动跟踪执行状态", executing: "已观察到上游重装执行，自动跟踪中", awaiting_credentials: "上游已空闲，等待凭据同步", query_unavailable: "上游已受理，当前查询未能确认结果，继续只读跟踪", execution_ended: "上游执行已结束，新凭据已同步；请登录检查系统结果", investigating: "提交结果未知，正在只读调查，请勿重复提交", success: "已确认完成，新凭据可在本站查看", needs_review: "需要管理员核验，请勿重复重装", not_executed: "管理员已确认未执行并结束" };
 let timer: ReturnType<typeof setTimeout> | undefined, disposed = false, signature = "", submittedTaskId: number | undefined, notifiedTaskId: number | undefined;
-async function refresh() {
+const hasPending = (current?: View) => current?.tasks.some(t => ["pending", "running", "investigating"].includes(t.status));
+async function refresh(tasksOnly = false) {
   if (busy.value || disposed) return;
   clearTimeout(timer); busy.value = true; error.value = "";
   try {
-    const current = await api<View>(`/instances/${props.instanceId}/reinstall`);
+    const tracking = tasksOnly && !!view.value;
+    const update = await api<View | Pick<View, "blocked" | "tasks">>(`/instances/${props.instanceId}/reinstall${tracking ? "?view=tasks" : ""}`);
     if (disposed) return;
+    const current = tracking ? { ...view.value!, ...update, available: false, operation_token: "" } : update as View;
     view.value = current;
     const submitted = current.tasks.find(task => task.id === submittedTaskId);
     if (submitted?.accepted && submitted.status !== "failed" && notifiedTaskId !== submitted.id) {
@@ -31,10 +34,15 @@ async function refresh() {
     if (signature && signature !== next) emit("changed");
     signature = next;
     if (!current.images.some(v => v.id === image.value)) { image.value = ""; confirmed.value = false; }
-  } catch (e) { error.value = message(e); view.value = undefined; }
+    // A terminal task needs fresh capabilities and a new confirmation before another destructive operation.
+    if (tracking && !hasPending(current)) timer = setTimeout(() => { void refresh(); }, 0);
+  } catch (e) {
+    error.value = message(e);
+    if (view.value) { view.value.available = false; view.value.operation_token = ""; }
+  }
   finally {
     busy.value = false;
-    if (!disposed && view.value?.tasks.some(t => ["pending", "running", "investigating"].includes(t.status))) timer = setTimeout(refresh, 15000);
+    if (!disposed && hasPending(view.value)) timer = setTimeout(() => { void refresh(true); }, 15000);
   }
 }
 async function submit() {
@@ -53,7 +61,7 @@ async function submit() {
   } catch (e) { notice.value = message(e) + "；请先刷新核对原任务，勿再次提交。"; }
   finally { confirmed.value = false; busy.value = false; await refresh(); }
 }
-onMounted(refresh);
+onMounted(() => { void refresh(); });
 onUnmounted(() => { disposed = true; clearTimeout(timer); });
 </script>
 <template>
@@ -62,7 +70,7 @@ onUnmounted(() => { disposed = true; clearTimeout(timer); });
     <el-alert v-if="notice" :title="notice" type="info" :closable="false" />
     <el-alert v-if="view?.blocked" title="存在进行中的操作或资金冻结，暂不能重装。原任务会自动跟踪，异常时再联系管理员。" type="warning" :closable="false" />
     <p v-for="task in view?.tasks.filter((t, index) => index === 0 || ['pending', 'running', 'investigating'].includes(t.status) || t.result === 'needs_review') || []" :key="task.id" class="operation-notice" role="status">重装任务 #{{ task.id }} · {{ results[task.result] }}</p>
-    <!-- Native details keeps capability polling and blocked events mounted. -->
+    <!-- Native details keeps task polling and blocked events mounted. -->
     <details class="auxiliary-details">
       <summary>重装系统与操作记录</summary>
       <div class="details-content">
@@ -81,9 +89,9 @@ onUnmounted(() => { disposed = true; clearTimeout(timer); });
             <el-table-column label="结果" min-width="270"><template #default="{ row }"><div v-if="row.accepted">上游已受理</div>{{ results[row.result] }}</template></el-table-column>
             <el-table-column prop="updated_at" label="更新时间 (UTC)" min-width="180" />
           </el-table>
-          <p class="muted">最近 10 次操作。在途任务每 15 秒只读查询；已受理任务自动跟踪；上游恢复空闲仅表示执行结束，不保证系统可登录。结果未知、超时等异常才转管理员核验，始终不自动重发。</p>
+          <p class="muted">最近 10 次操作。在途任务每 15 秒读取本站记录，上游状态由 Worker 跟踪；上游恢复空闲仅表示执行结束，不保证系统可登录。结果未知、超时等异常才转管理员核验，始终不自动重发。</p>
         </template>
-        <el-button :loading="busy" @click="refresh">刷新镜像与重装结果</el-button>
+        <el-button :loading="busy" @click="refresh(false)">刷新镜像与重装结果</el-button>
       </div>
     </details>
   </el-card>

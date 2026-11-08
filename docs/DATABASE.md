@@ -9,6 +9,8 @@
 
 修改 schema 后运行 `python3 scripts/sync_schema_docs.py --write` 同步摘录；运行 `python3 scripts/sync_schema_docs.py --check` 检查完整 DDL（含 SQL 注释）、表名及重复/缺失表。省略参数同样只检查，不写文件。同步器仅替换各表 SQL 语句，保留正文说明；这些命令不连接数据库，也不执行迁移。
 
+**状态查询优化（2026-11-09）**：重装 `view=tasks` 只投影现有 tasks 并读取原门禁；页面轮询窗口仅存在浏览器内存，不持久化运行状态或新建同步副本。27表／DDL／迁移保持，Worker 终态与凭据同步规则不变，见 [重装契约](M2_INSTANCE_REINSTALL.md)。
+
 **Laravel 13 适配边界**：M0 已使用框架同连接事务和标准迁移运行器；新增 `migrations` 仅承载升级版本元数据，审查记录见 [TECH_STACK.md §7](TECH_STACK.md#7-m0-实施中的-schema-边界审查)。不安装默认 users/sessions/cache/jobs 表。`invoices.checkout_key/checkout_hash` 是原账单实体的幂等属性；可空兼容旧数据，摘要为 HMAC，唯一键按用户隔离。schema.sql 是空库完整结构，版本 PHP 迁移是已有库增量升级记录，禁止双份手写完整模型。
 
 **充值与资金查询增量**：复用原 invoices.type=recharge、instance_id=NULL，checkout_key 使用 recharge: 命名空间、checkout_hash 为用途／金额 HMAC；payment_records 仍同时承载待付尝试和实际收款。transactions.trade_no 新入钱包流水关联原收款 trade_no，旧只追加事实不重写，查询按原键回溯。仅 account_type=wallet 进入本批钱包查询；不增财务汇总副本、实体、DDL 或迁移，27 表保持，见 [本批契约](M2_WALLET_FINANCE.md)。

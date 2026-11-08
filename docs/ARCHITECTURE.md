@@ -8,6 +8,8 @@
 
 **客户重装增量**：InstanceReinstallService 通过可选 ReinstallDriverInterface 读取镜像与能力，HTTP 只落非财务 reinstall Outbox；复用任务门禁、令牌、调查与管理员同事务审计。已知原资源绑定／账期／价格不可改写，正常受理自动只读跟踪；空闲预检／明确受理／观察重装执行后恢复空闲且取得原资源凭据，原子同步密文并以 execution_ended 结束占用，不声称系统成功。未知／漏观察／超时才转人工；不能以 Active／镜像更新推定成功；不新增表、控制台中继或自动退款。兼容／迁移和验证见 [本批契约](M2_INSTANCE_REINSTALL.md)。
 
+**状态读取分工**：客户重装 `?view=tasks` 仅查询原 MySQL 任务与业务门禁，不读取驱动能力或生成操作确认；Worker 继续独立查询真实执行。页面结束后完整重取能力与确认。上游单独返回执行中也可触发有限页面轮询，不能据此写入任务证据、修改账期或解除占用；不增缓存事实副本、接口抽象或表。
+
 **上游接入增量**：ProviderConnectionService 经可选 ConnectionConfigInterface 规范化并加密新增连接，原 CLI 安装器复用它；AdminProviderService 提供安全投影、当前超级管理员写权限、版本、重放和同事务审计。账号命名空间不可替换；验证仅复用 ProductSnapshotService.prepare 的只读配置／报价，不调用具体驱动类或增表，不混入商品／支付写入。见 [接入契约](M2_PROVIDER_CONNECTIONS.md)。
 
 **管理员查询增量**：AdminQueryService 仅从原客户／实例／商品／上游表投影非财务定位字段，账单状态按客户／实例一致关联；通过原 FinanceQueryService 与 TaskInspectionService 链接资金和异常。四个只读 GET 无驱动调用、写表、缓存副本或迁移；财务／超级管理员仍是金额／收款／流水边界，旧任务投影同步裁剪非财务角色的结构化财务字段。权限与兼容见 [只读查询契约](M2_ADMIN_QUERIES.md)。

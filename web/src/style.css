@@ -848,3 +848,63 @@ p {
   .admin-query-page .task-filters { grid-template-columns: minmax(0, 1fr); }
   .query-links { flex-direction: column; align-items: flex-start; gap: 14px; }
 }
+
+/* Portrait task paths: keep primary controls ahead of auxiliary information. */
+.auxiliary-details > summary { cursor: pointer; font-weight: 600; padding: 4px 0; color: var(--ink); }
+.auxiliary-details > summary:focus-visible { outline: 3px solid #7393f2; outline-offset: 4px; }
+.details-content { margin-top: 16px; }
+.instance-quick-actions { margin: 0 0 16px; }
+.instance-power-panel .runtime-state { margin: 0 0 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.instance-power-panel .runtime-state .muted { font-size: 12px; }
+.instance-power-panel .auxiliary-details { margin: 12px 0; }
+.operation-notice { color: var(--el-color-warning); overflow-wrap: anywhere; }
+.checkout-bottom-bar { position: fixed; z-index: 100; bottom: var(--checkout-viewport-bottom, 0px); left: 0; right: 0; background: #fff; border-top: 1px solid var(--el-border-color); box-shadow: 0 -4px 20px #202c4010; padding: 12px max(16px, env(safe-area-inset-right, 0px)) calc(12px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+.checkout-bar-prices { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 16px; }
+.checkout-bar-prices strong { font-size: 20px; }
+.checkout-bar-prices span { color: var(--muted); font-size: 12px; }
+.checkout-quote-state { margin: 2px 0 8px; color: var(--muted); font-size: 12px; }
+.checkout-quote-state.quote-invalid { color: var(--el-color-warning); }
+.checkout-bar-actions { display: flex; gap: 12px; }
+.checkout-bar-actions .el-button { flex: 1; margin: 0; min-width: 0; min-height: 40px; }
+.checkout-bar-error { margin: 6px 0; max-height: 64px; overflow: auto; color: var(--el-color-danger); font-size: 12px; overflow-wrap: anywhere; }
+.checkout-summary-drawer .el-drawer__body { padding-top: 0; }
+.checkout-summary-drawer .el-card { border: 0; }
+.checkout-summary-drawer .el-card__header { display: none; }
+.checkout-summary-drawer .el-card__body { padding: 0; }
+.checkout-summary-drawer .el-drawer__header, .task-filter-drawer .el-drawer__header { margin-bottom: 20px; }
+.checkout-summary-drawer .el-drawer__body, .task-filter-drawer .el-drawer__body { padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px)); }
+.checkout-with-bar { padding-bottom: calc(var(--checkout-bar-height, 150px) + var(--checkout-viewport-bottom, 0px)); }
+.checkout-with-bar input { scroll-margin-block: 24px calc(var(--checkout-bar-height, 150px) + 24px); }
+.task-mobile-toolbar, .task-quick-search { display: flex; gap: 8px; align-items: center; }
+.task-mobile-toolbar { flex-wrap: wrap; }
+.task-quick-search { flex: 1; min-width: 150px; }
+.task-mobile-toolbar .el-button, .task-quick-search .el-button { margin: 0; }
+.task-quick-search .el-input { min-width: 0; }
+.active-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 16px 0; }
+.active-filters .el-tag { max-width: 100%; height: auto; min-height: 24px; }
+.active-filters .el-tag__content { white-space: normal; overflow-wrap: anywhere; }
+.tasks-intro { margin: 0 0 16px; }
+.tasks-intro > details { font-size: 12px; }
+.task-filter-drawer .task-filters { grid-template-columns: minmax(0, 1fr); }
+.task-filter-drawer .task-filters .el-select { width: 100%; }
+.task-filter-drawer .filter-form-actions .el-form-item__content { gap: 8px; }
+.task-filter-drawer .filter-form-actions .el-button { margin: 0; }
+@media (max-width: 1023px) {
+  .checkout-columns { grid-template-columns: minmax(0, 1fr); }
+  .instance-page .back-link { margin-bottom: 8px; }
+  .instance-page .page-heading { margin-bottom: 12px; }
+  .instance-page .page-heading .eyebrow { display: none; }
+  .instance-page .page-heading h1 { margin: 0 0 4px; }
+  .instance-page .instance-summary { padding: 12px 16px; gap: 10px 16px; margin-bottom: 12px; }
+  .instance-page .instance-summary .field-label { margin-bottom: 2px; }
+  .instance-power-panel .el-card__header { padding-block: 12px; }
+  .instance-power-panel .el-card__body { padding-block: 12px; }
+  .instance-power-panel .actions { margin-block: 8px 12px; }
+  .instance-power-panel .el-card__header h2 { margin: 0; }
+  .admin-tasks-page > h1 { margin-bottom: 8px; }
+}
+@media (max-width: 640px) {
+  .instance-page .page-heading { gap: 10px; }
+  .instance-page .page-heading h1 { font-size: 22px; }
+  .instance-page .page-heading > .el-button { padding-inline: 10px; }
+}

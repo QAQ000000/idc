@@ -50,24 +50,29 @@ onMounted(refresh);
 onUnmounted(() => { disposed = true; clearTimeout(timer); });
 </script>
 <template>
-  <el-card shadow="never">
+  <el-card class="instance-power-panel" shadow="never">
     <template #header><h2>运行状态与电源操作</h2></template>
     <el-alert v-if="error" :title="error" type="error" :closable="false" role="alert" />
     <el-alert v-if="notice" :title="notice" type="info" :closable="false" />
     <template v-if="runtime">
-      <p><el-tag>{{ states[runtime.state] }}</el-tag> <span class="muted">查询时间 {{ runtime.checked_at }} UTC</span></p>
+      <p class="runtime-state"><el-tag>{{ states[runtime.state] }}</el-tag> <span class="muted">{{ runtime.checked_at }} UTC</span></p>
       <el-alert v-if="runtime.blocked" title="存在排队、未决操作或资金冻结，请等待原任务处理，必要时联系管理员核验。" type="warning" :closable="false" />
-      <p class="muted">运行状态与交付、暂停状态分别记录。命令被接受不代表系统已完成启动或重启；结果未知时不会自动重发。</p>
+      <el-alert v-else-if="externalBlocked" title="重装或其他未决任务正在核验，电源操作暂不可用。" type="warning" :closable="false" />
       <div class="actions">
         <el-button v-for="action in runtime.actions" :key="action" :disabled="busy || externalBlocked" :type="action === 'start' ? 'primary' : 'warning'" @click="submit(action)">{{ actionLabels[action] }}</el-button>
       </div>
-      <el-table :data="runtime.tasks" empty-text="暂无电源操作记录">
-        <el-table-column prop="id" label="任务" width="85" />
-        <el-table-column label="操作" width="85"><template #default="{ row }">{{ actionLabels[row.action as Action] }}</template></el-table-column>
-        <el-table-column label="结果" min-width="240"><template #default="{ row }">{{ results[row.result] }}</template></el-table-column>
-        <el-table-column prop="updated_at" label="更新时间 (UTC)" min-width="180" />
-      </el-table>
-      <p class="muted">最近 10 次操作；在途任务每 15 秒查询一次，离开页面后停止。</p>
+      <p v-for="task in runtime.tasks.filter(t => ['pending', 'running', 'investigating'].includes(t.status) || t.result === 'needs_review')" :key="task.id" class="operation-notice" role="status">电源任务 #{{ task.id }} · {{ results[task.result] }}</p>
+      <details class="auxiliary-details">
+        <summary>电源操作记录与说明</summary>
+        <p class="muted">运行状态与交付、暂停状态分别记录。命令被接受不代表系统已完成启动或重启；结果未知时不会自动重发。</p>
+        <el-table :data="runtime.tasks" empty-text="暂无电源操作记录">
+          <el-table-column prop="id" label="任务" width="85" />
+          <el-table-column label="操作" width="85"><template #default="{ row }">{{ actionLabels[row.action as Action] }}</template></el-table-column>
+          <el-table-column label="结果" min-width="240"><template #default="{ row }">{{ results[row.result] }}</template></el-table-column>
+          <el-table-column prop="updated_at" label="更新时间 (UTC)" min-width="180" />
+        </el-table>
+        <p class="muted">最近 10 次操作；在途任务每 15 秒查询一次，离开页面后停止。</p>
+      </details>
     </template>
     <el-button :loading="busy" @click="refresh">查询运行状态和操作结果</el-button>
   </el-card>

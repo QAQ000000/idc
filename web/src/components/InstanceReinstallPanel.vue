@@ -49,27 +49,33 @@ onUnmounted(() => { disposed = true; clearTimeout(timer); });
 </script>
 <template>
   <el-card shadow="never">
-    <template #header><h2>重装系统</h2></template>
     <el-alert v-if="error" :title="error" type="error" :closable="false" role="alert" />
     <el-alert v-if="notice" :title="notice" type="info" :closable="false" />
-    <template v-if="view">
-      <p v-if="view.state === 'unsupported'" class="muted">当前实例未开放重装能力或没有可用镜像。</p>
-      <el-alert v-if="view.state === 'unavailable'" title="暂时无法读取重装能力与镜像，请稍后重新查询。" type="warning" :closable="false" />
-      <el-alert v-if="view.blocked" title="存在排队、未决操作或资金冻结，暂不能重装。请等待原任务或联系管理员。" type="warning" :closable="false" />
-      <el-form v-if="view.images.length" label-position="top" @submit.prevent="submit">
-        <el-alert title="系统盘全部清空，操作不可撤销；数据盘固定不请求格式化，仍须备份重要数据。" type="warning" :closable="false" />
-        <el-form-item label="系统镜像"><el-select v-model="image" aria-label="重装系统镜像" placeholder="请选择上游提供的镜像" :disabled="busy || !view.available" style="width: 100%" @change="confirmed = false"><el-option v-for="os in view.images" :key="os.id" :label="os.name" :value="os.id" /></el-select></el-form-item>
-        <p class="muted">密码由上游生成；完成核验后通过本站“查看登录凭据”获取。重装不改变原资源、到期日或续费价。</p>
-        <el-checkbox v-model="confirmed" class="task-confirm" :disabled="busy || !view.available" style="height: auto; white-space: normal; margin-bottom: 16px">已备份重要数据，确认允许清空系统盘</el-checkbox>
-        <div class="actions"><el-button native-type="submit" type="danger" :disabled="!view.available || !image || !confirmed || busy">重装系统</el-button></div>
-      </el-form>
-      <el-table :data="view.tasks" empty-text="暂无重装记录">
-        <el-table-column prop="id" label="任务" width="85" /><el-table-column prop="image_name" label="镜像" min-width="170" />
-        <el-table-column label="结果" min-width="270"><template #default="{ row }"><div v-if="row.accepted">上游已受理</div>{{ results[row.result] }}</template></el-table-column>
-        <el-table-column prop="updated_at" label="更新时间 (UTC)" min-width="180" />
-      </el-table>
-      <p class="muted">最近 10 次操作。在途任务每 15 秒只读查询；无可靠完成回执时需管理员核验，不自动重发，也不以运行状态代替完成结果。</p>
-    </template>
-    <el-button :loading="busy" @click="refresh">刷新镜像与重装结果</el-button>
+    <el-alert v-if="view?.blocked" title="存在排队、未决操作或资金冻结，暂不能重装。请等待原任务或联系管理员。" type="warning" :closable="false" />
+    <p v-for="task in view?.tasks.filter(t => ['pending', 'running', 'investigating'].includes(t.status) || t.result === 'needs_review') || []" :key="task.id" class="operation-notice" role="status">重装任务 #{{ task.id }} · {{ results[task.result] }}</p>
+    <!-- Native details keeps capability polling and blocked events mounted. -->
+    <details class="auxiliary-details">
+      <summary>重装系统与操作记录</summary>
+      <div class="details-content">
+        <template v-if="view">
+          <p v-if="view.state === 'unsupported'" class="muted">当前实例未开放重装能力或没有可用镜像。</p>
+          <el-alert v-if="view.state === 'unavailable'" title="暂时无法读取重装能力与镜像，请稍后重新查询。" type="warning" :closable="false" />
+          <el-form v-if="view.images.length" label-position="top" @submit.prevent="submit">
+            <el-alert title="系统盘全部清空，操作不可撤销；数据盘固定不请求格式化，仍须备份重要数据。" type="warning" :closable="false" />
+            <el-form-item label="系统镜像"><el-select v-model="image" aria-label="重装系统镜像" placeholder="请选择上游提供的镜像" :disabled="busy || !view.available" style="width: 100%" @change="confirmed = false"><el-option v-for="os in view.images" :key="os.id" :label="os.name" :value="os.id" /></el-select></el-form-item>
+            <p class="muted">密码由上游生成；完成核验后通过本站“查看登录凭据”获取。重装不改变原资源、到期日或续费价。</p>
+            <el-checkbox v-model="confirmed" class="task-confirm" :disabled="busy || !view.available" style="height: auto; white-space: normal; margin-bottom: 16px">已备份重要数据，确认允许清空系统盘</el-checkbox>
+            <div class="actions"><el-button native-type="submit" type="danger" :disabled="!view.available || !image || !confirmed || busy">重装系统</el-button></div>
+          </el-form>
+          <el-table :data="view.tasks" empty-text="暂无重装记录">
+            <el-table-column prop="id" label="任务" width="85" /><el-table-column prop="image_name" label="镜像" min-width="170" />
+            <el-table-column label="结果" min-width="270"><template #default="{ row }"><div v-if="row.accepted">上游已受理</div>{{ results[row.result] }}</template></el-table-column>
+            <el-table-column prop="updated_at" label="更新时间 (UTC)" min-width="180" />
+          </el-table>
+          <p class="muted">最近 10 次操作。在途任务每 15 秒只读查询；无可靠完成回执时需管理员核验，不自动重发，也不以运行状态代替完成结果。</p>
+        </template>
+        <el-button :loading="busy" @click="refresh">刷新镜像与重装结果</el-button>
+      </div>
+    </details>
   </el-card>
 </template>

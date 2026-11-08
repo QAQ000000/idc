@@ -226,45 +226,17 @@ onUnmounted(() => {
           <strong>{{ instance.due_date || "交付后确定" }}</strong>
         </div>
       </div>
+      <div class="instance-quick-actions actions">
+        <el-button
+          v-if="instance.status === 'active' && instance.remote_instance_id"
+          type="primary"
+          @click="router.push(`/instances/${instance.id}/console`)"
+        >
+VNC 控制台 ↗
+</el-button>
+      </div>
       <div class="instance-columns">
         <div class="panel-stack">
-          <el-card shadow="never">
-            <template #header>
-              <div class="panel-heading">
-                <h2>基本信息</h2>
-                <span class="muted">实例 #{{ instance.id }}</span>
-              </div>
-            </template>
-            <el-descriptions :column="1" border>
-              <el-descriptions-item label="实例名称">
-                {{ instance.name }}
-              </el-descriptions-item>
-              <el-descriptions-item label="商品">
-                {{ instance.product_name }}
-              </el-descriptions-item>
-              <el-descriptions-item label="资源编号">
-                <span class="mono">
-                  {{ instance.remote_instance_id || "等待交付" }}
-                </span>
-              </el-descriptions-item>
-              <el-descriptions-item v-if="instance.reinstalled_image" label="最近确认的重装系统">{{ instance.reinstalled_image }}</el-descriptions-item>
-              <el-descriptions-item label="起租时间（UTC）">
-                {{ instance.start_date || "交付后起租" }}
-              </el-descriptions-item>
-              <el-descriptions-item
-                v-for="(item, index) in instance.configuration"
-                :key="index"
-                :label="item.label"
-              >
-                {{ item.value }}
-              </el-descriptions-item>
-            </el-descriptions>
-            <div v-if="instance.invoice_id" class="actions">
-              <RouterLink :to="'/invoices/' + instance.invoice_id">
-                查看购买账单 ↗
-              </RouterLink>
-            </div>
-          </el-card>
           <InstancePowerPanel
             v-if="instance.remote_instance_id && instance.status === 'active'"
             :key="instance.id"
@@ -277,6 +249,67 @@ onUnmounted(() => {
             <p class="muted">
               实例交付完成且服务有效后，可查询实际运行状态和可用操作。
             </p>
+          </el-card>
+          <el-card shadow="never">
+            <template #header><h2>系统登录凭据</h2></template>
+            <p class="muted">
+              登录凭据按需读取，重装或任务核验期间可能暂不可用。
+            </p>
+            <div class="actions">
+              <el-button
+                v-if="instance.status === 'active'"
+                :disabled="busy"
+                :aria-expanded="Boolean(credentials)"
+                @click="reveal"
+              >
+                {{ credentials ? "隐藏凭据" : "查看登录凭据" }}
+              </el-button>
+            </div>
+            <div v-if="credentials" class="credentials-panel">
+              <p class="muted">请妥善保管，切换标签页或刷新详情后隐藏。</p>
+              <dl>
+                <dt>账号</dt>
+                <dd class="mono">{{ credentials.username || "上游未提供" }}</dd>
+                <dt>密码</dt>
+                <dd class="mono">{{ credentials.password || "上游未提供" }}</dd>
+              </dl>
+            </div>
+          </el-card>
+          <el-card shadow="never">
+            <details class="auxiliary-details">
+              <summary>规格与购买信息</summary>
+              <div class="details-content">
+                <el-descriptions :column="1" border>
+                  <el-descriptions-item label="实例名称">
+                    {{ instance.name }}
+                  </el-descriptions-item>
+                  <el-descriptions-item label="商品">
+                    {{ instance.product_name }}
+                  </el-descriptions-item>
+                  <el-descriptions-item label="资源编号">
+                    <span class="mono">
+                      {{ instance.remote_instance_id || "等待交付" }}
+                    </span>
+                  </el-descriptions-item>
+                  <el-descriptions-item v-if="instance.reinstalled_image" label="最近确认的重装系统">{{ instance.reinstalled_image }}</el-descriptions-item>
+                  <el-descriptions-item label="起租时间（UTC）">
+                    {{ instance.start_date || "交付后起租" }}
+                  </el-descriptions-item>
+                  <el-descriptions-item
+                    v-for="(item, index) in instance.configuration"
+                    :key="index"
+                    :label="item.label"
+                  >
+                    {{ item.value }}
+                  </el-descriptions-item>
+                </el-descriptions>
+                <div v-if="instance.invoice_id" class="actions">
+                  <RouterLink :to="'/invoices/' + instance.invoice_id">
+                    查看购买账单 ↗
+                  </RouterLink>
+                </div>
+              </div>
+            </details>
           </el-card>
           <InstanceReinstallPanel
             v-if="instance.remote_instance_id"
@@ -348,40 +381,6 @@ onUnmounted(() => {
                 到期前 7 天出账；开启后每 15
                 分钟检查余额并尝试付款，余额不足保留原未付账单。
               </p>
-            </div>
-          </el-card>
-          <el-card shadow="never">
-            <template #header><h2>连接实例</h2></template>
-            <p class="muted">
-              通过 VNC
-              访问控制台，或查看已保存的系统登录凭据。交付状态不代表系统已完成启动。
-            </p>
-            <div class="actions">
-              <el-button
-                v-if="
-                  instance.status === 'active' && instance.remote_instance_id
-                "
-                @click="router.push(`/instances/${instance.id}/console`)"
-              >
-                VNC 控制台 ↗
-              </el-button>
-              <el-button
-                v-if="instance.status === 'active'"
-                :disabled="busy"
-                :aria-expanded="Boolean(credentials)"
-                @click="reveal"
-              >
-                {{ credentials ? "隐藏凭据" : "查看登录凭据" }}
-              </el-button>
-            </div>
-            <div v-if="credentials" class="credentials-panel">
-              <p class="muted">请妥善保管，切换标签页或刷新详情后隐藏。</p>
-              <dl>
-                <dt>账号</dt>
-                <dd class="mono">{{ credentials.username || "上游未提供" }}</dd>
-                <dt>密码</dt>
-                <dd class="mono">{{ credentials.password || "上游未提供" }}</dd>
-              </dl>
             </div>
           </el-card>
         </div>

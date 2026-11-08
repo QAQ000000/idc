@@ -10,7 +10,55 @@ import {
   type ProductConfiguration,
   type Quote,
 } from "../api/request";
+import CheckoutSummary from "../components/CheckoutSummary.vue";
 import ConfigOptionRenderer from "../components/ConfigOptionRenderer.vue";
+const compact = ref(window.matchMedia("(max-width: 1023px)").matches);
+const summaryOpen = ref(false), bottomBar = ref<HTMLElement>();
+const barHeight = ref(0), viewportBottom = ref(0);
+const compactQuery = window.matchMedia("(max-width: 1023px)");
+let barObserver: ResizeObserver | undefined;
+let invalidInput: HTMLInputElement | undefined;
+function revealInvalidInput(event: Event) {
+  if (summaryOpen.value && event.target instanceof HTMLInputElement) {
+    invalidInput = event.target;
+    summaryOpen.value = false;
+  }
+}
+function focusInvalidInput(event: Event) {
+  if (!invalidInput) return;
+  event.preventDefault();
+  invalidInput.focus();
+  invalidInput.scrollIntoView({ block: "center" });
+  keepInputVisible();
+  invalidInput = undefined;
+}
+function syncCompact() { compact.value = compactQuery.matches; if (!compact.value) summaryOpen.value = false; }
+function keepInputVisible() {
+  if (!compact.value) return;
+  requestAnimationFrame(() => {
+    const input = document.activeElement;
+    if (!(input instanceof HTMLInputElement) || !input.closest("#checkout-form")) return;
+    const viewport = window.visualViewport;
+    const top = (viewport?.offsetTop || 0) + 12;
+    const bottom = (viewport?.offsetTop || 0) + (viewport?.height || innerHeight) - barHeight.value - 12;
+    const bounds = input.getBoundingClientRect();
+    if (bounds.bottom > bottom) window.scrollBy(0, bounds.bottom - bottom);
+    else if (bounds.top < top) window.scrollBy(0, bounds.top - top);
+  });
+}
+function syncViewport(event?: Event) {
+  const viewport = window.visualViewport;
+  viewportBottom.value = viewport ? Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop) : 0;
+  if (event?.type === "resize") keepInputVisible();
+}
+watch(bottomBar, (element) => {
+  barObserver?.disconnect();
+  if (element) {
+    barObserver = new ResizeObserver(() => { barHeight.value = element.getBoundingClientRect().height; });
+    barObserver.observe(element);
+    barHeight.value = element.getBoundingClientRect().height;
+  }
+}, { flush: "post" });
 const route = useRoute(),
   router = useRouter();
 const product = ref<Product | null>(null),
@@ -66,6 +114,14 @@ const selectionSummary = computed(() =>
         ?.label || "待选择",
   })),
 );
+const summaryProps = computed(() => ({
+  product: product.value!, confirmed: confirmed.value,
+  summary: confirmed.value?.configuration ?? selectionSummary.value,
+  cycleLabel: cycleLabel.value, quoting: quoting.value, busy: busy.value,
+  quoteError: quoteError.value, quoteExpired: quoteExpired.value,
+  quoteNotice: quoteNotice.value, canSubmit: canSubmit.value,
+}));
+const quoteStatus = computed(() => quoting.value ? "正在重新报价…" : quoteError.value ? "报价失败，请重试" : quoteExpired.value ? "报价已失效，请重新计算" : confirmed.value ? `报价有效 · 剩余 ${Math.max(0, Math.ceil((expires.value - now.value) / 1000))} 秒` : "等待有效报价");
 const passwordSets: Record<string, string> = {
   upper: "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
   lower: "abcdefghijklmnopqrstuvwxyz",
@@ -243,11 +299,19 @@ async function submit() {
 }
 onMounted(() => {
   void load();
+  compactQuery.addEventListener("change", syncCompact);
+  window.visualViewport?.addEventListener("resize", syncViewport);
+  window.visualViewport?.addEventListener("scroll", syncViewport);
+  syncViewport();
   timer = setInterval(() => {
     now.value = Date.now();
   }, 1000);
 });
 onBeforeUnmount(() => {
+  compactQuery.removeEventListener("change", syncCompact);
+  window.visualViewport?.removeEventListener("resize", syncViewport);
+  window.visualViewport?.removeEventListener("scroll", syncViewport);
+  barObserver?.disconnect();
   disposed = true;
   ++quoteVersion;
   if (timer) clearInterval(timer);
@@ -255,7 +319,7 @@ onBeforeUnmount(() => {
 });
 </script>
 <template>
-  <section class="checkout-page">
+  <section class="checkout-page" :class="{ 'checkout-with-bar': compact && product && !loading }" :style="{ '--checkout-bar-height': `${barHeight}px`, '--checkout-viewport-bottom': `${viewportBottom}px` }">
     <RouterLink class="back-link" to="/">← 返回产品目录</RouterLink>
     <div class="page-heading">
       <div>
@@ -275,7 +339,7 @@ onBeforeUnmount(() => {
     <el-card v-if="loading" shadow="never">
       <el-skeleton :rows="8" animated />
     </el-card>
-    <el-form v-else-if="product" label-position="top" @submit.prevent="submit">
+    <el-form v-else-if="product" id="checkout-form" label-position="top" @submit.prevent="submit" @invalid.capture="revealInvalidInput" @focusin="keepInputVisible">
       <div class="checkout-columns">
         <div class="panel-stack">
           <el-card shadow="never">
@@ -355,89 +419,28 @@ onBeforeUnmount(() => {
             </el-form-item>
           </el-card>
         </div>
-        <el-card class="checkout-summary" shadow="never">
-          <template #header><h2>本次订单摘要</h2></template>
-          <p class="field-label">商品</p>
-          <h3>{{ product.name }}</h3>
-          <p class="muted">{{ cycleLabel }} · CNY</p>
-          <el-descriptions v-if="selectionSummary.length" :column="1" border>
-            <el-descriptions-item
-              v-for="item in selectionSummary"
-              :key="item.label"
-              :label="item.label"
-            >
-              {{ item.value }}
-            </el-descriptions-item>
-          </el-descriptions>
-          <p v-else class="muted">固定套餐，无额外选配。</p>
-          <div v-loading="quoting" class="quote-prices">
-            <p class="field-label">首期应付</p>
-            <p class="renewal-price">¥{{ confirmed?.total || "—" }}</p>
-            <div class="price-line">
-              <span>后续每期续费</span>
-              <strong>
-                ¥{{ confirmed?.recurring_price || "—" }} / {{ cycleLabel }}
-              </strong>
-            </div>
-            <p v-if="confirmed" class="muted">
-              确认报价截止：{{ confirmed.quote_expires_at }} UTC
-            </p>
-          </div>
-          <el-alert
-            v-if="quoteError"
-            :title="quoteError"
-            type="error"
-            :closable="false"
-            role="alert"
-          />
-          <el-alert
-            v-if="quoteExpired"
-            title="确认报价已失效，请重新获取报价并核对后再提交。"
-            type="warning"
-            :closable="false"
-            role="alert"
-          />
-          <el-alert
-            v-if="quoteNotice"
-            :title="quoteNotice"
-            type="info"
-            :closable="false"
-            role="status"
-          />
-          <el-button :disabled="busy" :loading="quoting" @click="quote(true)">
-            重新获取报价
-          </el-button>
-          <el-divider />
-          <el-checkbox v-model="useBalance" :disabled="busy">
-            立即使用余额付款
-          </el-checkbox>
-          <p class="muted">
-            {{
-              useBalance
-                ? "提交时按服务端余额和门禁结算；余额不足不会完成付款。"
-                : "先创建待付账单，再选择易支付或余额付款。"
-            }}
-          </p>
-          <p class="muted">
-            确认报价有效 5 分钟；新购账单报价保留 30
-            分钟。租期从交付成功起算，已付款不代表已经开通。
-          </p>
-          <el-button
-            class="checkout-submit"
-            type="primary"
-            native-type="submit"
-            :loading="busy"
-            :disabled="!canSubmit"
-          >
-            {{
-              useBalance
-                ? "确认配置与价格，余额付款"
-                : "确认配置与价格，创建账单"
-            }}
-          </el-button>
-        </el-card>
+        <CheckoutSummary v-if="!compact" v-bind="summaryProps" v-model:use-balance="useBalance" @requote="quote(true)" />
+      </div>
+      <div v-if="compact" ref="bottomBar" class="checkout-bottom-bar" aria-label="常驻结算入口">
+        <div class="checkout-bar-prices">
+          <strong>首期 ¥{{ confirmed?.total || "—" }}</strong>
+          <span>续费 ¥{{ confirmed?.recurring_price || "—" }} / {{ cycleLabel }}</span>
+        </div>
+        <p class="checkout-quote-state" :class="{ 'quote-invalid': quoteExpired || quoteError }" role="status">
+          {{ quoteStatus }}
+          <el-button v-if="quoteExpired || quoteError" link type="primary" :disabled="busy" :loading="quoting" @click="quote(true)">重新报价</el-button>
+        </p>
+        <p v-if="error" class="checkout-bar-error" role="alert">{{ error }}</p>
+        <div class="checkout-bar-actions">
+          <el-button :aria-expanded="summaryOpen" @click="summaryOpen = true">摘要与付款方式</el-button>
+          <el-button type="primary" native-type="submit" :disabled="!canSubmit" :loading="busy">{{ useBalance ? "余额付款" : "创建账单" }}</el-button>
+        </div>
       </div>
     </el-form>
     <el-button v-else @click="load">重新加载商品</el-button>
+    <el-drawer v-model="summaryOpen" title="配置、价格与付款方式" direction="btt" size="85%" class="checkout-summary-drawer" @close-auto-focus="focusInvalidInput">
+      <CheckoutSummary v-if="product && compact" v-bind="summaryProps" v-model:use-balance="useBalance" @requote="quote(true)" />
+      <p class="muted">核对后可关闭摘要，继续填写实例信息。</p>
+    </el-drawer>
   </section>
 </template>

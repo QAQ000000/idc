@@ -1,12 +1,48 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
+import { useRouter } from "vue-router";
 import { api, message, type Product } from "../api/request";
+const router = useRouter();
 const products = ref<Product[]>([]),
-  loading = ref(false),
+  loading = ref(true),
   error = ref("");
+const search = ref(""),
+  category = ref("");
+const types: Record<string, string> = {
+  cloud: "云服务器",
+  dedicated: "独立服务器",
+  hosting: "虚拟主机",
+  cdn: "CDN",
+  software: "软件服务",
+};
+function canOrder(product: Product) {
+  return Number(product.stock) !== 0 && Object.keys(product.prices).length > 0;
+}
+const cycles: Record<string, string> = {
+  monthly: "月付",
+  annually: "年付",
+  quarterly: "季付",
+  semiannually: "半年付",
+  biennially: "两年付",
+  triennially: "三年付",
+  onetime: "一次性",
+};
+const categories = computed(() => [
+  ...new Set(products.value.map((p) => p.type)),
+]);
+const filtered = computed(() =>
+  products.value.filter(
+    (p) =>
+      (!category.value || p.type === category.value) &&
+      p.name
+        .toLocaleLowerCase()
+        .includes(search.value.trim().toLocaleLowerCase()),
+  ),
+);
 async function load() {
   loading.value = true;
   error.value = "";
+  products.value = [];
   try {
     products.value = await api<Product[]>("/products");
   } catch (e) {
@@ -15,49 +51,198 @@ async function load() {
     loading.value = false;
   }
 }
+function clearFilters() {
+  search.value = "";
+  category.value = "";
+}
 onMounted(load);
 </script>
 <template>
-  <section>
-    <h1>云产品选购</h1>
-    <p class="muted">选择适合你的云产品，价格以订单确认为准。</p>
+  <section class="catalog-page" aria-labelledby="catalog-title">
+    <div class="catalog-hero">
+      <div class="hero-copy">
+        <p class="eyebrow">简云 · 云产品选购</p>
+        <h1 id="catalog-title">
+          你的下一份云资源，
+          <br>
+          <span>从这里开始。</span>
+        </h1>
+        <p class="hero-description">
+          选购产品、管理实例、查看账单。
+          <br>
+          在一个控制台，轻松处理日常云服务。
+        </p>
+        <a class="hero-link" href="#products">
+          浏览可售产品
+          <span aria-hidden="true">↓</span>
+        </a>
+      </div>
+      <div class="cloud-art" aria-hidden="true">
+        <div class="art-orbit" />
+        <div class="art-server">
+          <div class="server-top">
+            JIANYUN
+            <span>●</span>
+          </div>
+          <div class="server-row">
+            <i />
+            <i />
+            <b />
+          </div>
+          <div class="server-row">
+            <i />
+            <i />
+            <b />
+          </div>
+          <div class="server-row">
+            <i />
+            <i />
+            <b />
+          </div>
+        </div>
+        <span class="art-caption">云端资源 · 统一管理</span>
+      </div>
+    </div>
+    <div id="products" class="section-heading">
+      <div>
+        <p class="eyebrow">产品目录</p>
+        <h2>选择适合你的产品</h2>
+      </div>
+      <span v-if="!loading && !error" class="muted">
+        {{ filtered.length }} 款可见产品
+      </span>
+    </div>
+    <div class="catalog-toolbar">
+      <div class="category-filters" role="group" aria-label="产品类型筛选">
+        <el-button
+          :type="category === '' ? 'primary' : 'default'"
+          :plain="category === ''"
+          :aria-pressed="category === ''"
+          @click="category = ''"
+        >
+          全部产品
+        </el-button>
+        <el-button
+          v-for="type in categories"
+          :key="type"
+          :type="category === type ? 'primary' : 'default'"
+          :plain="category === type"
+          :aria-pressed="category === type"
+          @click="category = type"
+        >
+          {{ types[type] || type }}
+        </el-button>
+      </div>
+      <el-input
+        v-model="search"
+        class="catalog-search"
+        aria-label="搜索商品名称"
+        placeholder="搜索商品名称"
+        clearable
+        :disabled="loading || Boolean(error)"
+      />
+    </div>
     <el-alert
       v-if="error"
       :title="error"
       type="error"
       :closable="false"
-    /><el-button v-if="error" @click="load">重新加载</el-button>
-    <div v-loading="loading" class="product-grid">
-      <el-card v-for="product in products" :key="product.id"
-        >
-<h2>{{ product.name }}</h2>
-        <p v-for="(price, cycle) in product.prices" :key="cycle">
-          {{
-            cycle === "monthly" ? "月付" : cycle === "annually" ? "年付" : cycle
-          }}
-          <strong>¥{{ price }}</strong>
-          <span v-if="product.configurable">（默认配置参考价）</span>
-        </p>
-        <p>
-          {{
-            Number(product.stock) === -1
-              ? "可购买"
-              : Number(product.stock) === 0
-                ? "暂时售罄"
-                : "剩余 " + product.stock + " 件"
-          }}
-        </p>
-        <RouterLink :to="'/checkout/' + product.id"
-          ><el-button type="primary" :disabled="Number(product.stock) === 0"
-            >选购</el-button
-          ></RouterLink
-        >
-</el-card
+      role="alert"
+    >
+      <el-button @click="load">重新加载</el-button>
+    </el-alert>
+    <div
+      v-if="loading"
+      class="product-grid"
+      aria-label="商品加载中"
+      aria-busy="true"
+    >
+      <el-card v-for="n in 3" :key="n" shadow="never">
+        <el-skeleton :rows="5" animated />
+      </el-card>
+    </div>
+    <div v-else-if="!error && filtered.length" class="product-grid">
+      <el-card
+        v-for="product in filtered"
+        :key="product.id"
+        class="product-card"
+        shadow="never"
       >
+        <div class="product-card-top">
+          <span class="product-icon" aria-hidden="true">▦</span>
+          <el-tag :type="canOrder(product) ? 'success' : 'info'" effect="plain">
+            {{
+              Number(product.stock) === 0
+                ? "暂时售罄"
+                : canOrder(product)
+                  ? "可购买"
+                  : "暂不可售"
+            }}
+          </el-tag>
+        </div>
+        <p class="eyebrow">{{ types[product.type] || product.type }}</p>
+        <h3>{{ product.name }}</h3>
+        <p class="muted">
+          {{
+            product.configurable
+              ? "支持选配，按需选择产品配置"
+              : "固定配置，前往订单页查看详情"
+          }}
+        </p>
+        <div class="product-prices">
+          <div
+            v-for="(price, cycle) in product.prices"
+            :key="cycle"
+            class="price-line"
+          >
+            <span>{{ cycles[cycle] || cycle }}</span>
+            <strong>
+              <small>¥</small>
+              {{ price }}
+            </strong>
+          </div>
+          <p v-if="product.configurable" class="muted price-note">
+            默认配置参考价，实际以确认报价为准
+          </p>
+          <p v-if="!Object.keys(product.prices).length" class="muted">
+            暂无可售账期
+          </p>
+        </div>
+        <div class="product-card-footer">
+          <span class="muted">
+            {{
+              Number(product.stock) === -1
+                ? "按需选购"
+                : Number(product.stock) === 0
+                  ? "请稍后再来"
+                  : "剩余 " + product.stock + " 件"
+            }}
+          </span>
+          <el-button
+            type="primary"
+            :disabled="!canOrder(product)"
+            :aria-label="'选购 ' + product.name"
+            @click="router.push('/checkout/' + product.id)"
+          >
+            选购
+            <span aria-hidden="true">↗</span>
+          </el-button>
+        </div>
+      </el-card>
     </div>
     <el-empty
-      v-if="!loading && !error && products.length === 0"
-      description="暂时没有可购买的产品"
-    />
+      v-else-if="!error"
+      :description="
+        products.length ? '没有符合筛选条件的产品' : '暂时没有可购买的产品'
+      "
+    >
+      <el-button v-if="products.length" @click="clearFilters">
+        清除筛选
+      </el-button>
+      <el-button v-else @click="load">刷新目录</el-button>
+    </el-empty>
+    <p class="catalog-note muted">
+      价格与可售配置以订单确认页为准，已有订单可在「我的账单」中继续处理。
+    </p>
   </section>
 </template>

@@ -50,8 +50,8 @@ onMounted(refresh);
 onUnmounted(() => { disposed = true; clearTimeout(timer); });
 </script>
 <template>
-  <el-card>
-    <h2>运行状态与电源操作</h2>
+  <el-card shadow="never">
+    <template #header><h2>运行状态与电源操作</h2></template>
     <el-alert v-if="error" :title="error" type="error" :closable="false" role="alert" />
     <el-alert v-if="notice" :title="notice" type="info" :closable="false" />
     <template v-if="runtime">

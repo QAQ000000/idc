@@ -106,7 +106,7 @@ interface UpstreamDriverInterface
 }
 ```
 
-M2 已实现以上最小接口。变配、重装与快照仍为后续能力；本批电源采用独立可选能力，续费通过下述可选接口启用，不强迫首条 CDN 驱动编写空实现。变更原因及兼容边界见 [M2_CONTRACT_CHANGE.md](M2_CONTRACT_CHANGE.md)。
+M2 已实现以上最小接口。变配与快照仍为后续能力；重装通过独立可选能力启用；本批电源采用独立可选能力，续费通过下述可选接口启用，不强迫首条 CDN 驱动编写空实现。变更原因及兼容边界见 [M2_CONTRACT_CHANGE.md](M2_CONTRACT_CHANGE.md)。
 
 | DTO | 当前字段与语义 |
 |---|---|
@@ -318,3 +318,9 @@ interface ConnectionConfigInterface
 connectionFields 返回 `{key,label,type,required,max_length}` 列表，type 仅 url/secret，endpoint 为独立地址，其余字段存入 credentials。validateConnection 只做无网络的参数验证／规范化，返回 `{endpoint:?string,credentials:array<string,string>}`；不能写业务表或调用购买／支付。ProviderRegistry.ids 仅枚举经过原物理 manifest 加载器校验的工厂键，网页不能指定类、文件路径或安装插件。未实现此能力的旧驱动仍可处理已有资源，不出现在新连接表单目录；新增连接需要显式配置能力。
 
 魔方自行声明 endpoint／username／password 的格式和长度，人工驱动声明零参数并拒绝远端参数。通用 ProviderConnectionService 只经契约调用验证并字段级 AES-256-GCM 加密，CLI 安装器与网页复用；核心没有具体驱动类或字段规则。HTTP(S) 地址属于受信超级管理员配置，拒绝 userinfo/query/fragment；受信网络范围及身份不可变边界见 [上游接入契约](M2_PROVIDER_CONNECTIONS.md)。在线验证复用原可选配置快照／报价能力，人工驱动不会伪装在线成功。所有验证结果和异常均用安全字段投影，不透传原始报文。
+
+## 可选实例重装能力
+
+`ReinstallDriverInterface` 独立于新购／续费／电源，包含 inspectReinstall(instance, credentials): ReinstallOptions、executeReinstall(operation, credentials): DriverExecutionResult、queryReinstall(operation, credentials): DriverExecutionResult。ReinstallOptions 只投影最多 500 个唯一 id/name 镜像、upstream_generated 密码模式与 no_format_requested 数据盘策略，不允许原始模块响应进入核心／页面。没有接口或没有镜像即不开放。
+
+执行上下文冻结原 provider_id/remote_pid/remote_instance_id/billing_cycle、requested_by、image_id/image_name 与 reinstall_options。驱动执行前重查能力，变更拒绝；query 必须只读。succeeded 需要本次可关联完成证据和非空 username/password，核心仅加密保存交付凭据，不改变身份、资金、账期和续费价。pending 表示受理，unknown 不触发重复重装。魔方仅支持明确 dcimcloud/default reinstall/cloud_os 组合；没有关联回执时返回 NON_QUERYABLE，经原管理员证据流程收口。不得用当前镜像、主机状态或旧进度证明完成，详见 [契约](M2_INSTANCE_REINSTALL.md)。

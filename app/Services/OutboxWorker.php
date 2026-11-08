@@ -3,7 +3,7 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Core\{ApiException, Database, Security};
-use App\Plugins\Providers\{DriverExecutionResult, RenewalDriverInterface, PowerDriverInterface};
+use App\Plugins\Providers\{DriverExecutionResult, RenewalDriverInterface, PowerDriverInterface, ReinstallDriverInterface};
 use PDO;
 
 final class OutboxWorker
@@ -14,7 +14,7 @@ final class OutboxWorker
     public function claim(string $worker): ?array
     {
         if (!preg_match('/^[a-zA-Z0-9:_-]{1,50}$/D', $worker)) { throw new \InvalidArgumentException('Invalid worker id'); }
-        $candidates = Database::getInstance()->query("SELECT id, instance_id, action FROM tasks WHERE action IN ('create','renew','power') AND
+        $candidates = Database::getInstance()->query("SELECT id, instance_id, action FROM tasks WHERE action IN ('create','renew','power','reinstall') AND
             ((status = 'pending' AND (next_retry_at IS NULL OR next_retry_at <= UTC_TIMESTAMP()))
             OR (status IN ('running','investigating') AND (lease_until IS NULL OR lease_until <= UTC_TIMESTAMP())
             AND (next_retry_at IS NULL OR next_retry_at <= UTC_TIMESTAMP()))) ORDER BY id LIMIT 100")->fetchAll();
@@ -30,7 +30,7 @@ final class OutboxWorker
                     $s->execute([$c['id']]); $t = $s->fetch();
                     if (!$t || !in_array($t['status'], ['pending','running','investigating'], true) || $t['retry_delayed']
                         || ($t['status'] !== 'pending' && $t['leased'])) { return null; }
-                    if ($t['action'] !== 'power') {
+                    if (!in_array($t['action'],['power','reinstall'],true)) {
                         $s = $db->prepare("SELECT status FROM invoices WHERE id = ? AND instance_id = ? AND user_id = ? AND type = ? FOR UPDATE");
                         $s->execute([$t['invoice_id'], $instance['id'], $instance['user_id'], $t['action']==='renew'?'renew':'new']);
                         if ($s->fetchColumn() !== 'paid') { return null; }
@@ -60,13 +60,19 @@ final class OutboxWorker
             return true;
         }
         try {
-            [$driver, $credentials] = ($this->providers ?? new ProviderService())->resolve((int)($t['action']==='power' ? $t['payload']['provider_id'] : $t['instance']['provider_id']));
+            [$driver, $credentials] = ($this->providers ?? new ProviderService())->resolve((int)(in_array($t['action'],['power','reinstall'],true) ? $t['payload']['provider_id'] : $t['instance']['provider_id']));
             $order = $t['payload'] + [
                 'idempotency_key' => $t['idempotency_key'], 'instance_id' => (int)$t['instance_id'],
                 'hostname' => $t['instance']['name'], 'billing_cycle' => $t['instance']['billing_cycle'],
                 'operation_id' => $t['upstream_task_id'],
             ];
-            if ($t['action']==='power') {
+            if ($t['action']==='reinstall') {
+                if (!$driver instanceof ReinstallDriverInterface) { $result=new DriverExecutionResult('unknown',code:'NON_QUERYABLE'); }
+                elseif ($t['status']==='investigating') { $result=$driver->queryReinstall($order,$credentials); }
+                elseif (!InstancePowerService::eligible($t['instance']) || !InstancePowerService::matchesContext($t['instance'],$t['payload'])
+                    || (int)$t['instance']['user_id']!==($t['payload']['requested_by']??null)) { $result=new DriverExecutionResult('rejected',code:'REINSTALL_LOCAL_PRECONDITION_CHANGED'); }
+                else { $result=$driver->executeReinstall($order,$credentials); }
+            } elseif ($t['action']==='power') {
                 if (!$driver instanceof PowerDriverInterface) { $result=new DriverExecutionResult('unknown',code:'NON_QUERYABLE'); }
                 elseif ($t['status']==='investigating') { $result=$driver->queryPower($order,$credentials); }
                 elseif (!InstancePowerService::eligible($t['instance']) || !InstancePowerService::matchesContext($t['instance'],$t['payload'])) {
@@ -125,6 +131,11 @@ final class OutboxWorker
         $alert = Database::transaction(static function (PDO $db) use ($claim, $result): ?array {
             $t = self::lockOwned($db, (int)$claim['id'], $claim['worker_id'], (int)$claim['execution_token']);
             if ($result->status === 'succeeded') {
+                if ($t['action']==='reinstall') {
+                    InstanceReinstallService::complete($db,$t,$result);
+                    $db->prepare("UPDATE tasks SET status='success',lease_until=NULL,worker_id=NULL,next_retry_at=NULL,last_error=NULL WHERE id=?")->execute([$t['id']]);
+                    return null;
+                }
                 if ($t['action']==='power') {
                     $p=json_decode($t['payload'],true,32,JSON_THROW_ON_ERROR);
                     $s=$db->prepare('SELECT * FROM instances WHERE id=?');$s->execute([$t['instance_id']]);$i=$s->fetch();
@@ -152,6 +163,7 @@ final class OutboxWorker
                 return null;
             }
             $p = json_decode($t['payload'] ?? '{}', true, 32, JSON_THROW_ON_ERROR);
+            if ($t['action']==='reinstall' && $result->code==='REINSTALL_ACCEPTED') { $p['reinstall_accepted']=true; }
             $retry = (int)$t['retry_count'];
             $next = null; $status = 'investigating'; $error = $result->code;
             if ($result->status === 'not_executed') {

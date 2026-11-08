@@ -31,7 +31,7 @@ stateDiagram-v2
 ```
 
 ### 1.1 Task-as-Lock 互斥协议
-简云不维护 `instances.locked_at` 与 `instances.lock_token`。统一任务 blocker 为 `running` / `investigating`，或 `failed + MANUAL_AUDIT_REQUIRED`，判断中不附加租约条件。所有入队、领取、接管、续租、结果回写和人工裁决均按“先锁实例，再锁任务”执行；持实例锁时，还必须核验下述退款业务冻结。完整协议见 [TASKS_OUTBOX.md](TASKS_OUTBOX.md) §2–§3。
+简云不维护 `instances.locked_at` 与 `instances.lock_token`。统一任务 blocker 为 `pending + power/reinstall`、`running` / `investigating`，或 `failed + MANUAL_AUDIT_REQUIRED`，判断中不附加租约条件。所有入队、领取、接管、续租、结果回写和人工裁决均按“先锁实例，再锁任务”执行；持实例锁时，还必须核验下述退款业务冻结。完整协议见 [TASKS_OUTBOX.md](TASKS_OUTBOX.md) §2–§3。
 
 ```sql
 START TRANSACTION;
@@ -45,6 +45,7 @@ FROM `tasks`
 WHERE `instance_id` = :instance_id
   AND `id` <> :task_id
   AND (`status` IN ('running', 'investigating')
+    OR (`status` = 'pending' AND `action` IN ('power','reinstall'))
     OR (`status` = 'failed' AND `last_error` LIKE 'MANUAL_AUDIT_REQUIRED:%'))
 ORDER BY `id` FOR UPDATE;
 -- 有其他 blocker 则 ROLLBACK，不能因其租约过期而领取新任务

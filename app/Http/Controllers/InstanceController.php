@@ -10,7 +10,7 @@ final class InstanceController
 {
     public function index(InstanceService $s): \Illuminate\Http\JsonResponse { return ApiResponse::success($s->list((int)AuthMiddleware::user()['id'],Request::id(request()->query('page','1')))); }
     public function show(string $id,InstanceService $s): \Illuminate\Http\JsonResponse { return ApiResponse::success($s->detail((int)AuthMiddleware::user()['id'],Request::id($id))); }
-    public function credentials(string $id,InstanceService $s): \Illuminate\Http\JsonResponse { return ApiResponse::success($s->credentials((int)AuthMiddleware::user()['id'],Request::id($id))); }
+    public function credentials(string $id,InstanceService $s): \Illuminate\Http\JsonResponse { return ApiResponse::success($s->credentials((int)AuthMiddleware::user()['id'],Request::id($id)))->header('Cache-Control','no-store'); }
     public function consoleCheck(string $id, \App\Services\InstanceConsoleService $s): \Illuminate\Http\JsonResponse
     {
         return ApiResponse::success($s->check(request()->bearerToken()??'',Request::id($id)))->header('Cache-Control','no-store');
@@ -23,6 +23,10 @@ final class InstanceController
     { return ApiResponse::success($s->runtime((int)AuthMiddleware::user()['id'],Request::id($id))); }
     public function power(string $id, \App\Services\InstancePowerService $s): \Illuminate\Http\JsonResponse
     { return ApiResponse::success($s->submit((int)AuthMiddleware::user()['id'],Request::id($id),Request::body())); }
+    public function reinstallOptions(string $id, \App\Services\InstanceReinstallService $s): \Illuminate\Http\JsonResponse
+    { return ApiResponse::success($s->view((int)AuthMiddleware::user()['id'],Request::id($id)))->header('Cache-Control','no-store'); }
+    public function reinstall(string $id, \App\Services\InstanceReinstallService $s): \Illuminate\Http\JsonResponse
+    { return ApiResponse::success($s->submit((int)AuthMiddleware::user()['id'],Request::id($id),Request::body()))->header('Cache-Control','no-store'); }
     public function renew(string $id,RenewalService $s): \Illuminate\Http\JsonResponse
     {
         $body=Request::body();

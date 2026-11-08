@@ -147,6 +147,7 @@ def main():
             run_checks(php, 'tests/admin_products.php', env, r'Admin product checks: \d+')
             run_checks(php, 'tests/power.php', env, r'Power checks: \d+')
             run_checks(php, 'tests/console.php', env, r'Console checks: \d+')
+            run_checks(php, 'tests/reinstall.php', env, r'Reinstall checks: \d+')
             smtp_port, smtp_control = free_port(), free_port()
             env.update(SMTP_TEST_PORT=str(smtp_port), SMTP_TEST_CONTROL=f'http://127.0.0.1:{smtp_control}')
             with (directory / 'smtp.log').open('w') as log:

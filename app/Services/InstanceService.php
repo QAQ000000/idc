@@ -40,15 +40,19 @@ final class InstanceService
             && ($i['status']!=='suspended' || $i['suspend_type']==='billing') && $i['due_date']!==null;
         $snapshot=json_decode($i['config_snapshot']??'{}',true,64,JSON_THROW_ON_ERROR);
         $i['configuration']=$snapshot['configuration']??[];
+        $i['reinstalled_image']=$snapshot['delivery']['reinstalled_image']??null;
         unset($i['config_snapshot'],$i['driver'],$i['provider_status']);
         return $i;
     }
     public function credentials(int $user,int $id): array
     {
-        $i=$this->detail($user,$id);
-        if ($i['status']!=='active') { throw new ApiException('Credentials available after delivery',409,409); }
-        $s=Database::getInstance()->prepare('SELECT encrypted_password,config_snapshot FROM instances WHERE id=? AND user_id=?');$s->execute([$id,$user]);$row=$s->fetch();
-        $snapshot=json_decode($row['config_snapshot']??'{}',true,32,JSON_THROW_ON_ERROR);
-        return ['username'=>$snapshot['delivery']['username']??null, 'password'=>Security::decrypt($row['encrypted_password']??'')];
+        return Database::transaction(static function(\PDO $db)use($user,$id):array {
+            $s=$db->prepare('SELECT status,encrypted_password,config_snapshot FROM instances WHERE id=? AND user_id=? FOR UPDATE');$s->execute([$id,$user]);$row=$s->fetch();
+            if(!$row){throw new ApiException('Instance not found',404,404);}
+            if($row['status']!=='active'){throw new ApiException('Credentials available after delivery',409,409);}
+            InstanceReinstallService::assertCredentialsAvailable($db,$id);
+            $snapshot=json_decode($row['config_snapshot']??'{}',true,32,JSON_THROW_ON_ERROR);
+            return ['username'=>$snapshot['delivery']['username']??null,'password'=>Security::decrypt($row['encrypted_password']??'')];
+        });
     }
 }

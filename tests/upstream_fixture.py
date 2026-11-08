@@ -16,7 +16,7 @@ from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 
 state = {'mode': 'normal', 'creates': 0, 'hosts': {}, 'host_counter': 700, 'wrong_host_id': False,
-         'renew_mode': 'normal', 'renew_calls': 0, 'renew_payments': 0, 'renew_invoices': {}, 'config_mode': 'normal', 'last_create_total': '0.01', 'power_mode': 'normal', 'power_calls': 0}
+         'renew_mode': 'normal', 'renew_calls': 0, 'renew_payments': 0, 'renew_invoices': {}, 'config_mode': 'normal', 'last_create_total': '0.01', 'power_mode': 'normal', 'power_calls': 0, 'reinstall_mode': 'normal', 'reinstall_calls': 0}
 lock = threading.Lock()
 
 def next_due(stamp, cycle):
@@ -63,6 +63,9 @@ class Handler(BaseHTTPRequestHandler):
         elif path == '/__config_mode':
             state['config_mode'] = p['mode'][0]
             r = {'ok': True}
+        elif path == '/__reinstall_mode':
+            state['reinstall_mode'] = p['mode'][0]
+            r = {'ok': True}
         elif path == '/__power_mode':
             state['power_mode'] = p['mode'][0]
             r = {'ok': True}
@@ -70,7 +73,7 @@ class Handler(BaseHTTPRequestHandler):
             state['hosts'][int(p['hostid'][0])]['power_state'] = p['state'][0]
             r = {'ok': True}
         elif path == '/__state':
-            r = {'creates': state['creates'], 'hosts': len(state['hosts']), 'renew_calls': state['renew_calls'], 'renew_payments': state['renew_payments'], 'last_config': state.get('last_config', {}), 'power_calls': state['power_calls']}
+            r = {'creates': state['creates'], 'hosts': len(state['hosts']), 'renew_calls': state['renew_calls'], 'renew_payments': state['renew_payments'], 'last_config': state.get('last_config', {}), 'power_calls': state['power_calls'], 'reinstall_calls': state['reinstall_calls'], 'last_reinstall': state.get('last_reinstall', {})}
         elif path == '/zjmf_api_login':
             r = {'status': 200, 'jwt': 'isolated-test-token'}
         elif self.headers.get('Authorization') != 'Bearer isolated-test-token':
@@ -167,10 +170,15 @@ class Handler(BaseHTTPRequestHandler):
             r = {'status': 200, 'data': {'sum': len(rows), 'list': rows}}
         elif path == '/host/header':
             h = dict(state['hosts'][int(p['host_id'][0])])
-            if state['power_mode'] == 'wrong_header': h['id'] += 1
+            if state['power_mode'] == 'wrong_header' or state['reinstall_mode'] == 'wrong_header': h['id'] += 1
+            h['type'] = 'dcimcloud' if state['reinstall_mode'] != 'unsupported' else 'dcim'
+            if state['reinstall_mode'] == 'unavailable':
+                self.send_error(503)
+                return
             r = {'status': 200, 'data': {'host_data': h, 'module_power_status': state['power_mode'] != 'unsupported',
                  'module_button': {'console': [{'type': 'default', 'func': 'vnc'}], 'control': [{'type': 'default', 'func': f} for f in ['on', 'off', 'reboot', 'hard_off', 'reinstall']]},
                  'dcim': {'auth': {'off': 'off'}} if state['power_mode'] == 'deny_stop' else {},
+                 'cloud_os': [{'id': 1173023, 'name': 'Debian-12.0_x64'}, {'id': 1173028, 'name': 'Ubuntu-24.04-x64' + (' changed' if state['reinstall_mode'] == 'schema' else '')}],
                  'supplier_secret': 'NEVER-EXPOSE-HEADER-SECRET'}}
         elif path == '/provision/default':
             h = state['hosts'][int(p['id'][0])]
@@ -180,6 +188,21 @@ class Handler(BaseHTTPRequestHandler):
                 query = urlencode({'url': base64.b64encode(target.encode()).decode(), 'password': 'password', 'host_token': 'SECRET-HOST-TOKEN'})
                 page = 'http://' + self.headers['Host'] + '/dcim/novnc?' + query
                 r = {'status': 200, 'data': {'url': page, 'pass': 'password', 'zjmfcloud_out_vnc': False}}
+            elif func == 'reinstall':
+                if p.get('is_api') != ['1'] or p.get('format_data_disk') != ['0'] or p.get('os') not in [['1173023'], ['1173028']] or 'password' in p:
+                    self.send_error(422)
+                    return
+                with lock:
+                    state['reinstall_calls'] += 1
+                    state['last_reinstall'] = p
+                    # These change immediately at acceptance, not on completion: deliberately misleading metadata.
+                    h['os'] = 'Debian-12.0_x64'
+                    h['username'] = 'root'
+                    h['password'] = 'NEVER-EXPOSE-NEW-HEADER-PASSWORD'
+                if state['reinstall_mode'] == 'drop':
+                    self.close_connection = True
+                    return
+                r = {'status': 406 if state['reinstall_mode'] == 'business_error' else 200, 'msg': 'NEVER-EXPOSE-REINSTALL-SECRET'}
             elif func == 'status':
                 if state['power_mode'] == 'unavailable':
                     self.send_error(503)

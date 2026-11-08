@@ -90,6 +90,7 @@ export interface Instance {
   type: string;
   status: string;
   delivery_status: string;
+  reinstalled_image?: string | null;
   remote_instance_id: string | null;
   ip_address: string | null;
   billing_cycle: string;

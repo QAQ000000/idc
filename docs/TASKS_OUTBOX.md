@@ -91,6 +91,7 @@ COMMIT;
   SELECT `id` FROM `tasks`
   WHERE `instance_id` = :instance_id
     AND (`status` IN ('running', 'investigating')
+      OR (`status` = 'pending' AND `action` IN ('power','reinstall'))
       OR (`status` = 'failed' AND `last_error` LIKE 'MANUAL_AUDIT_REQUIRED:%'))
   ORDER BY `id` FOR UPDATE;
   ```
@@ -125,6 +126,7 @@ SELECT `id` FROM `tasks`
 WHERE `instance_id` = :instance_id
   AND `id` <> :task_id
   AND (`status` IN ('running', 'investigating')
+    OR (`status` = 'pending' AND `action` IN ('power','reinstall'))
     OR (`status` = 'failed' AND `last_error` LIKE 'MANUAL_AUDIT_REQUIRED:%'))
 ORDER BY `id` FOR UPDATE;
 -- 若存在记录，立即 ROLLBACK 跳过本任务，等待前序任务完结！
@@ -273,3 +275,9 @@ renew 的人工 retry/fulfill 使用现有 resolve 入口和审计，fulfill 必
 新增 action=power，invoice_id=NULL，payload 冻结 power_action/Provider/PID/远端资源/账期/请求人，唯一键 instance_power:{instance_id}:{request_key}，max_retries=0。客户端请求仅在实例锁及确认/门禁通过后插入任务；pending power 即阻断冲突动作，运行、调查与人工核验继续沿用原业务占用和执行令牌。不能把关机复用 suspend 或通过开机解挂。
 
 Worker 成功只说明命令接受，不改实例状态/资金/日期；丢响应、重启/崩溃接管不得重新 executePower。魔方缺少请求级查询，读当前状态后仍不能证明原重启，转人工核验。专用人工选项保留证据、同事务审计及旧令牌，只有确认未执行且无延迟请求才允许结束占用；不提供通用重试。完整兼容和验证边界见 [电源契约](M2_INSTANCE_POWER.md)。
+
+## 客户重装增量（2026-11-08）
+
+action=reinstall、invoice_id=NULL、max_retries=0，唯一键 instance_reinstall:{instance_id}:{request_key}；payload 冻结原资源／账期／请求客户、镜像和重装能力，不含密码。pending reinstall 与 pending power 同样占用业务门禁；提交还拒绝所有其他 pending，支付／续费／电源／VNC 继续调用统一 TaskGate。认领无支付前置，但须资源归属和服务有效，接管只读。Worker 的受理结果保存 reinstall_accepted，不能当完成；当前魔方无关联完成回执则转原持久人工告警。
+
+成功仅更新 delivery 的已核实用户名／镜像和 encrypted_password；人工完成要求原令牌、归属、证据、新凭据及确认，和管理员审计同事务。close_unexecuted 不改凭据，任何未知结果禁止通用重试／取消／资金动作；旧令牌不能覆盖终态。迁移与完整边界见 [重装契约](M2_INSTANCE_REINSTALL.md)。

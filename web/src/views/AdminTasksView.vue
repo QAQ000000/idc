@@ -44,7 +44,7 @@ onMounted(() => load());
         <el-option v-for="s in ['investigating','failed','pending','running','success','all']" :key="s" :label="s" :value="s" />
       </el-select>
 </el-form-item>
-      <el-form-item label="任务类型"><el-select v-model="filters.action" aria-label="任务类型"><el-option label="全部类型" value="" /><el-option label="新购" value="create" /><el-option label="电源操作" value="power" /><el-option label="续费" value="renew" /></el-select></el-form-item>
+      <el-form-item label="任务类型"><el-select v-model="filters.action" aria-label="任务类型"><el-option label="全部类型" value="" /><el-option label="新购" value="create" /><el-option label="电源操作" value="power" /><el-option label="重装系统" value="reinstall" /><el-option label="续费" value="renew" /></el-select></el-form-item>
       <el-form-item label="任务 ID"><el-input v-model="filters.task_id" aria-label="任务 ID" inputmode="numeric" /></el-form-item>
       <el-form-item label="账单 ID"><el-input v-model="filters.invoice_id" aria-label="账单 ID" inputmode="numeric" /></el-form-item>
       <el-form-item label="实例 ID"><el-input v-model="filters.instance_id" aria-label="实例 ID" inputmode="numeric" /></el-form-item>

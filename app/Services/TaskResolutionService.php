@@ -29,13 +29,17 @@ final class TaskResolutionService
             }
             $s = $db->prepare("SELECT * FROM invoices WHERE id = ? AND instance_id = ? AND user_id = ? AND type = ? FOR UPDATE");
             $s->execute([$t['invoice_id'], $iid, $instance['user_id'], $t['action']==='renew'?'renew':'new']); $inv = $s->fetch() ?: null;
-            if ($t['action'] !== 'power' && (!$inv || $inv['status'] !== 'paid')) { throw new ApiException('Resolution requires a paid purchase', 409, 409); }
+            if (!in_array($t['action'],['power','reinstall'],true) && (!$inv || $inv['status'] !== 'paid')) { throw new ApiException('Resolution requires a paid purchase', 409, 409); }
             $s = $db->prepare("SELECT id FROM admins WHERE id = ? AND role = 'super_admin' AND status = 'active' FOR UPDATE"); $s->execute([$adminId]);
             if (!$s->fetch()) { throw new ApiException('Active super_admin required', 403, 403); }
             if (!in_array($action, self::candidateActions($t, $instance, $inv, 'super_admin'), true)) { throw new ApiException('Action unavailable for this task', 409, 409); }
+            if($t['action']==='reinstall') {
+                $p=json_decode($t['payload'],true,32,JSON_THROW_ON_ERROR);
+                if(!InstancePowerService::matchesContext($instance,$p)||(int)$instance['user_id']!==($p['requested_by']??null)) { throw new ApiException('Reinstall resource or owner changed',409,409); }
+            }
             $context = ['evidence' => $evidence, 'previous_execution_token' => $token];
             if ($action === 'investigate') {
-                if (!in_array($t['action'],['renew','power'],true)) { throw new ApiException('Read-only operation investigation required', 409, 409); }
+                if (!in_array($t['action'],['renew','power','reinstall'],true)) { throw new ApiException('Read-only operation investigation required', 409, 409); }
                 $p = json_decode($t['payload'] ?? '{}', true, 32, JSON_THROW_ON_ERROR);
                 $p['investigation_started_at'] = time();
                 $s = $db->prepare("UPDATE tasks SET status = 'investigating', execution_token = execution_token + 1, worker_id = NULL, lease_until = NULL, next_retry_at = NULL, last_error = NULL, payload = ?
@@ -43,7 +47,7 @@ final class TaskResolutionService
                 $s->execute([json_encode($p, JSON_THROW_ON_ERROR), $taskId, $token]);
                 if ($s->rowCount() !== 1) { throw new ApiException('Investigation resolution conflict', 409, 409); }
             } elseif ($action === 'close_unexecuted') {
-                $db->prepare("UPDATE tasks SET status='failed',execution_token=execution_token+1,worker_id=NULL,lease_until=NULL,next_retry_at=NULL,last_error='ADMIN_VERIFIED:POWER_NOT_EXECUTED' WHERE id=?")->execute([$taskId]);
+                $db->prepare("UPDATE tasks SET status='failed',execution_token=execution_token+1,worker_id=NULL,lease_until=NULL,next_retry_at=NULL,last_error=? WHERE id=?")->execute([$t['action']==='reinstall'?'ADMIN_VERIFIED:REINSTALL_NOT_EXECUTED':'ADMIN_VERIFIED:POWER_NOT_EXECUTED',$taskId]);
             } elseif ($action === 'cancel_compensate') {
                 if ($t['action']==='renew') { throw new ApiException('Renewal compensation requires separate reviewed reconciliation; never terminate the original resource',409,409); }
                 $s = $db->prepare('SELECT id FROM commissions WHERE invoice_id = ? FOR UPDATE'); $s->execute([$inv['id']]);
@@ -74,7 +78,11 @@ final class TaskResolutionService
                 $remote = Request::text($input, 'remote_instance_id', 1, 100);
                 $ip = $input['ip_address'] ?? null;
                 if ($ip !== null && (!is_string($ip) || !filter_var($ip, FILTER_VALIDATE_IP))) { throw new ApiException('Invalid IP address'); }
-                if($t['action']==='power') {
+                if($t['action']==='reinstall') {
+                    if(($input['confirmed_reinstall_completed']??false)!==true) { throw new ApiException('Confirm actual reinstall completion and verified new credentials'); }
+                    InstanceReinstallService::complete($db,$t,new \App\Plugins\Providers\DriverExecutionResult('succeeded',$remote,
+                        username:Request::text($input,'username',1,255),password:Request::text($input,'new_password',1,128)));
+                } elseif($t['action']==='power') {
                     $p=json_decode($t['payload']??'{}',true,32,JSON_THROW_ON_ERROR);
                     if($remote!==$instance['remote_instance_id'] || $remote!==($p['remote_instance_id']??null)
                         || !InstancePowerService::matchesContext($instance,$p)) {
@@ -98,7 +106,7 @@ final class TaskResolutionService
     /** State-based candidates, shared with the read projection; resolve rechecks all locks and financial gates. */
     public static function candidateActions(array $task, array $instance, ?array $invoice, string $role): array
     {
-        if ($role === 'super_admin' && $task['action']==='power' && $task['status']==='failed'
+        if ($role === 'super_admin' && in_array($task['action'],['power','reinstall'],true) && $task['status']==='failed'
             && str_starts_with($task['last_error']??'','MANUAL_AUDIT_REQUIRED:') && $instance['remote_instance_id']) {
             return ['investigate','fulfill','close_unexecuted'];
         }

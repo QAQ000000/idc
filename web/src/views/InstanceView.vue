@@ -3,7 +3,9 @@ import { onMounted, onUnmounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { api, message, type Instance, type Invoice } from "../api/request";
 import InstancePowerPanel from "../components/InstancePowerPanel.vue";
-const powerBlocked = ref(false);
+import InstanceReinstallPanel from "../components/InstanceReinstallPanel.vue";
+const powerBlocked = ref(false), reinstallBlocked = ref(false);
+function invalidateCredentials() { credentialVersion++; credentials.value = null; }
 const route = useRoute(),
   router = useRouter(),
   instance = ref<Instance | null>(null),
@@ -245,6 +247,7 @@ onUnmounted(() => {
                   {{ instance.remote_instance_id || "等待交付" }}
                 </span>
               </el-descriptions-item>
+              <el-descriptions-item v-if="instance.reinstalled_image" label="最近确认的重装系统">{{ instance.reinstalled_image }}</el-descriptions-item>
               <el-descriptions-item label="起租时间（UTC）">
                 {{ instance.start_date || "交付后起租" }}
               </el-descriptions-item>
@@ -266,6 +269,7 @@ onUnmounted(() => {
             v-if="instance.remote_instance_id && instance.status === 'active'"
             :key="instance.id"
             :instance-id="Number(instance.id)"
+            :external-blocked="reinstallBlocked"
             @blocked="powerBlocked = $event"
           />
           <el-card v-else shadow="never">
@@ -274,6 +278,13 @@ onUnmounted(() => {
               实例交付完成且服务有效后，可查询实际运行状态和可用操作。
             </p>
           </el-card>
+          <InstanceReinstallPanel
+            v-if="instance.remote_instance_id"
+            :key="`reinstall-${instance.id}`"
+            :instance-id="Number(instance.id)"
+            @blocked="reinstallBlocked = $event; if ($event) invalidateCredentials()"
+            @changed="invalidateCredentials"
+          />
         </div>
         <div class="panel-stack">
           <el-card shadow="never">
@@ -306,7 +317,7 @@ onUnmounted(() => {
                 v-if="instance.renewal_eligible"
                 :disabled="
                   busy ||
-                  powerBlocked ||
+                  powerBlocked || reinstallBlocked ||
                   ['provisioning', 'investigating', 'needs_review'].includes(
                     instance.renewal_status,
                   )

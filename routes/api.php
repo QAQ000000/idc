@@ -31,6 +31,8 @@ Route::middleware('client')->group(function (): void {
     Route::post('instances/{id}/console/check', [\App\Http\Controllers\InstanceController::class, 'consoleCheck']);
     Route::post('instances/{id}/console', [\App\Http\Controllers\InstanceController::class, 'console']);
     Route::get('instances/{id}/runtime', [\App\Http\Controllers\InstanceController::class, 'runtime']);
+    Route::get('instances/{id}/reinstall', [\App\Http\Controllers\InstanceController::class, 'reinstallOptions']);
+    Route::post('instances/{id}/reinstall', [\App\Http\Controllers\InstanceController::class, 'reinstall']);
     Route::post('instances/{id}/power', [\App\Http\Controllers\InstanceController::class, 'power']);
     Route::post('instances/{id}/renew', [\App\Http\Controllers\InstanceController::class, 'renew']);
     Route::patch('instances/{id}/auto-renew', [\App\Http\Controllers\InstanceController::class, 'automatic']);

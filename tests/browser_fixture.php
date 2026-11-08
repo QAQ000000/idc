@@ -28,3 +28,16 @@ foreach (['网页核验样本 A','网页核验样本 B'] as $label) {
     $s=$db->prepare('SELECT id FROM tasks WHERE invoice_id=?');$s->execute([$invoice['invoice_id']]);$taskIds[]=(int)$s->fetchColumn();
 }
 echo json_encode(['admin_fixture_tasks'=>$taskIds],JSON_THROW_ON_ERROR),PHP_EOL;
+
+// Separate owner keeps the existing two-resource FPM identity fixture unchanged.
+$reinstallOwner=(new App\Services\AuthService())->register(['email'=>'browser-reinstall@example.test','password'=>'BrowserReinstall!2026']);
+$demo->recharge((int)$reinstallOwner['user']['id'],'1.00','browser-reinstall-fixture');
+// One actual fixture-provider resource for destructive UI acceptance in the disposable environment only.
+file_get_contents(getenv('UPSTREAM_TEST_URL').'/__power_mode?mode=normal');
+file_get_contents(getenv('UPSTREAM_TEST_URL').'/__reinstall_mode?mode=normal');
+$db->prepare('INSERT INTO providers(name,driver,endpoint,credentials) VALUES(?,?,?,?)')->execute(['Browser reinstall fixture','zjmf',getenv('UPSTREAM_TEST_URL'),json_encode(['username'=>App\Core\Security::encrypt('fixture'),'password'=>App\Core\Security::encrypt('fixture-secret')])]);
+$provider=(int)$db->lastInsertId();
+$pid=(new App\Services\ProductSnapshotService())->save(['provider_id'=>$provider,'remote_pid'=>391,'name'=>'重装网页验收商品','type'=>'cloud','billing_cycles'=>['monthly']])['product_id'];
+$invoice=$billing->checkout((int)$reinstallOwner['user']['id'],['product_id'=>$pid,'hostname'=>'BrowserReinstall','password'=>'BrowserRoot!2026','billing_cycle'=>'monthly','use_balance'=>true]);
+(new App\Services\OutboxWorker())->runOnce('browser-reinstall-create');
+echo json_encode(['reinstall_fixture_instance'=>$invoice['instance_id']],JSON_THROW_ON_ERROR),PHP_EOL;

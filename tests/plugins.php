@@ -18,7 +18,7 @@ function pluginRejects(callable $callback, string $label): void
 {
     try {
         $callback();
-    } catch (RuntimeException | JsonException) {
+    } catch (RuntimeException | JsonException | InvalidArgumentException) {
         pluginCheck(true, $label);
         return;
     }
@@ -166,4 +166,12 @@ pluginCheck(str_starts_with($nameMethod->invoke($driver,$identity),'jy-'), 'orig
 $schema['products']['host']=json_encode($schema['products']['host']);$schema['products']['password']=json_encode($schema['products']['password']);
 pluginCheck($contextMethod->invoke($driver,$schema)===$context, 'upstream string JSON and decoded generation rules have equal semantics');
 pluginRejects(static fn() => $passwordPolicy::validate('ValidPassword12!', $context), 'upstream alphanumeric generation policy rejects extra symbols');
+pluginCheck($driver instanceof \App\Plugins\Providers\ReinstallDriverInterface
+    && !(\App\Plugins\Providers\ProviderRegistry::installed()->get('manual') instanceof \App\Plugins\Providers\ReinstallDriverInterface), 'reinstall is optional and cannot fall back to manual create');
+$options=new \App\Plugins\Providers\ReinstallOptions([['id'=>'1173023','name'=>'Debian-12.0_x64']]);
+pluginCheck($options->matches(['data_disk'=>'no_format_requested','password_mode'=>'upstream_generated','images'=>[['name'=>'Debian-12.0_x64','id'=>'1173023']]]), 'frozen reinstall options survive MySQL JSON object key normalization');
+pluginCheck(!$options->matches(['data_disk'=>'no_format_requested','password_mode'=>'upstream_generated','images'=>[['id'=>1173023,'name'=>'Debian-12.0_x64']]]), 'reinstall option matching preserves strict id types');
+pluginRejects(static fn()=>new \App\Plugins\Providers\ReinstallOptions([['id'=>'1','name'=>'Debian'],['id'=>'1','name'=>'Ubuntu']]), 'ambiguous duplicate image ids fail closed');
+pluginRejects(static fn()=>new \App\Plugins\Providers\ReinstallOptions([['id'=>'1','name'=>'<script>image</script>']]), 'unsafe image labels fail closed');
+pluginRejects(static fn()=>new \App\Plugins\Providers\ReinstallOptions([],dataDisk:'format_all'), 'unproven destructive data disk modes are rejected');
 echo "{$checks} plugin checks passed.\n";

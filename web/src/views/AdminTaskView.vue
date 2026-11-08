@@ -8,7 +8,7 @@ import { useAdmin } from "../stores/admin";
 const route = useRoute(), account = useAdmin();
 const detail = ref<TaskDetail>(), busy = ref(false), error = ref(""), auditPage = ref(1);
 const dialog = ref(false), submitting = ref(false), formError = ref("");
-const form = reactive({ action: "fulfill" as Resolution, token: 0, evidence: "", remote: "", ip: "", confirmed: false });
+const form = reactive({ action: "fulfill" as Resolution, token: 0, evidence: "", remote: "", ip: "", confirmed: false, username: "", password: "", reinstallConfirmed: false });
 const needsConfirmation = computed(() => ["retry", "cancel_compensate", "close_unexecuted"].includes(form.action));
 const evidenceBytes = computed(() => new TextEncoder().encode(form.evidence.trim()).length);
 async function load(page = auditPage.value) {
@@ -19,7 +19,7 @@ async function load(page = auditPage.value) {
 }
 function open(action: Resolution) {
   if (!detail.value || submitting.value) return;
-  Object.assign(form, { action, token: detail.value.task.execution_token, evidence: "", remote: detail.value.instance.remote_instance_id || "", ip: "", confirmed: false });
+  Object.assign(form, { action, token: detail.value.task.execution_token, evidence: "", remote: detail.value.instance.remote_instance_id || "", ip: "", confirmed: false, username: "", password: "", reinstallConfirmed: false });
   formError.value = ""; dialog.value = true;
 }
 async function resolve() {
@@ -28,14 +28,16 @@ async function resolve() {
   if (evidenceBytes.value < 10 || evidenceBytes.value > 1000) { formError.value = "请填写 10–1000 字节的核验材料（中文通常每字 3 字节）"; return; }
   if (needsConfirmation.value && !form.confirmed) { formError.value = "请先完成上游核验并勾选确认"; return; }
   if (form.action === "fulfill" && !form.remote.trim()) { formError.value = "请填写经核验的真实上游资源编号"; return; }
+  if (form.action === "fulfill" && detail.value?.task.action === "reinstall" && (!form.username || !form.password || !form.reinstallConfirmed)) { formError.value = "请核实实际完成并填写已验证的新登录凭据"; return; }
   submitting.value = true;
   try {
     await adminApi(`/tasks/${route.params.id}/resolve`, { method: "POST", body: {
       action: form.action, evidence: form.evidence.trim(), expected_execution_token: form.token,
+      ...(form.action === "fulfill" && detail.value?.task.action === "reinstall" ? { username: form.username, new_password: form.password, confirmed_reinstall_completed: form.reinstallConfirmed } : {}),
       ...(needsConfirmation.value ? { confirmed_no_execution_or_pending_request: form.confirmed } : {}),
       ...(form.action === "fulfill" ? { remote_instance_id: form.remote.trim(), ip_address: form.ip.trim() || null } : {}),
     } });
-    dialog.value = false; ElMessage.success("处理已提交并写入审计记录"); await load(1);
+    form.password = ""; dialog.value = false; ElMessage.success("处理已提交并写入审计记录"); await load(1);
   } catch (e) {
     if (e instanceof ApiError && e.status === 409) {
       dialog.value = false; ElMessage.error("状态、令牌或业务门禁已变化，操作未执行；请重新核验最新详情。" + message(e)); await load(1);
@@ -103,20 +105,26 @@ onMounted(() => load());
       </el-card>
     </template>
   </div>
-  <el-dialog v-model="dialog" class="task-resolution-dialog" :title="actionLabels[form.action]" width="580px" :close-on-click-modal="false" :close-on-press-escape="!submitting" :show-close="!submitting" :before-close="(done: () => void) => { if (!submitting) done(); }" destroy-on-close>
+  <el-dialog v-model="dialog" class="task-resolution-dialog" :title="actionLabels[form.action]" width="580px" :close-on-click-modal="false" :close-on-press-escape="!submitting" :show-close="!submitting" :before-close="(done: () => void) => { if (!submitting) done(); }" destroy-on-close @closed="form.password = ''">
     <el-alert v-if="formError" :title="formError" type="error" :closable="false" role="alert" />
     <el-alert v-if="form.action === 'cancel_compensate'" title="该动作永久取消未交付新购、终止本地实例，并将原收款退到客户站内钱包，不是渠道原路退款。续费任务不支持此动作。" type="warning" :closable="false" />
     <el-alert v-else-if="form.action === 'fulfill'" title="仅依据证据确认原操作，不再次请求上游。电源操作只结束原任务，不改实例权益；当前运行状态不能单独证明重启成功。" type="info" :closable="false" />
-    <el-alert v-else-if="form.action === 'close_unexecuted'" title="仅在确认原电源请求未执行且没有排队或延迟请求时结束占用，不重发操作，不修改资源或资金。" type="warning" :closable="false" />
+    <el-alert v-else-if="form.action === 'close_unexecuted'" title="仅在确认原操作请求未执行且没有排队或延迟请求时结束占用，不重发操作，不修改资源或资金。" type="warning" :closable="false" />
     <el-alert v-else-if="form.action === 'retry'" title="重试会允许 Worker 再次请求上游，只有证实本次未执行且无延迟请求时才可操作。查无记录不足以证明未执行。" type="warning" :closable="false" />
+    <el-alert v-if="detail?.task.action === 'reinstall'" title="重装不得重发或退款；仅 Active、镜像变化或上次进度不能证明本次完成。确认完成需验证原资源、新系统与新凭据。凭据加密保存，不写入审计材料。" type="warning" :closable="false" />
     <p>本次提交使用执行令牌 {{ form.token }}。状态或令牌变化会拒绝提交。</p>
     <el-form label-position="top" :disabled="submitting" @submit.prevent="resolve">
       <template v-if="form.action === 'fulfill'">
         <el-form-item label="真实上游资源编号"><el-input v-model="form.remote" aria-label="真实上游资源编号" maxlength="100" :readonly="detail?.task.action !== 'create'" /></el-form-item>
         <el-form-item v-if="detail?.task.action === 'create'" label="IP 地址（可选）"><el-input v-model="form.ip" aria-label="IP 地址" maxlength="45" /></el-form-item>
       </template>
+      <template v-if="form.action === 'fulfill' && detail?.task.action === 'reinstall'">
+        <el-form-item label="已核实的新用户名"><el-input v-model="form.username" aria-label="已核实的新用户名" maxlength="255" autocomplete="off" /></el-form-item>
+        <el-form-item label="已核实的新密码"><el-input v-model="form.password" aria-label="已核实的新密码" type="password" maxlength="128" autocomplete="new-password" /></el-form-item>
+        <el-checkbox v-model="form.reinstallConfirmed" class="task-confirm">已核实原资源本次重装完成，新凭据可以登录</el-checkbox>
+      </template>
       <el-form-item label="核验材料（工单号、归属与实际结果，不填写密码或密钥）"><el-input v-model="form.evidence" type="textarea" aria-label="核验材料" :rows="4" maxlength="1000" /><span class="muted">{{ evidenceBytes }} / 1000 字节，至少 10 字节</span></el-form-item>
-      <el-checkbox v-if="needsConfirmation" v-model="form.confirmed" class="task-confirm">{{ form.action === "close_unexecuted" ? "已核实本次电源请求未执行，且无排队或延迟执行请求。" : "已核实本次操作未产生新资产、未扣上游款且无延迟执行请求；续费保留原资源。" }}</el-checkbox>
+      <el-checkbox v-if="needsConfirmation" v-model="form.confirmed" class="task-confirm">{{ form.action === "close_unexecuted" ? "已核实本次操作请求未执行，且无排队或延迟执行请求。" : "已核实本次操作未产生新资产、未扣上游款且无延迟执行请求；续费保留原资源。" }}</el-checkbox>
       <div class="actions"><el-button native-type="submit" :type="form.action === 'cancel_compensate' ? 'danger' : 'primary'" :loading="submitting">确认提交并记录审计</el-button><el-button :disabled="submitting" @click="dialog = false">取消</el-button></div>
     </el-form>
   </el-dialog>

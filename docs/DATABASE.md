@@ -27,6 +27,8 @@
 
 **商品运营增量（2026-11-08）**：复用 products.config_cache 记录默认配置 reference_costs（first/recurring）与 recurring_prices，旧 JSON 可缺，按 [商品 API](API.md#admin-products) 只读补取或拒绝猜价。复用 admin_audit_logs，商品版本由销售字段/快照指纹与最新商品审计构成，不新增版本表/字段或同步副本。无 DDL/迁移与历史快照重写，27 表保持。
 
+**重装增量**：tasks.action 追加 reinstall，invoice_id=NULL，payload 冻结镜像／能力与原资源身份，不存明文密码；复用实例 encrypted_password 与 delivery 元数据。27 表保持，已有库先执行 000008 再加载新 Worker；不删除历史枚举。详见 [重装契约](M2_INSTANCE_REINSTALL.md)。
+
 **电源运维增量（2026-11-08）**：tasks.action 增加 power，invoice_id=NULL；payload 冻结命令、原资源绑定及请求客户，max_retries=0，沿用任务令牌/状态和管理员审计。无新表、实例状态副本或资金变更，27 表保持。已有库须执行 2026_11_08_000005 增量迁移；语义与兼容见 [电源契约](M2_INSTANCE_POWER.md)。
 
 **本站 VNC 增量（2026-11-08）**：用户已改定独立云控制台直连，删除旧 Redis 单次连接票据/服务端中继，Redis 只保留签发限流；无 MySQL 新表/列、资金动作或任务，27 表保持。连接参数只返回给经主登录与归属/任务/资金门禁校验的本人；直连不具备本站强制撤销能力，见 [VNC 契约](M2_INSTANCE_VNC.md)。
@@ -413,7 +415,7 @@ CREATE TABLE IF NOT EXISTS `tasks` (
     `instance_id` BIGINT UNSIGNED NOT NULL,
     `invoice_id` BIGINT UNSIGNED NULL,
     `idempotency_key` VARCHAR(100) NOT NULL UNIQUE COMMENT '业务幂等防重键 (如 instance_create:inv_1024)',
-    `action` ENUM('create', 'renew', 'upgrade', 'suspend', 'unsuspend', 'terminate', 'snapshot_create', 'snapshot_delete', 'backup_create', 'backup_delete', 'power') NOT NULL,
+    `action` ENUM('create', 'renew', 'upgrade', 'suspend', 'unsuspend', 'terminate', 'snapshot_create', 'snapshot_delete', 'backup_create', 'backup_delete', 'power', 'reinstall') NOT NULL,
     `payload` JSON NULL COMMENT '固化的任务执行参数 (如确定的目标到期日 target_due_date)',
     `status` ENUM('pending', 'running', 'investigating', 'success', 'failed') NOT NULL DEFAULT 'pending' COMMENT 'investigating: 超时结果反查中',
     `worker_id` VARCHAR(50) NULL COMMENT '抢占此任务的 Worker 标识',

@@ -3,10 +3,10 @@ declare(strict_types=1);
 namespace Plugins\providers\zjmf;
 use App\Core\Money;
 use App\Plugins\Providers\ConnectionConfigInterface;
-use App\Plugins\Providers\{UpstreamDriverInterface, RenewalDriverInterface, DriverExecutionResult as R, PreflightResult, ConfigurableDriverInterface, ConfigOptions, PasswordPolicy, PowerDriverInterface, PowerState, ConsoleDriverInterface, ConsoleTarget};
+use App\Plugins\Providers\{UpstreamDriverInterface, RenewalDriverInterface, DriverExecutionResult as R, PreflightResult, ConfigurableDriverInterface, ConfigOptions, PasswordPolicy, PowerDriverInterface, PowerState, ConsoleDriverInterface, ConsoleTarget, ReinstallDriverInterface, ReinstallOptions};
 
 /** Magic Finance agent API. Stateless cart_data avoids clearing or sharing the upstream account's cart. */
-final class ZjmfDriver implements ConnectionConfigInterface, UpstreamDriverInterface, RenewalDriverInterface, ConfigurableDriverInterface, PowerDriverInterface, ConsoleDriverInterface
+final class ZjmfDriver implements ConnectionConfigInterface, UpstreamDriverInterface, RenewalDriverInterface, ConfigurableDriverInterface, PowerDriverInterface, ConsoleDriverInterface, ReinstallDriverInterface
 {
     public function connectionFields(): array
     {
@@ -349,6 +349,46 @@ final class ZjmfDriver implements ConnectionConfigInterface, UpstreamDriverInter
         $password=$q['password']??$r['data']['pass']??null;
         if(!$url || !is_string($password) || strlen($password)>128){throw new \RuntimeException('Console response invalid');}
         return new ConsoleTarget($url,$password);
+    }
+
+    public function inspectReinstall(array $instance, array $credentials): ReinstallOptions
+    {
+        $token=$this->token($credentials);$h=$this->powerHost($instance,$credentials,$token);
+        $r=$this->request($credentials,'/host/header',['host_id'=>$h['id']],token:$token);$d=$r['data']??[];
+        if (($r['status']??0)!==200 || (string)($d['host_data']['id']??'')!==(string)$h['id']
+            || (int)($d['host_data']['productid']??0)!==(int)$instance['remote_pid']) { throw new \RuntimeException('Reinstall resource mismatch'); }
+        $supported=false;
+        foreach($d['module_button']['control']??[] as $button) {
+            if (($button['type']??'')==='default' && ($button['func']??'')==='reinstall') { $supported=true; }
+        }
+        if (!$supported || ($d['host_data']['type']??'')!=='dcimcloud'
+            || (isset($d['dcim']['auth']['reinstall']) && $d['dcim']['auth']['reinstall']!=='on')) { return new ReinstallOptions(); }
+        if (!is_array($d['cloud_os']??null) || !array_is_list($d['cloud_os'])) { return new ReinstallOptions(); }
+        $images=[];
+        foreach($d['cloud_os'] as $os) { $images[]=['id'=>(string)($os['id']??''),'name'=>$os['name']??null]; }
+        return new ReinstallOptions($images);
+    }
+
+    public function executeReinstall(array $operation, array $credentials): R
+    {
+        $options=$this->inspectReinstall($operation,$credentials);
+        if (!$options->images || !$options->matches($operation['reinstall_options']??[])
+            || !in_array($operation['image_id']??'',array_column($options->images,'id'),true)) {
+            return new R('rejected',code:'REINSTALL_CAPABILITY_CHANGED');
+        }
+        preg_match('/^host:([0-9]+)$/D',$operation['remote_instance_id'],$m);
+        // Exactly one destructive request. Do not send password, format=1, arbitrary port or raw client fields.
+        $r=$this->request($credentials,'/provision/default',['id'=>$m[1],'func'=>'reinstall','os'=>$operation['image_id'],
+            'format_data_disk'=>0,'is_api'=>1],'POST',$this->token($credentials));
+        return ($r['status']??0)===200 ? new R('pending',code:'REINSTALL_ACCEPTED') : new R('unknown',code:'REINSTALL_RESULT_UNCONFIRMED');
+    }
+
+    public function queryReinstall(array $operation, array $credentials): R
+    {
+        // A current image, Active state or header password can change at acceptance, before disk work finishes.
+        // This API offers no operation-correlated completion receipt. Never infer success or resend.
+        $this->powerHost($operation,$credentials,$this->token($credentials));
+        return new R('unknown',code:'NON_QUERYABLE');
     }
 
     public function inspectPower(array $instance, array $credentials): PowerState

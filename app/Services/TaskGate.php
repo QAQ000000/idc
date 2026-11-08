@@ -12,7 +12,7 @@ final class TaskGate
         $s->execute([$instanceId]);
         foreach ($s->fetchAll() as $t) {
             if ((int)$t['id'] !== $ownTask && (in_array($t['status'], ['running', 'investigating'], true)
-                || ($t['status'] === 'pending' && $t['action'] === 'power')
+                || ($t['status'] === 'pending' && in_array($t['action'], ['power','reinstall'], true))
                 || ($t['status'] === 'failed' && str_starts_with($t['last_error'] ?? '', 'MANUAL_AUDIT_REQUIRED:')))) {
                 throw new ApiException('Instance has an unresolved operation', 409, 409);
             }

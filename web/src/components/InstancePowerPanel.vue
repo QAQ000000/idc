@@ -2,7 +2,7 @@
 import { onMounted, onUnmounted, ref } from "vue";
 import { ElMessageBox } from "element-plus";
 import { api, message } from "../api/request";
-const props = defineProps<{ instanceId: number }>();
+const props = defineProps<{ instanceId: number; externalBlocked?: boolean }>();
 const emit = defineEmits<{ blocked: [value: boolean] }>();
 type Action = "start" | "stop" | "reboot";
 interface Runtime {
@@ -59,7 +59,7 @@ onUnmounted(() => { disposed = true; clearTimeout(timer); });
       <el-alert v-if="runtime.blocked" title="存在排队、未决操作或资金冻结，请等待原任务处理，必要时联系管理员核验。" type="warning" :closable="false" />
       <p class="muted">运行状态与交付、暂停状态分别记录。命令被接受不代表系统已完成启动或重启；结果未知时不会自动重发。</p>
       <div class="actions">
-        <el-button v-for="action in runtime.actions" :key="action" :disabled="busy" :type="action === 'start' ? 'primary' : 'warning'" @click="submit(action)">{{ actionLabels[action] }}</el-button>
+        <el-button v-for="action in runtime.actions" :key="action" :disabled="busy || externalBlocked" :type="action === 'start' ? 'primary' : 'warning'" @click="submit(action)">{{ actionLabels[action] }}</el-button>
       </div>
       <el-table :data="runtime.tasks" empty-text="暂无电源操作记录">
         <el-table-column prop="id" label="任务" width="85" />

@@ -4,15 +4,16 @@
 
 ## 运行单元
 
-模板位于 [deploy/systemd](../deploy/systemd/worker.service.in)，由 [渲染命令](../scripts/render_systemd.py) 生成三个带环境名称的单元：
+模板位于 [deploy/systemd](../deploy/systemd/worker.service.in)，由 [渲染命令](../scripts/render_systemd.py) 生成四个带环境名称的单元：
 
 | 单元 | 职责 |
 |---|---|
+| `NAME-mail.service` | 独立执行 notifications:work；SMTP 不阻塞金融 Worker/调度，重启不重新认领 sending |
 | `NAME-worker.service` | 独立执行 `outbox:work`，异常或正常退出后等待 5 秒自动重启，启动后读取 MySQL 原任务 |
 | `NAME-schedule.service` | 一次执行 `schedule:run`，同名 oneshot 未结束时不会叠加另一次运行 |
 | `NAME-schedule.timer` | 每个自然分钟触发一次 schedule 服务；关机漏跑的分钟恢复后补触发一次，不重放全部历史分钟 |
 
-定时器只负责每分钟唤起，业务频率仍唯一维护在 `routes/console.php`：过期单每分钟、续费出账每小时、余额代扣每 15 分钟。应用时区为 UTC；不复制业务 cron 表达式到另一套调度器。已安装 timer 的同一环境不再同时配置 cron 或 `schedule:work`。重复扫描仍由账单唯一键、付款 CAS 和 MySQL 锁兜底，不能依赖单进程替代资金保证。
+定时器只负责每分钟唤起，业务频率仍唯一维护在 `routes/console.php`：过期单每分钟、续费出账每小时、余额代扣每 15 分钟；通知来源补扫和悬空认领恢复每分钟，不在调度进程内发送邮件。应用时区为 UTC；不复制业务 cron 表达式到另一套调度器。已安装 timer 的同一环境不再同时配置 cron 或 `schedule:work`。重复扫描仍由账单唯一键、付款 CAS 和 MySQL 锁兜底，不能依赖单进程替代资金保证。
 
 Worker 被终止后不会清理或重置业务占用；过期 running 租约只允许接管同任务调查，不重发不明结果的续费或付款。普通停止不是上游请求撤销证明；发布重启也须保留原任务。失败人工核验任务重启后继续保留，不自动退款。
 
@@ -38,24 +39,25 @@ python3 scripts/render_systemd.py --name jianyun-prod \
 systemd-analyze verify /tmp/jianyun-prod-units/*
 sudo install -m 0644 /tmp/jianyun-prod-units/* /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now jianyun-prod-worker.service jianyun-prod-schedule.timer
+sudo systemctl enable --now jianyun-prod-worker.service jianyun-prod-mail.service jianyun-prod-schedule.timer
 ```
 
 渲染器不读取密钥、不安装或启动服务。接管已有手工 Worker 时，先核对其 PID、cwd、exe、参数和环境归属，再停止该项目旧进程；不能按名称批量杀 PHP 或重启共享守护进程。M2 验收环境因原凭据目录位于受保护的 root 状态目录，沿用既有 root 身份，不代表正式部署的运行用户策略。
 
-代码或进程环境更新后，用对应环境的 `systemctl restart NAME-worker.service` 加载新配置；仅 daemon-reload 不会替换运行中 PHP 代码或环境。配置缓存变更按 README 执行，更新后检查健康接口及任务列表。调度每次启动新 PHP 进程，不使用 Laravel 普通 queue:work。
+代码或进程环境更新后，用对应环境的 `systemctl restart NAME-worker.service` 加载新配置；仅 daemon-reload 不会替换运行中 PHP 代码或环境。邮件发送代码更新时另重启同环境 NAME-mail.service，不能把 sending 重置 pending。配置缓存变更按 README 执行，更新后检查健康接口及任务列表。调度每次启动新 PHP 进程，不使用 Laravel 普通 queue:work。
 
 ## 日志与值守
 
-Worker stdout/stderr 与 schedule 输出统一进入 journal。定时命令使用框架 after 回调取得捕获输出，再写父进程 stderr，避免 Laravel 默认丢弃子命令结果。框架在 storage/logs 中为三个命令各保留一份覆盖写的末次输出，历史由 journal 保留，不再维护第二份追加日志或同步工具。运行用户也须可写 storage/logs；不能把子命令直接重定向到 `/dev/stdout`，journal 的 socket 输出与普通文件描述符并不等价。
+Worker stdout/stderr 与 schedule 输出统一进入 journal。定时命令使用框架 after 回调取得捕获输出，再写父进程 stderr，避免 Laravel 默认丢弃子命令结果。框架在 storage/logs 中为每个调度命令各保留一份覆盖写的末次输出，历史由 journal 保留，不再维护第二份追加日志或同步工具。运行用户也须可写 storage/logs；不能把子命令直接重定向到 `/dev/stdout`，journal 的 socket 输出与普通文件描述符并不等价。
 
 ```bash
-systemctl status NAME-worker.service NAME-schedule.timer --no-pager
+systemctl status NAME-worker.service NAME-mail.service NAME-schedule.timer --no-pager
 systemctl list-timers NAME-schedule.timer --no-pager
 systemctl show NAME-worker.service -p MainPID -p NRestarts
 systemctl show NAME-schedule.service -p ExecMainStatus -p Result
-journalctl -u NAME-worker.service -u NAME-schedule.service --since today -o cat
+journalctl -u NAME-worker.service -u NAME-mail.service -u NAME-schedule.service --since today -o cat
 php artisan outbox:inspect
+php artisan notifications:inspect
 ```
 
 inspect 必须使用同一环境配置；上例命令仅在配置已正确加载的目录执行。若配置只由 systemd EnvironmentFile 注入，可以通过一次性服务安全读取同一份配置，无须 source 密钥文件（替换成实际用户和路径）：
@@ -67,11 +69,11 @@ sudo systemd-run --quiet --wait --pipe --collect \
   /usr/bin/php8.4 /srv/jianyun/current/artisan outbox:inspect
 ```
 
-日志等级在 Laravel 日志正文中，不能只用 journal 的 `-p` 过滤器判断应用 warning/critical。管理员需关注未确认续费、人工核验、调度失败、连续重启与 timer 不再触发，并结合持久任务列表处理。Laravel 的 schedule:run 自身退出码为 0 不保证每个子命令成功；子命令失败另写含命令名的 `Scheduled command failed` ERROR，必须检查该记录和调度输出中的 FAIL。邮件/TG仍未实现，不把“写入 journal”声称为管理员已读。
+日志等级在 Laravel 日志正文中，不能只用 journal 的 `-p` 过滤器判断应用 warning/critical。管理员需关注未确认续费、人工核验、调度失败、连续重启与 timer 不再触发，并结合持久任务列表处理。Laravel 的 schedule:run 自身退出码为 0 不保证每个子命令成功；子命令失败另写含命令名的 `Scheduled command failed` ERROR，必须检查该记录和调度输出中的 FAIL。单邮件已实现，TG 未实现；邮件结果未知同样需检查持久列表，不把 journal 或 SMTP 接受声称为管理员已读。
 
 journal 的轮转、磁盘上限与跨重启保留沿用主机 journald 策略；部署时确认其持久目录和容量。本配置不修改共享 journald 设置、不删除主机日志、不引入另一份应用日志轮转。服务停止保留任务、资金、配置及历史 journal。
 
-停用本环境时先 stop/disable timer，再 stop/disable worker；需要重启保留未决任务，不能把 running 改 pending。卸载只移除该环境的三个 unit，daemon-reload 后保留配置和数据库。
+停用本环境时先 stop/disable timer，再 stop/disable worker 和 mail；需要重启保留未决任务，不能把 running 改 pending。卸载只移除该环境的四个 unit，daemon-reload 后保留配置和数据库。
 
 ## 独立运行验收
 
@@ -118,3 +120,17 @@ REDIS_SERVER=/absolute/path/to/redis-server python3 -B scripts/test_integration.
 5. 页面每 15 秒检查资格/绑定，退出或到达主 Token 到期/15 分钟上限会主动断开。但云系统实际凭据 TTL、复用和强制撤销仍由上游控制；不要把页面行为描述成本站服务器能强制切断直连。需强制撤销时另行验证上游能力。
 
 M2 已授权切换直连并退役原专属中继；正式环境单独部署。无数据库迁移和资金/实例/Outbox 状态重写。当前只支持已验收魔方标准 WS 模式，详见 [VNC 契约](M2_INSTANCE_VNC.md)。
+
+
+## 单邮件接入
+
+先备份并运行迁移 2026_11_08_000006，再从私有 stdin 配置 notify.mail（完整格式见通知契约）。保留原 APP_KEY；SMTP 配置整体密文保存到数据库，不添加 unit 内的 SMTP 密钥或第二套环境副本。管理员目标来自当前 admins.email，示例占位邮箱不能启用。配置名仅单一 mail，本批不建设动态后台设置页。
+
+安装生成器新增的 NAME-mail.service 并启用：`systemctl enable --now NAME-mail.service`。原 schedule 每分钟补扫 notifications:sweep；SMTP 由 mail 进程完成，因此其阻塞或崩溃不会卡住出账/代扣和金融 Outbox。已部署的前三个 unit 不必因模板增加而重装共享服务；只安装新邮件单元并检查归属。停止 mail 保留 pending/sending；未知 sending 满 15 分钟由补扫转核验，不自动重发，启停均不能删除占位。
+
+以 notifications:inspect 查看消息编号/状态/指纹，关联任务仍从原网页核验。发送未知时使用 notifications:resolve 提交当前超级管理员和 SMTP 日志证据，只关闭通知事实，不重发、不处理原任务、不退款。`success` 只证明 SMTP 接受/人工确认，不证明收件箱收到。部署验收应分别检查四个单元、SMTP/TLS、持久防重和真实收件，不能仅看调度退出码。
+
+
+2026-11-08 本批 M2 已完成 000006 迁移和通知部署：只新增并启用 jianyun-m2-mail.service（相同 PHP/cwd/runtime.env），原 Worker 和分钟 timer 保留。管理员邮箱已按用户确认更换并留审计，配置密文在 notify.mail；task_alerts=true、due_reminders=false。真实任务 3 的告警已有 success/SMTP_ACCEPTED，原待核验任务未裁决；模拟客户到期提醒只在独立库向授权邮箱发一封。两封均已获 SMTP 接受，用户随后确认两封均已收到；不向真实客户测试发送。
+
+本批完整隔离回归 632 业务 + 25 运行检查通过；后者增加邮件守护 SIGKILL 重启、悬空 claim 转核验和原未知投递保留。备份、真实投递凭证及本地配置不入 Git；上线备份和差异核对确认原用户资金、账单/付款记录、实例配置/到期日及任务不变。正式环境未部署。

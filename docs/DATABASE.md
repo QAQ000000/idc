@@ -21,6 +21,8 @@
 
 **本站 VNC 增量（2026-11-08）**：用户已改定独立云控制台直连，删除旧 Redis 单次连接票据/服务端中继，Redis 只保留签发限流；无 MySQL 新表/列、资金动作或任务，27 表保持。连接参数只返回给经主登录与归属/任务/资金门禁校验的本人；直连不具备本站强制撤销能力，见 [VNC 契约](M2_INSTANCE_VNC.md)。
 
+**单邮件通知增量（2026-11-08）**：原 notification_deliveries 增加可空 admin_id/context，user_id 改为可空，服务只允许一个收件身份；context 冻结原任务令牌或实例完整到期日，不含 SMTP/上游凭据。唯一键及发送状态不变，仍为 27 表；SMTP 配置整体加密复用 system_settings，人工收口复用 admin_audit_logs。已有库执行 2026_11_08_000006，不重写历史资金/任务/资源。sent_at 是 SMTP 接受的本地确认时间，不证明终端送达；详情见 [通知契约](NOTIFICATIONS.md)。
+
 **旧站数据库备份契约**：外置旧站插件必须按指定简云发布版本的完整 `database/schema.sql`（含初始化设置、外键、唯一键及保护触发器）生成 `schema.sql` 与目标表数据 `data.sql`，并附目标版本、schema 校验和及对账清单。SQL 恢复仅面向独立空库，不携带旧库查询或依赖新旧数据库同机，不默认覆盖或合并已有业务库；不为迁移增加物理表。本节 DDL 摘录不能作为完整恢复脚本。目标版本不匹配时重新导出并演练，细则见 [MIGRATION_RUNBOOK.md](MIGRATION_RUNBOOK.md)。
 
 ---
@@ -487,7 +489,9 @@ CREATE TABLE IF NOT EXISTS `notification_deliveries` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     `fingerprint` VARCHAR(100) NOT NULL COMMENT '业务消息唯一指纹',
     `channel` VARCHAR(30) NOT NULL COMMENT '渠道标识 (如 mail, sms, telegram)',
-    `user_id` BIGINT UNSIGNED NOT NULL COMMENT '接收用户 ID',
+    `user_id` BIGINT UNSIGNED NULL COMMENT '客户收件人 ID (与 admin_id 二选一，发送前重查)',
+    `admin_id` INT UNSIGNED NULL COMMENT '管理员收件人 ID (与 user_id 二选一，发送前重查)',
+    `context` JSON NULL COMMENT '事件身份快照 (kind、原任务令牌或实例到期日/提醒日，不含消息正文及密钥)',
     `target` VARCHAR(100) NOT NULL COMMENT '投递目标 (邮箱/手机号/ChatID)',
     `status` ENUM('pending', 'sending', 'success', 'failed', 'pending_manual_check') NOT NULL DEFAULT 'pending',
     `error_message` VARCHAR(255) NULL COMMENT '失败报错信息',

@@ -134,6 +134,20 @@ def main():
             run_checks(php, 'tests/admin_products.php', env, r'Admin product checks: \d+')
             run_checks(php, 'tests/power.php', env, r'Power checks: \d+')
             run_checks(php, 'tests/console.php', env, r'Console checks: \d+')
+            smtp_port, smtp_control = free_port(), free_port()
+            env.update(SMTP_TEST_PORT=str(smtp_port), SMTP_TEST_CONTROL=f'http://127.0.0.1:{smtp_control}')
+            with (directory / 'smtp.log').open('w') as log:
+                processes.append(subprocess.Popen(['python3', 'tests/smtp_fixture.py', str(smtp_port), str(smtp_control)], cwd=ROOT, env=env, stdout=log, stderr=log, start_new_session=True))
+            deadline = time.monotonic() + 10
+            while True:
+                try:
+                    urllib.request.urlopen(env['SMTP_TEST_CONTROL'] + '/state', timeout=1).close()
+                    break
+                except OSError:
+                    if time.monotonic() > deadline:
+                        raise RuntimeError('SMTP test fixture not ready')
+                    time.sleep(0.1)
+            run_checks(php, 'tests/notifications.php', env, r'Notification checks: \d+')
             subprocess.run([php, 'artisan', 'migrate', '--force'], cwd=ROOT, env=env, check=True)
             subprocess.run([php, 'tests/browser_fixture.php'], cwd=ROOT, env=env, check=True)
             fpm_socket = directory / 'fpm.sock'

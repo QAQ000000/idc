@@ -1,13 +1,13 @@
 # JianYun (简云) · 模块化多渠道通知中心设计文档 (Notification Center)
 
-本文档定义了 JianYun 的消息广播、通知渠道插件化扩展，以及基于指纹幂等的“单渠道单消息仅投递一次”保障机制。
+本文档维护通知占位、一次发送认领和未知结果核验规则。当前只实现单邮件的管理员人工核验告警、客户临期提醒；其余渠道、广播与 Web Push 是未来规划。
 
 ---
 
 ## 1. 核心设计原则
 
 1. **统一广播，各自独立**：一个业务事件（如产品到期、开通成功、工单回复）可同时投递给多个渠道（邮件、短信、Telegram、微信、QQ等）。
-2. **单渠道至多一次 (At-most-once per channel)**：每个渠道对同一条消息指纹至多产生一次外部发送效果。默认只允许一次发送认领；结果未知时停止重发，接受可能漏送并转人工核验，不能同时承诺不可查询渠道的“必达且绝不重复”。数据库唯一行仅约束本地占位，不能证明外部只发送了一次。
+2. **单渠道至多一次 (At-most-once per channel)**：默认只为同一消息指纹发起一次渠道发送尝试，外部系统自身行为由其契约决定。默认只允许一次发送认领；结果未知时停止重发，接受可能漏送并转人工核验，不能同时承诺不可查询渠道的“必达且绝不重复”。数据库唯一行仅约束本地占位，不能证明外部只发送了一次。
 3. **插件化热插拔**：所有通知渠道继承统一接口 `NotificationChannelInterface`，后台自动加载驱动与配置表单。
 4. **异步队列解耦**：通知投递绝不阻塞前台订单、支付和工单交互，全量进入后台异步队列。
 
@@ -15,44 +15,18 @@
 
 ## 2. 渠道插件规范 (`plugins/notifications/`)
 
-每个渠道插件必须实现以下契约：
-
-```php
-namespace App\Plugins\Notifications;
-
-interface NotificationChannelInterface
-{
-    /**
-     * 渠道唯一标识 (如 'mail', 'sms', 'telegram', 'wechat_mp', 'qq_bot')
-     */
-    public function getChannelId(): string;
-
-    /**
-     * 渠道名称展示 (如 'Telegram 机器人')
-     */
-    public function getName(): string;
-
-    /**
-     * 后台动态配置项 (Bot Token, API Key, 网关地址等)
-     */
-    public function getConfigSchema(): array;
-
-    /**
-     * 执行具体的消息发送动作
-     */
-    public function send(string $target, NotificationMessage $message, array $config): NotificationResult;
-}
-```
+完整接口及 DTO 以 [插件手册 §五](PLUGIN_DEV.md#五-通知通道插件开发规范-notificationchannelinterface) 和 `app/Plugins/Notifications/` 为准，本页维护投递业务规则，不复制接口。首个实现为 mail/SMTP，其他渠道与动态后台配置仍属规划。
 
 ---
 
 ## 3. 消息唯一指纹 (Fingerprint) 生成规则
 
-为实现单渠道单消息防重，每一个业务通知在派发前必须生成不可伪造的**消息指纹**：
+为实现单渠道单消息防重，每一个业务通知在派发前必须生成稳定的**业务消息指纹**（不是认证凭据）：
 
 | 业务场景 | 指纹命名规则 (Fingerprint Format) | 示例 | 产生效果 |
 | :--- | :--- | :--- | :--- |
-| **实例即将到期提醒** | `host:{host_id}:due_reminder:{date}` | `host:10024:due_reminder:2026-11-07` | 同一台主机在同一天内，每个渠道绝对只提醒一次 |
+| **实例即将到期提醒** | `host:{id}:due_reminder:{due_utc_compact}:{day}` | `host:10024:due_reminder:20261110000000:2026-11-07` | 同一实例、完整到期时间、北京时间提醒日，每渠道只认领一次 |
+| **管理员人工核验告警** | `task:{id}:manual:{execution_token}:admin:{admin_id}` | `task:3:manual:2:admin:1` | 同一任务核验轮次、同一管理员只认领一次 |
 | **实例自动开通成功** | `host:{host_id}:provision_success` | `host:10024:provision_success` | 开通成功通知每渠道至多发送一次 |
 | **账单支付成功** | `invoice:{invoice_id}:paid` | `invoice:80921:paid` | 该账单支付成功通知仅发一次 |
 | **工单新回复** | `ticket:{ticket_id}:reply:{reply_id}` | `ticket:332:reply:1502` | 每条新回复仅通知一次 |
@@ -95,13 +69,13 @@ COMMIT;
 
 ### 5.2 恢复扫描只领取未发送行，隔离发送结果未知行
 
-后台每 10 分钟执行两条独立路径，使用现有表与索引，不新增队列表：
+当前每分钟通知调度补扫来源并执行悬空认领恢复；独立邮件 Worker 立即消费未认领 pending，使用现有表与索引，不新增队列表。以下 SQL 为条件示意，不另建第二套 cron：
 
 ```sql
 -- A. pending 尚无任何发送认领，可以按 §5.1 原子认领后发送。
 SELECT `id` FROM `notification_deliveries`
 WHERE `status` = 'pending'
-  AND `created_at` < DATE_SUB(UTC_TIMESTAMP(), INTERVAL 10 MINUTE);
+;
 
 -- B. sending 超时意味着外部结果未知，只转核验，绝不重新置 sending/pending。
 UPDATE `notification_deliveries`
@@ -164,3 +138,48 @@ WHERE `status` = 'sending'
 > **DDL 单一事实来源**：`web_push_subscriptions` 完整字段定义以 `database/schema.sql` 为唯一权威（字典释义见 [DATABASE.md](DATABASE.md) §1.18），本规范不再内嵌 DDL 副本，避免双源漂移。
 > 关键设计：`endpoint_hash`（SHA256）承担唯一索引防重复订阅；`auth_token` 为推送鉴权密钥，AES-256-GCM 加密存储，严禁明文落库与日志。
 
+
+## 7. 当前单邮件闭环（2026-11-08）
+
+本批只实现两类：任务 failed + MANUAL_AUDIT_REQUIRED 给所配置的启用管理员；已交付 active、月付/年付、未来 7 天内到期的启用客户实例给本人。提醒按北京时间自然日生成，数据库 due_date 仍为 UTC；暂停、一次性产品、未交付及已到期不在本批客户提醒范围。所有消息都是纯文本，只含本站登录后详情链接、必要编号/时间，不含免登 Token、上游凭据、密码或原始错误。
+
+- 来源补扫 `notifications:sweep` 每分钟只写通知/恢复状态，不调用 SMTP，不加入付款/Worker 结果事务，也不阻塞出账代扣。task 状态是唯一待办事实，提交后崩溃可由后续补扫找回；补扫前已被处理的任务无需再告警。通知发送失败不回滚业务。
+- 独立 `notifications:work` 持久认领发送，避免慢 SMTP 卡住金融 Outbox 或调度进程。`notifications:dispatch` 是运维/隔离测试的一次性补扫发送入口，不再额外定时运行它。独立进程增加一个 mail systemd 单元，复用同一配置和数据库，不建设 Laravel jobs 表/第二队列系统。
+- 原表 user_id 改为可空，增加 admin_id/context；每行由服务严格执行 user_id/admin_id 二选一，禁止把客户编号冒充管理员。context 只冻结 kind、实例、原任务令牌或完整到期日/提醒日。唯一键不变，无新增实体，仍为 27 表。已有旧 pending 无可识别 context 时置 failed/STALE_BUSINESS_CONTEXT，不猜测正文；旧 sending 继续转人工核验，绝不重发。
+- 发送认领前在短事务重查当前实例/任务及收件人，再锁通知行。管理员须仍启用、仍被配置、邮箱未变、原任务及 execution_token 仍待核验；提醒须仍归本人、邮箱未变、active、账期和完整到期时间未变、仍在窗口且仍是同一提醒日。旧消息以 failed/STALE_BUSINESS_CONTEXT 保留，不删行、不自动换收件人或改指纹补发。已退款/暂停/改归属带来的实例失效同样不会发送原提醒。
+- 认领事务结束后才调用一次 SMTP，不跨网络持有资源/资金锁。发送前重查是该时点的保证；若客户在 SMTP 发送期间续费，已经被接受的邮件无法撤回。正文提示以控制台最新账期为准，不宣称消除了这一网络窗口。
+- 人工处理只收口邮件状态，不裁决关联任务、不退款、不更改实例、不重发。CLI 需当前启用 super_admin、expected_status=pending_manual_check 和至少 10 字节 evidence，行锁防过期/重复，状态与原 admin_audit_logs 同事务。迟到发送结果只能 CAS sending，不能覆盖恢复或人工终态；sent_at 是本地收到/人工确认 SMTP 接受的时间，并非收件箱送达时间。
+
+### 配置和运维
+
+使用当前环境同一 APP_KEY、数据库及 PHP，通过私有 stdin 执行：
+
+```bash
+php artisan migrate --force
+php artisan notifications:configure ADMIN_ID < /受保护目录/mail.json
+php artisan notifications:sweep
+php artisan notifications:inspect
+php artisan notifications:resolve DELIVERY_ID ADMIN_ID < /受保护目录/review.json
+```
+
+配置示例（占位内容不能当真实凭据）：
+
+```json
+{"enabled":true,"task_alerts":true,"due_reminders":false,"site_url":"https://shop.example","admin_ids":[1],"subject_prefix":"","config":{"host":"smtp.example","port":465,"security":"smtps","username":"sender@example.test","password":"PRIVATE_SECRET","from":"sender@example.test","from_name":"站点名称"}}
+```
+
+SMTP 所有配置整体 AES-256-GCM 加密存入 notify.mail 的 encrypted_credentials；启用开关、场景开关、本站 origin/标题前缀和管理员 ID 放非敏感 value，并同事务审计。配置只允许当前启用 super_admin 本地提交；启用前管理员邮箱须已核准且有效，不能沿用 example.invalid 占位。首版不增加 HTTP 配置接口或通知管理页，不影响现有任务详情权限。客户提醒启用需显式 due_reminders=true，未配置/总开关关闭时不产生或发送新通知；关闭不撤回已在网络中的发送，悬空发送的恢复仍会执行。
+
+核验输入：`{"status":"success","expected_status":"pending_manual_check","evidence":"SMTP 日志/服务商队列中已接受该 Message-ID 的依据"}`；确认权威拒绝则 status=failed，无法确认保持原状。`notifications:inspect` 只输出编号/指纹/状态/时间及脱敏码，CLI 本身是部署运维信任边界，不输出 SMTP 配置、正文和目标地址。
+
+### 契约变更与兼容边界
+
+本批将原纯规划通知契约落地为单一 SMTP 渠道；新增两个收件人/上下文字段并放宽 user_id 可空，不改变唯一键和原状态枚举。迁移 2026_11_08_000006 可用于旧库与最新空库；不自动回滚带管理员/事件历史的字段。同步 schema/字典、架构、插件、接口、README、路线图、续费和部署说明。以前文档所称“邮件/TG 均未实现”仅描述旧基线，当前只有邮件已实现，TG/Web Push/其他场景仍未实现。既有资金/权限/幂等与资源归属规则不变。
+
+### 本批验证记录
+
+- 完整隔离回归 632 项业务检查（原 560 + 旧库通知迁移 1 + 通知 71）通过，独立运行检查 25 项（原 22 + 邮件守护/恢复 3）通过；私有 PHP-FPM 配置缓存前后认证检查通过。新增覆盖四进程同指纹仅一次 DATA、收件人/归属/状态/旧账期/跨日失效、SMTP 接受丢响应不重发、认领后崩溃、慢 Worker 不覆盖恢复/人工终态、权限/证据/重复操作/审计失败回滚及配置密文。
+- SMTP 隔离夹具实际执行 UTF-8 MIME 和成功/550 拒绝/接受 DATA 后断开；客户端不透明重试。真实阿里 SMTP 的 465 SMTPS 证书验证通过；用户授权的两封验收邮件均返回 SMTP_ACCEPTED，且用户随后确认“两封均已收到”；该确认只覆盖本次两封，不保证未来邮件必达或已读。
+- 第一封来自 M2 原任务 3 的管理员告警，邮件投递 1 持久 success；task 3 仍待核验，未执行任务裁决或资金补偿。第二封来自独立 MySQL 的模拟临期实例，仅发给经确认测试邮箱，主题明确模拟；未改变真实实例到期日。独立库的投递凭证/数据库备份保留于私有状态目录，接受后清理临时容器。
+- M2 已完成 000006 迁移，管理员原占位邮箱改为用户确认的邮箱并写审计，SMTP 配置仅密文存库。新增 jianyun-m2-mail.service 已启用；原金融 Worker、schedule.timer 保持 active，健康接口正常。管理员告警启用，真实客户 due_reminders=false，正式环境未部署。
+- 部署前后 users/products/instances/invoices/transactions/payment_records/tasks 原行一致；只新增通知/配置/审计，管理员邮箱为本次明确变更。schema 仍为 27 表。无新增购买、续费、支付、退款、电源或上游操作；VNC 继续 d4f3102 直连边界。

@@ -35,8 +35,8 @@ def verify_runtime(env, directory, php):
     env['LARAVEL_STORAGE_PATH'] = str(directory / 'runtime-storage')
     (directory / 'runtime-storage' / 'logs').mkdir(parents=True)
     name = 'jianyun-runtime-test-' + secrets.token_hex(4)
-    units = [name + '-worker.service', name + '-schedule.service', name + '-schedule.timer']
-    worker, scheduler, timer = units
+    units = [name + '-worker.service', name + '-schedule.service', name + '-schedule.timer', name + '-mail.service']
+    worker, scheduler, timer, mailer = units
     installed = []
     checks = 0
 
@@ -97,11 +97,24 @@ def verify_runtime(env, directory, php):
         expected = {1: ['invoices:expire'], 0: ['invoices:expire', 'renewals:generate', 'renewals:debit'],
                     15: ['invoices:expire', 'renewals:debit'], 30: ['invoices:expire', 'renewals:debit'],
                     45: ['invoices:expire', 'renewals:debit']}
+        for due in expected.values():
+            due.append('notifications:sweep')
         for minute, due in expected.items():
             actual = json.loads(command([php, 'tests/runtime_schedule.php', 'due', f'2026-11-08 00:{minute:02}:00']))
             check(actual == due, f'UTC minute {minute:02} selects only its due Laravel commands')
         command([php, 'tests/runtime_schedule.php', 'run', '2026-11-08 00:01:00'])
         check(not renewals(fixture()), 'non-hour schedule does not issue premature renewal invoices')
+        command([php, 'tests/runtime_notifications.php', 'seed'])
+        command([php, 'artisan', 'notifications:sweep'])
+        mail_state = json.loads(command([php, 'tests/runtime_notifications.php', 'snapshot']).splitlines()[-1])
+        check(mail_state['status'] == 'pending_manual_check', 'scheduler quarantines an expired mail sending claim without a resend')
+        command(['systemctl', 'start', mailer])
+        mail_pid = prop(mailer, 'MainPID')
+        check(int(mail_pid) > 0 and prop(mailer, 'ActiveState') == 'active', 'independent mail sender starts under systemd')
+        command(['systemctl', 'kill', '--kill-who=main', '--signal=SIGKILL', mailer])
+        wait_for(lambda: prop(mailer, 'ActiveState') == 'active' and prop(mailer, 'MainPID') not in ('0', mail_pid))
+        check(json.loads(command([php, 'tests/runtime_notifications.php', 'snapshot']).splitlines()[-1]) == mail_state,
+              'mail sender restarts without reclaiming or overwriting an unknown mail outcome')
         output = command([php, 'tests/runtime_schedule.php', 'run', '2026-11-08 00:00:00'])
         state = fixture()
         check(len(renewals(state)) == 2 and sorted(v['status'] for v in renewals(state)) == ['paid', 'unpaid'],
@@ -176,7 +189,7 @@ def verify_runtime(env, directory, php):
         print(f'Runtime checks: {checks}', flush=True)
     finally:
         if installed:
-            subprocess.run(['systemctl', 'stop', timer, worker, scheduler], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(['systemctl', 'stop', timer, worker, scheduler, mailer], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             for target in installed:
                 target.unlink(missing_ok=True)
             subprocess.run(['systemctl', 'daemon-reload'], check=True)

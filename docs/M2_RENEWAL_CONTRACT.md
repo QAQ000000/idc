@@ -47,7 +47,7 @@
 
 沿用已存在的 Worker 告警日志及 `php artisan outbox:inspect` 待核验任务列表。首次续费执行未获 succeeded（包含明确未执行后的安全退避）在任务事务提交后记录 warning：`Paid renewal requires upstream verification`，携带 task_id、invoice_id、instance_id、action、execution_token、状态及脱敏结果码。只读调查的每分钟未知结果不重复刷 warning；确证未执行后再次执行若仍异常，可记录该次执行的 warning。到达人工门禁记录 critical：`Outbox manual review required`，同样含定位字段。成功没有异常通知。
 
-任务持久状态是待办事实，日志是通知出口；事务回滚不发告警。数据库提交与日志输出不是原子投递，进程恰在两者之间崩溃或日志被丢弃时，仍须通过 inspect 列表/日志监控值守，不能宣称已必达管理员。当前 inspect 最多返回前 100 条未决任务，后续完整后台队列/分页及外部邮件、Telegram 推送仍待办；本批不实现多渠道通知中心，不把日志当作外部发送成功。部署侧须确保 Worker stderr 被采集及待办被巡检，本批不修改生产日志服务。
+任务持久状态是待办事实，日志是原通知出口；事务回滚不发告警。数据库提交与日志输出不是原子投递，进程恰在两者之间崩溃或日志被丢弃时，仍须通过 inspect 列表/日志监控值守，不能宣称已必达管理员。当前 CLI inspect 最多返回前 100 条未决任务，网页 /admin/tasks 已提供分页。单邮件补扫已覆盖 failed + MANUAL_AUDIT_REQUIRED，复用通知表异步告警；首次异常 warning 仍只记日志，未进入人工核验不发邮件。Telegram 与其他通知场景延期，SMTP 未知不重发，详见 [通知契约](NOTIFICATIONS.md)。部署侧须确保 Worker stderr 被采集及待办被巡检，本批不修改生产日志服务。
 
 ### 调查与回填
 

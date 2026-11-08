@@ -82,7 +82,7 @@ REDIS_SERVER=/absolute/path/to/redis-server python3 scripts/test_integration.py
 
 要求 Python 3.9+、Docker、PHP 和本地 `redis-server`；脚本使用 `mysql:8.0.35`（可通过 `MYSQL_TEST_IMAGE` 覆盖为兼容的 MySQL 8 镜像），自动创建独立容器、随机端口 Redis 和多进程 PHP HTTP 服务，执行真实接口/数据库检查后清理资源。测试显式指定临时环境目录与配置缓存路径，不加载部署 `.env`，不连接现有业务库。还会启动独立私有 PHP-FPM 池验证配置缓存前后的健康、登录与匿名请求隔离，测试结束销毁该池；找不到 FPM 时设置 `PHP_FPM=/absolute/path/to/php-fpm`。
 
-覆盖并发下单请求去重、同键不同参数拒绝、有限库存占用上限、非法密码、框架嵌套事务和旧 MVP 升级数据保留，以及并发付款只扣一次、最后库存并发预留、Outbox 写入失败整笔回滚、越权阻断、验证码场景隔离与单次消费、过期报价和账本只追加约束；并验证同上游不同商品的锁隔离、可信代理 IPv4/IPv6 与伪造链、交付起租的月末/闰年运算、失效令牌/租约保护、插件替换与失效拒绝、快照跨实例/类型编号隔离及旧库迁移。IP 解析可独立运行 `php tests/unit.php`；插件解析与核心依赖边界可独立运行 `php tests/plugins.php`。M2 另外通过真实 HTTP 协议夹具覆盖响应丢失与 SIGKILL Worker 恢复、幂等收单与未交付补偿；原路退款、通知及割接故障矩阵仍未验收。
+覆盖并发下单请求去重、同键不同参数拒绝、有限库存占用上限、非法密码、框架嵌套事务和旧 MVP 升级数据保留，以及并发付款只扣一次、最后库存并发预留、Outbox 写入失败整笔回滚、越权阻断、验证码场景隔离与单次消费、过期报价和账本只追加约束；并验证同上游不同商品的锁隔离、可信代理 IPv4/IPv6 与伪造链、交付起租的月末/闰年运算、失效令牌/租约保护、插件替换与失效拒绝、快照跨实例/类型编号隔离及旧库迁移。IP 解析可独立运行 `php tests/unit.php`；插件解析与核心依赖边界可独立运行 `php tests/plugins.php`。M2 另外通过真实 HTTP 协议夹具覆盖响应丢失与 SIGKILL Worker 恢复、幂等收单与未交付补偿；原路退款及割接故障矩阵仍未验收；单邮件通知按下文独立验收。
 
 ---
 
@@ -195,7 +195,7 @@ REDIS_SERVER=/absolute/path/to/redis-server python3 scripts/test_integration.py
 本轮通过 15 项单元、23 项插件、119 项原集成、45 项 M2 和 52 项续费检查，以及配置缓存前后的独立 PHP-FPM 身份隔离；前端 lint/类型/构建通过；浏览器复验登录、自动续费关闭、续费出账、余额付款、上游确认及 390px 无横向溢出。续费响应丢失、SIGKILL、非财务暂停及销毁冲突在独立夹具验证，没有对真实资源执行破坏性暂停/销毁。
 
 
-续费异常采用管理员核验：扣款成功但上游未成功时保留 paid 账单、款项和原任务，不自动退款或取消资源。首次异常立即写含账单/实例/任务编号的 warning，调查不逐分钟刷屏，人工门禁升级 critical；通过 `outbox:inspect` 查看持久待办。管理员可用 `action=investigate` 保留原上游单号继续只读调查；已续费只回填。当前无邮件/TG推送，日志与列表需值守，规则见 [续费契约](docs/M2_RENEWAL_CONTRACT.md#续费异常通知与人工核验2026-11-08)。
+续费异常采用管理员核验：扣款成功但上游未成功时保留 paid 账单、款项和原任务，不自动退款或取消资源。首次异常立即写含账单/实例/任务编号的 warning，调查不逐分钟刷屏，人工门禁升级 critical；通过 `outbox:inspect` 查看持久待办。管理员可用 `action=investigate` 保留原上游单号继续只读调查；已续费只回填。当前增加单邮件人工核验告警，TG 延期；SMTP 接受不代表必达/已读，日志与列表仍需值守，规则见 [续费契约](docs/M2_RENEWAL_CONTRACT.md#续费异常通知与人工核验2026-11-08)。
 
 
 运行验收入口：`REDIS_SERVER=/absolute/path/to/redis-server python3 -B scripts/test_integration.py --runtime`（需 root/systemd，使用独立临时单元与数据库）。22 项运行检查通过，覆盖实际分钟 timer、受控时钟的小时/15 分钟调度、SIGKILL 自动重启与只读恢复、日志及人工待办保留。正式环境单独部署；不把加速租约/受控时钟演练当作整机重启或完整小时墙钟验收。
@@ -211,3 +211,10 @@ M2 独立枚举配置销售已接入安全 Schema 投影、Element Plus 动态�
 ### 本站 VNC
 
 实例详情 → VNC 控制台（`/instances/:id/console`），同一 Vue 本地打包 noVNC；浏览器直连云系统 WS，画面和键鼠不经简云中转。配置 `CONSOLE_TARGETS=受信云控制台主机:443`，必须与财务 API 主机名不同，生产要求 WSS/公网地址。财务账号/密钥、主机密码和 host_token 不返回；云地址及本次连接凭据会在浏览器可见，页面 URL 不携带它们。无 PHP 中继、额外守护进程/WS 反代或新业务表。页面期限和持续校验不能替代上游凭据撤销能力；详见 [控制台契约](docs/M2_INSTANCE_VNC.md) 和 [部署规程](docs/DEPLOYMENT_RUNTIME.md)。
+
+
+### 单邮件告警与到期提醒
+
+已实现管理员人工核验告警与客户未来 7 天到期提醒，邮件链接分别进入原任务详情/实例详情。先 `php artisan migrate --force`，再通过私有 stdin 使用 `notifications:configure ADMIN_ID` 加密配置 SMTP；两个场景可独立启用。现有分钟调度调用 `notifications:sweep` 补扫及恢复，独立 `notifications:work` 发送，避免 SMTP 拖住出账、代扣和金融 Worker。部署增加同环境的 mail.service，模板生成器现在输出四个单元。
+
+按 fingerprint/channel 唯一占位并持久认领；发送前重查完整到期时间、归属/邮箱及原任务核验轮次，旧消息保留并跳过。SMTP 接受只记 success，不代表收件箱必达或已读；网络结果未知或发送进程崩溃转 pending_manual_check，notifications:inspect/resolve 用证据受审计收口，不提供重发。客户真实提醒须显式启用，详细配置/运行及本轮证据见 [通知契约](docs/NOTIFICATIONS.md)。

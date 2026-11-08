@@ -85,3 +85,38 @@ Artisan::command('admin:create', function (): void {
     $id = app(\App\Services\AdminAuthService::class)->create($input);
     $this->line(json_encode(['admin_id'=>$id], JSON_THROW_ON_ERROR));
 })->purpose('Create an administrator from private stdin JSON; never reset existing accounts or print credentials');
+
+Artisan::command('notifications:configure {admin}', function():void {
+    $input=json_decode(stream_get_contents(STDIN,16384),true,32,JSON_THROW_ON_ERROR);
+    app(\App\Services\NotificationSettingsService::class)->configure(Request::id($this->argument('admin')),$input);
+    $this->info('Mail settings encrypted and audited.');
+})->purpose('Configure the single mail channel from private stdin; no message is sent');
+Artisan::command('notifications:dispatch', function():void {
+    $this->line(json_encode(app(\App\Services\NotificationService::class)->dispatch(),JSON_THROW_ON_ERROR));
+})->purpose('Sweep manual task alerts and due reminders, then send each unclaimed mail at most once');
+Artisan::command('notifications:inspect', function():void {
+    $this->line(json_encode(app(\App\Services\NotificationService::class)->inspect(),JSON_THROW_ON_ERROR));
+})->purpose('Inspect persistent notification outcomes without private configuration or message contents');
+Artisan::command('notifications:resolve {delivery} {admin}', function():void {
+    $input=json_decode(stream_get_contents(STDIN,8192),true,32,JSON_THROW_ON_ERROR);
+    app(\App\Services\NotificationService::class)->resolve(Request::id($this->argument('admin')),Request::id($this->argument('delivery')),$input);
+    $this->info('Notification outcome audited; no resend.');
+})->purpose('Close an unknown mail outcome with evidence; never resend or alter the underlying business');
+Artisan::command('notifications:sweep', function():void {
+    $this->line(json_encode(app(\App\Services\NotificationService::class)->sweep(),JSON_THROW_ON_ERROR));
+})->purpose('Queue current notifications and quarantine stale claims; never call SMTP');
+Artisan::command('notifications:work {--once}', function():void {
+    do {
+        try { $worked=app(\App\Services\NotificationService::class)->runOnce(); }
+        catch (Throwable) {
+            logger()->error('Notification sender requires recovery');$worked=false;
+            \Illuminate\Support\Facades\DB::purge();
+        } finally {
+            \App\Middlewares\AuthMiddleware::reset();\App\Middlewares\AdminAuthMiddleware::reset();
+            $connection=\Illuminate\Support\Facades\DB::connection();
+            while ($connection->transactionLevel()>0) { $connection->rollBack(); }
+        }
+        if (!$this->option('once') && !$worked) { usleep(1000000); }
+    } while (!$this->option('once'));
+})->purpose('Send pending mail independently from the financial Worker and scheduler');
+Schedule::command('notifications:sweep')->everyMinute()->after($scheduledOutput)->onFailure($scheduledFailure('notifications:sweep'));

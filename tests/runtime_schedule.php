@@ -10,7 +10,7 @@ Illuminate\Support\Carbon::setTestNow($argv[2]??'2026-11-08 00:01:00');
 if (($argv[1]??'')==='due') {
     $out=[];
     foreach (app(Illuminate\Console\Scheduling\Schedule::class)->dueEvents(app()) as $event) {
-        foreach (['invoices:expire','renewals:generate','renewals:debit'] as $command) {
+        foreach (['invoices:expire','renewals:generate','renewals:debit','notifications:sweep'] as $command) {
             if (str_contains($event->command,$command)) { $out[]=$command; }
         }
     }

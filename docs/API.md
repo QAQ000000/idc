@@ -387,3 +387,8 @@ allowed_actions 是当前一致性快照下的候选操作，不能当作授权�
 active 可新购，hidden/retired 均拒绝新配置/新报价/新下单。已冻结未付账单仍按原期限与金额付款；已付 create、原远端调查、存量 renew 不读取商品销售状态作为停止条件，不因调价/刷新改变账单金额或实例 recurring_price/override_price。禁用整个 Provider 是独立运维动作，本批不提供。
 
 **契约变更原因与兼容**：为了日常网页运营，将 ProductSnapshotService 拆为只读准备和同连接事务保存，原 CLI `products:snapshot` 路径/默认行为保持；后台通过专用授权服务复用同一实现。config_cache 新增 reference_costs/recurring_prices，可空兼容旧 JSON；27 表无 DDL 变动，无历史重写或迁移。新 API 不新增驱动、购买、自动退款或自动刷新调度。验收见路线图本批记录。
+
+
+## 单邮件通知接口边界（2026-11-08）
+
+本批无新增 HTTP 通知配置/发送/裁决接口。邮件链接只指向现有 `/admin/tasks/:id` 或 `/instances/:id`，必须独立登录并遵循原权限，消息与 Message-ID 均不是登录或操作凭证。配置、查看投递状态及未知结果人工收口使用受保护部署环境的 notifications:configure/inspect/resolve，仍校验当前 super_admin、状态与证据并记审计。原任务 HTTP 操作不因收到邮件而获得授权，退款继续人工办理，完整契约见 [通知](NOTIFICATIONS.md)。

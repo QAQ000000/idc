@@ -259,27 +259,11 @@ interface NotificationChannelInterface
 }
 ```
 
-### 示例：Telegram 机器人插件
-```php
-namespace Plugins\notifications\telegram;
+当前首个实现为 `plugins/notifications/mail`，由 NotificationRegistry/PluginLoader 按物理 manifest 加载，核心不得直接引用 SMTP 实现。`getConfigSchema()` 返回私有配置的 Laravel 校验规则映射，SMTP 配置整体由 system_settings.encrypted_credentials 加密保存；本批未实现后台动态配置页。
 
-use App\Plugins\Notifications\NotificationChannelInterface;
+`NotificationMessage(fingerprint, subject, text)` 只携带固定业务指纹、主题及纯文本正文；UTF-8 MIME 编码由 Symfony Mime 完成。`NotificationResult(status, code)` 的 status 仅为 accepted/rejected/unknown，code 为脱敏大写标识。accepted 表示 SMTP 接受，不代表进入收件箱或已读；网络断开/超时及驱动异常必须保留 unknown，不能简化为 bool 后重试。
 
-class TelegramChannel implements NotificationChannelInterface
-{
-    public function send(string $target, NotificationMessage $message, array $config): NotificationResult
-    {
-        $botToken = $config['bot_token'];
-        $chatId = $target; // 用户的 Telegram Chat ID
-
-        $text = "🔔 *{$message->title}*\n\n{$message->content}\n\n_发送时间: " . date('Y-m-d H:i:s') . "_";
-        $url = "https://api.telegram.org/bot{$botToken}/sendMessage";
-
-        $res = $this->curlPost($url, ['chat_id' => $chatId, 'text' => $text, 'parse_mode' => 'Markdown']);
-        return new NotificationResult(success: ($res['ok'] ?? false) === true);
-    }
-}
-```
+邮件驱动每次只建一个 SMTP transport，向一个目标执行一次发送，不加 Failover/RoundRobin、Laravel 队列自动重试或消息级透明重试。生产只允许 SMTPS 或强制 STARTTLS，证书验证保持启用；test_plain 仅隔离测试环境的 127.0.0.1。SMTP 用户名/密码、交互 transcript、原始异常及消息正文不写日志。Message-ID 稳定供排查，不作为远端排重依据。其他通知渠道继续待办，可靠状态与人工核验规则见 [通知契约](NOTIFICATIONS.md)。
 
 ---
 

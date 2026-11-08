@@ -33,7 +33,7 @@ def render(name, app, php, user, env_file, output):
               'ARTISAN': quoted(str(app / 'artisan'), executable=True)}
     output.mkdir(parents=True, exist_ok=True)
     paths = []
-    sources = [('worker.service.in', 'worker.service'), ('schedule.service.in', 'schedule.service'), ('schedule.timer.in', 'schedule.timer')]
+    sources = [('worker.service.in', 'worker.service'), ('schedule.service.in', 'schedule.service'), ('schedule.timer.in', 'schedule.timer'), ('mail.service.in', 'mail.service')]
     for source, suffix in sources:
         text = (ROOT / 'deploy/systemd' / source).read_text()
         for key, value in values.items():

@@ -383,12 +383,15 @@ check(http('GET', '/api/v1/auth/me', null, $token)[0] === 403, 'suspension immed
 $preservedBalance = scalar('SELECT balance FROM users WHERE id = ?', [$uid]);
 $preservedTasks = scalar('SELECT COUNT(*) FROM tasks');
 $db->exec('ALTER TABLE invoices DROP INDEX uk_user_checkout, DROP COLUMN checkout_key, DROP COLUMN checkout_hash');
+$db->exec('ALTER TABLE notification_deliveries DROP COLUMN admin_id, DROP COLUMN context, MODIFY user_id BIGINT UNSIGNED NOT NULL');
 $db->exec('DROP TABLE migrations');
 $process = proc_open([PHP_BINARY, dirname(__DIR__).'/artisan', 'migrate', '--force'], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
 foreach ($pipes as $pipe) { stream_get_contents($pipe); fclose($pipe); }
 check(proc_close($process) === 0, 'standard Laravel migrator upgrades the reviewed native MVP');
 check(scalar('SELECT balance FROM users WHERE id = ?', [$uid]) === $preservedBalance && scalar('SELECT COUNT(*) FROM tasks') === $preservedTasks, 'schema upgrade preserves wallet and pending task facts');
 check((int)scalar("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'invoices' AND column_name IN ('checkout_key','checkout_hash')") === 2, 'upgrade installs checkout idempotency columns');
-check((int)scalar('SELECT COUNT(*) FROM migrations') === 4, 'framework records exactly four schema versions');
+check((int)scalar('SELECT COUNT(*) FROM migrations') === 5, 'framework records exactly five reviewed schema versions');
+check((int)scalar("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='notification_deliveries' AND column_name IN ('admin_id','context')")===2,
+    'upgrade adds typed notification recipients and event context without a new table');
 
 echo "{$checks} checks passed.\n";

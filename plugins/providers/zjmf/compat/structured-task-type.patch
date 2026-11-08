@@ -1,0 +1,28 @@
+--- a/app/common/logic/DcimCloud.php
++++ b/app/common/logic/DcimCloud.php
+@@ -1936,6 +1936,10 @@
+ 			} elseif ($res["data"]["status"] == "task") {
+ 				$result["data"]["status"] = "process";
+ 				$result["data"]["des"] = $res["data"]["task_name"] . "中";
++				// Expose only a known machine task type, never raw supplier metadata.
++				if (($res["data"]["task"] ?? null) === "reinstall") {
++					$result["data"]["task_type"] = "reinstall";
++				}
+ 			} elseif ($res["data"]["status"] == "paused") {
+ 				$result["data"]["status"] = "paused";
+ 				$result["data"]["des"] = "挂起";
+--- a/app/common/logic/Host.php
++++ b/app/common/logic/Host.php
+@@ -37,7 +37,11 @@
+ 		if (!isset($statusMap[$status])) {
+ 			$status = "unknown";
+ 		}
+-		return ["status" => $status, "des" => $statusMap[$status]];
++		$safe = ["status" => $status, "des" => $statusMap[$status]];
++		if ($status === "process" && ($data["task_type"] ?? null) === "reinstall") {
++			$safe["task_type"] = "reinstall";
++		}
++		return $safe;
+ 	}
+ 	private function recordInternalModuleDiagnostic($description, $uid, $hostId, $source)
+ 	{

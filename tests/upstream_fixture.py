@@ -220,11 +220,19 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 phase = h.get('reinstall_phase', 'idle')
                 status, description = h.get('power_state', 'on'), 'NEVER-EXPOSE-STATUS-SECRET'
-                if phase == 'executing': status, description = 'process', '重装系统中'
+                if phase == 'executing': status, description = 'process', '任务处理中'
                 elif phase == 'unrelated': status, description = 'process', '创建快照中'
                 elif phase == 'generic': status, description = 'process', '任务处理中'
+                elif phase in ['localized_only', 'wrong_task_type', 'invalid_task_type', 'numeric_task_type', 'id_only']:
+                    status, description = 'process', '重装系统中'
                 elif phase == 'unknown': status = 'unknown'
                 r = {'status': 200, 'data': {'status': status, 'des': description}}
+                if phase == 'executing': r['data']['task_type'] = 'reinstall'
+                elif phase == 'wrong_task_type': r['data']['task_type'] = 'snapshot_create'
+                elif phase == 'invalid_task_type': r['data']['task_type'] = ['reinstall']
+                elif phase == 'numeric_task_type': r['data']['task_type'] = 3
+                elif phase == 'id_only': r['data']['operation_id'] = 'untyped-operation'
+                elif phase == 'typed_idle': r['data']['task_type'] = 'reinstall'
             else:
                 if func not in ['on', 'off', 'reboot'] or p.get('is_api') != ['1']:
                     self.send_error(422)

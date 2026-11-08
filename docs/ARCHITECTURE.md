@@ -6,7 +6,7 @@
 
 ## 1. 总体分层架构 (Layered Architecture)
 
-**客户重装增量**：InstanceReinstallService 通过可选 ReinstallDriverInterface 读取镜像与能力，HTTP 只落非财务 reinstall Outbox；复用任务门禁、令牌、调查与管理员同事务审计。已知原资源绑定／账期／价格不可改写，正常受理自动只读跟踪；空闲预检／明确受理／观察重装执行后恢复空闲且取得原资源凭据，原子同步密文并以 execution_ended 结束占用，不声称系统成功。未知／漏观察／超时才转人工；不能以 Active／镜像更新推定成功；不新增表、控制台中继或自动退款。兼容／迁移和验证见 [本批契约](M2_INSTANCE_REINSTALL.md)。
+**客户重装增量**：InstanceReinstallService 通过可选 ReinstallDriverInterface 读取镜像与能力，HTTP 只落非财务 reinstall Outbox；复用任务门禁、令牌、调查与管理员同事务审计。已知原资源绑定／账期／价格不可改写，正常受理自动只读跟踪；空闲预检／明确受理／结构化重装类型（不解析中文）后恢复空闲且取得原资源凭据，原子同步密文并以 execution_ended 结束占用，不声称系统成功。未知／漏观察／超时才转人工；不能以 Active／镜像更新推定成功；不新增表、控制台中继或自动退款。兼容／迁移和验证见 [本批契约](M2_INSTANCE_REINSTALL.md)。
 
 **状态读取分工**：客户重装 `?view=tasks` 仅查询原 MySQL 任务与业务门禁，不读取驱动能力或生成操作确认；Worker 继续独立查询真实执行。页面结束后完整重取能力与确认。上游单独返回执行中也可触发有限页面轮询，不能据此写入任务证据、修改账期或解除占用；不增缓存事实副本、接口抽象或表。
 

@@ -1,0 +1,2 @@
+# Unified diff context uses a space marker before the upstream PHP indentation.
+plugins/providers/zjmf/compat/*.patch whitespace=-space-before-tab

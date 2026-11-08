@@ -431,9 +431,9 @@ final class ZjmfDriver implements ConnectionConfigInterface, UpstreamDriverInter
 
     private function isReinstallRunning(array $state): bool
     {
-        // Financial API maps cloud task_name to des; never expose arbitrary supplier descriptions.
-        return ($state['status']??'')==='process' && is_string($state['des']??null)
-            && preg_match('/^(重装系统|系统重装|重装操作系统|重装)中$/uD',$state['des'])===1;
+        // task_type is a restricted projection of the cloud's machine-readable task.
+        // Localized descriptions and generic process/idle transitions carry no operation identity.
+        return ($state['status']??'')==='process' && ($state['task_type']??null)==='reinstall';
     }
 
     public function inspectPower(array $instance, array $credentials): PowerState

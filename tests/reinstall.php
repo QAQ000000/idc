@@ -84,7 +84,7 @@ $db->prepare("UPDATE products SET status='retired' WHERE id=?")->execute([$produ
 $calls=fixture('/__state')['reinstall_calls'];$workerService->runOnce('reinstall-first');
 check(task($tid)['status']==='investigating'&&fixture('/__state')['reinstall_calls']===$calls+1,'Worker sends one request even after catalog retirement; acceptance is not success');
 $sent=fixture('/__state')['last_reinstall'];check($sent['format_data_disk']===['0']&&$sent['os']===['1173023']&&!isset($sent['password']),'driver sends original image and fixed preserve request without unsupported password');
-check(reinstallView()['tasks'][0]['accepted']&&reinstallView()['tasks'][0]['result']==='executing','customer sees actual acknowledgement without invented percent');
+check(reinstallView()['tasks'][0]['accepted']&&reinstallView()['tasks'][0]['result']==='executing','structured reinstall type identifies execution despite a generic description');
 $db->prepare('UPDATE tasks SET next_retry_at=NULL WHERE id=?')->execute([$tid]);$workerService->runOnce('reinstall-query');
 check(task($tid)['status']==='investigating'&&reinstallView()['tasks'][0]['result']==='executing','normal accepted execution remains automatic rather than requiring routine administrator verification');
 check((int)reinstallValue("SELECT COUNT(*) FROM tasks WHERE id=? AND next_retry_at<=DATE_ADD(UTC_TIMESTAMP(),INTERVAL 16 SECOND)",[$tid])===1,'accepted reinstall schedules bounded fifteen second read-only polling');
@@ -159,6 +159,10 @@ phase('unrelated');poll($missed,'reinstall-unrelated');phase('idle');poll($misse
 check(task($missed)['status']==='investigating'&&!isset(json_decode(task($missed)['payload'],true)['reinstall_execution_observed']),'unrelated cloud task must not become proof of this reinstall');
 phase('generic');poll($missed,'reinstall-generic');phase('idle');poll($missed,'reinstall-after-generic');
 check(task($missed)['status']==='investigating'&&!isset(json_decode(task($missed)['payload'],true)['reinstall_execution_observed']),'supplier-sanitized generic process description cannot prove this reinstall executed');
+foreach(['localized_only','wrong_task_type','invalid_task_type','numeric_task_type','id_only','typed_idle'] as $unprovenPhase){
+    phase($unprovenPhase);poll($missed,'reinstall-unproven');phase('idle');poll($missed,'reinstall-unproven-idle');
+    check(task($missed)['status']==='investigating'&&!isset(json_decode(task($missed)['payload'],true)['reinstall_execution_observed']),$unprovenPhase.' cannot manufacture a structured execution observation or release the gate');
+}
 expireInvestigation($missed);$workerService->runOnce('reinstall-missed-timeout');closeTask($missed);fixture('/__reinstall_mode?mode=normal');
 // Lost acknowledgement must remain uncertain even if a reinstall task and idle are visible.
 [$s,$r]=submit();$unknown=(int)$r['data']['task_id'];fixture('/__reinstall_mode?mode=drop');$workerService->runOnce('reinstall-unknown');poll($unknown,'reinstall-unknown-executing');phase('idle');poll($unknown,'reinstall-unknown-idle');

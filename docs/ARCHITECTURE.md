@@ -164,3 +164,10 @@ sequenceDiagram
 为将既有命令行核验变为日常网页运营，单 Vue 应用增加管理员路由，Laravel 增加独立 admin 登录与只读任务投影。复用 admins 当前角色/启用状态：所有启用角色可查任务上下文，只有 super_admin 可裁决；客户与管理员 Token 作用域、前端存储及失效处理分离。无需 RBAC 新表、第二后端或任务处置副本。
 
 人工写操作统一调用原 TaskResolutionService，保留实例优先行锁、资金/归属门禁、旧 execution_token、同事务审计与 Worker Fencing。查询 allowed_actions 只供展示，不构成授权。任意过期页面提交必须拒绝后重新核验。退款继续人工处理，显式新购钱包补偿的既有行为保留，续费不复用取消。具体安全投影、登录及操作边界见 [API](API.md#admin-operations)；无 schema 迁移，不改变插件物理边界。
+
+
+## 商品目录运营增量（2026-11-08）
+
+单 Vue 管理后台复用 admins 与原审计，目录读取/编辑及上游快照预览通过 AdminProductService 授权；实际 Schema 拉取、配置校验与参考报价仍由 ProductSnapshotService 和 Provider 契约承接，核心不引用具体插件。网络只读准备位于事务外，目录版本/管理员状态重核后同连接提交目录及审计；不写资金/实例/任务，也不新增同步副本或表。
+
+销售状态是新购准入条件，不能提升为已付交付、原单调查或存量续费的全局开关。price_snapshot/config_snapshot、原任务身份和已冻结续费价格继续作为既有权益依据；新目录加价/Schema 更新不追溯改写历史。新导入默认下架，显式检查后上架，预览确认与旧版本冲突均由后端执行。详细兼容边界见 [商品契约](API.md#admin-products)。

@@ -5,6 +5,9 @@ const router = createRouter({
   routes: [
     { path: "/admin", redirect: "/admin/tasks" },
     { path: "/admin/login", component: () => import("../views/AdminLoginView.vue") },
+    { path: "/admin/products", component: () => import("../views/AdminProductsView.vue"), meta: { admin: true } },
+    { path: "/admin/products/import", component: () => import("../views/AdminProductImportView.vue"), meta: { admin: true } },
+    { path: "/admin/products/:id", component: () => import("../views/AdminProductView.vue"), meta: { admin: true } },
     { path: "/admin/tasks", component: () => import("../views/AdminTasksView.vue"), meta: { admin: true } },
     { path: "/admin/tasks/:id", component: () => import("../views/AdminTaskView.vue"), meta: { admin: true } },
     { path: "/", component: () => import("../views/CatalogView.vue") },

@@ -352,3 +352,30 @@ allowed_actions 是当前一致性快照下的候选操作，不能当作授权�
 `evidence` 为去除首尾空白后的 10–1000 UTF-8 字节。retry/cancel_compensate 必须提交 `confirmed_no_execution_or_pending_request=true` 并证明未履约、未扣上游款、无延迟请求。fulfill 必填真实 remote_instance_id，可选有效 ip_address；续费必须保留原资源。cancel_compensate 是管理员显式触发的既有**未交付新购取消并退到站内钱包**，不是渠道原路退款，续费不支持。详情不表示上游已扣款，人工退款登记仍未实现。
 
 **契约变更记录**：为持续运营复用原 AdminAuthMiddleware、27 表和 TaskResolutionService，增加登录/只读投影/单 Vue 页面，将此前仅 CLI/受控 HTTP 可用的动作接入网页；未新增实体、迁移、驱动调用、自动退款或分散式裁决路径，原 resolve 载荷兼容。证据收紧为空白拒绝，畸形 IP 从运行错误收敛为 400。验证由 tests/admin.php、私有 PHP-FPM 与隔离浏览器提供，记录见路线图。
+
+<a id="admin-products"></a>
+
+## 商品管理、上下架与快照（2026-11-08）
+
+复用上一批 admin 身份：所有启用管理员可读取本地商品和已配置上游列表；只有数据库当前启用 `super_admin` 可以编辑、调用上游预览或确认导入/刷新。后端中间件与服务事务均核验权限，客户 Token 无法访问。
+
+| 路径（/api/v1） | 行为 |
+|---|---|
+| GET /admin/providers | 仅返回 id/name/driver/status/snapshot_supported，不返回 endpoint 或 credentials。用于选择既有上游，不提供新上游配置。 |
+| GET /admin/products | page 默认 1、最大 100000；per_page 默认 20、最大 100。按 status=active/hidden/retired、provider_id 和 name 子串筛选，按 ID 倒序返回 items/total/page/per_page。名称中的 `%`、`_` 按普通字符匹配。 |
+| GET /admin/products/{id} | 商品绑定、类型、销售状态、可售账期、默认参考首期价/新购续费参考价、加价规则、安全配置字段/默认选择、version 和分页审计。audit_page 默认 1，20 条/页，最大 100000；无商品 404。旧快照未记录续费参考价时明确缺失，不假定等于首期。 |
+| PATCH /admin/products/{id} | `{name,status,markup_type,markup_value,expected_version,evidence}`；完整提交以上字段，其他写字段拒绝。status=active/hidden/retired，markup_type=none/fixed/percent，markup_value 必须非负十进制字符串。none 规范化为 0.00。只改目录、不跨写账单/实例/任务。 |
+| POST /admin/products/preview | `{provider_id,remote_pid,name,type,markup_type,markup_value,billing_cycles,config_options?}`；从已配置且启用上游读取 Schema、只读报价，返回 fields/defaults/prices/recurring_prices/billing_cycles/preview_token/expires_at。支持驱动已声明的独立配置与固定商品，其他能力拒绝。 |
+| POST /admin/products/import | 上述输入加 preview_token/evidence，再次读取上游比对预览；新商品默认 hidden，返回 product_id/prices。相同导入确认重放返回原 product_id，不新增商品/审计；同 Provider/远端 PID 的不同导入意图拒绝 409，需刷新既有商品。 |
+| POST /admin/products/{id}/snapshot/preview | `{expected_version,billing_cycles?,config_options?}`；由原商品决定 Provider/PID/名称/类型/加价，不能通过请求重绑；省略配置使用上游默认值。 |
+| POST /admin/products/{id}/snapshot | 同刷新预览输入加 preview_token/evidence；保持原销售状态和订单命名空间，更新该商品 JSON 快照。 |
+
+编辑、导入及刷新 evidence 为去首尾空白后 10–1000 UTF-8 字节；不填密码或密钥。同事务追加 `product_update` / `product_import` / `product_snapshot_refresh` 管理审计，记录依据、可核对变更或快照摘要与参考价。审计写入失败整笔回滚，不以补写日志替代。读取仅投影已知安全字段，不返回原始 Schema、成本、凭据或完整上下文。
+
+`version` 绑定商品销售字段/快照与该商品最新审计版本，不将销售中的库存变动当作编辑冲突。旧编辑或刷新遇到其他变更返回 409，不能自动覆盖或更换版本重交。预览 5 分钟 HMAC 绑定管理员、规范输入、Schema、所选配置、两类报价与原版本；提交再读上游变化返回 409，不保存半成品。仅导入支持在确认令牌有效期内按原令牌找回已提交结果；刷新重复或旧版本拒绝，结果不明先看列表与审计。
+
+加价基于快照保存的 `reference_costs` 重新计算默认首期/续费参考价，不在原售价上重复加价。旧上游快照缺成本时，在事务外只读核价且校验原配置/Schema；失败拒绝调价，名称/上下架可独立保存。原未加价人工固定商品的本地价可作为初始基价，首次记录后再调价仍使用原基价；历史人工加价但没有可信基价的情况拒绝猜测。目录参考价不保证实时成交：现有 Catalog 实时预检、报价确认和冻结仍是新购价格依据。
+
+active 可新购，hidden/retired 均拒绝新配置/新报价/新下单。已冻结未付账单仍按原期限与金额付款；已付 create、原远端调查、存量 renew 不读取商品销售状态作为停止条件，不因调价/刷新改变账单金额或实例 recurring_price/override_price。禁用整个 Provider 是独立运维动作，本批不提供。
+
+**契约变更原因与兼容**：为了日常网页运营，将 ProductSnapshotService 拆为只读准备和同连接事务保存，原 CLI `products:snapshot` 路径/默认行为保持；后台通过专用授权服务复用同一实现。config_cache 新增 reference_costs/recurring_prices，可空兼容旧 JSON；27 表无 DDL 变动，无历史重写或迁移。新 API 不新增驱动、购买、自动退款或自动刷新调度。验收见路线图本批记录。

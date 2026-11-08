@@ -16,7 +16,7 @@ function adminLogout() { adminAccount.logout(); void router.push("/admin/login")
       <RouterLink class="brand" to="/">简云 <span>{{ adminArea ? '管理后台' : '云产品' }}</span></RouterLink>
       <nav aria-label="主导航">
         <template v-if="adminArea">
-          <RouterLink to="/admin/tasks">异常任务</RouterLink><RouterLink to="/">客户前台</RouterLink>
+          <RouterLink to="/admin/products">商品管理</RouterLink><RouterLink to="/admin/tasks">异常任务</RouterLink><RouterLink to="/">客户前台</RouterLink>
           <template v-if="adminAccount.admin"><span>{{ adminAccount.admin.username }} · {{ adminAccount.admin.role }}</span><el-button @click="adminLogout">退出管理后台</el-button></template>
         </template>
         <template v-else>

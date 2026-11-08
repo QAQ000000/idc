@@ -15,6 +15,8 @@
 
 **运营后台第一批（2026-11-08）**：复用 admins、tasks、instances、invoices、payment_records 与 admin_audit_logs，27 表与 DDL 无变化，不需要迁移。admins.role 当前用于所有启用管理员只读、仅 super_admin 裁决；列表/详情不读取凭据或原始任务载荷，处理记录来自原审计表，不增加同步副本。登录仅签发 admin 作用域 Token，既有二次认证配置不能被绕过；接口边界见 [API](API.md#admin-operations)。
 
+**商品运营增量（2026-11-08）**：复用 products.config_cache 记录默认配置 reference_costs（first/recurring）与 recurring_prices，旧 JSON 可缺，按 [商品 API](API.md#admin-products) 只读补取或拒绝猜价。复用 admin_audit_logs，商品版本由销售字段/快照指纹与最新商品审计构成，不新增版本表/字段或同步副本。无 DDL/迁移与历史快照重写，27 表保持。
+
 **旧站数据库备份契约**：外置旧站插件必须按指定简云发布版本的完整 `database/schema.sql`（含初始化设置、外键、唯一键及保护触发器）生成 `schema.sql` 与目标表数据 `data.sql`，并附目标版本、schema 校验和及对账清单。SQL 恢复仅面向独立空库，不携带旧库查询或依赖新旧数据库同机，不默认覆盖或合并已有业务库；不为迁移增加物理表。本节 DDL 摘录不能作为完整恢复脚本。目标版本不匹配时重新导出并演练，细则见 [MIGRATION_RUNBOOK.md](MIGRATION_RUNBOOK.md)。
 
 ---

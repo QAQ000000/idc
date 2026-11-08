@@ -96,6 +96,14 @@ REDIS_SERVER=/absolute/path/to/redis-server python3 scripts/test_integration.py
 
 隔离网页验收：`REDIS_SERVER=/path/to/redis-server python3 -B scripts/test_integration.py --browser`。该脚本创建独立测试库/服务，测试账号 `browser-admin` / `BrowserAdmin!2026`、只读 `browser-support` / `BrowserSupport!2026` 仅在该隔离库有效，包含两条人工核验样本。不得将测试 fixture 导入业务库；退出时按提示回车清理。
 
+## 商品管理、上下架与加价
+
+后台 `/admin/products` 提供商品列表/详情、上游绑定、可售账期、默认配置参考价和审计。所有启用管理员可读，只有 super_admin 可编辑名称/销售状态/none、fixed、percent 加价，以及从已配置上游导入或刷新快照。后台导航与登录回跳沿用同一 Vue 应用，无第二后台。
+
+`/admin/products/import` 先只读预览 Schema、配置及首期/续费参考报价，再确认导入，默认下架；检查详情后通过编辑弹窗上架。已有商品详情可改默认选配/账期后预览刷新，保留 Provider/PID 与订单命名空间。旧页面冲突或上游变化拒绝，写入与审计同事务。参考价不代替购买时实时核价。
+
+调价/刷新只影响后续目录与新购，不改历史账单、实例冻结续费价、资源归属或任务；下架/停售不阻断已付交付、存量续费、原单异常调查。冻结未付账单仍按原期限/金额付款。原 CLI products:snapshot 保留，无新增表或迁移；旧快照缺参考成本时需只读补取再调价，不猜测基价。详见 [接口与兼容](docs/API.md#admin-products)、[页面](docs/FRONTEND.md#admin-product-pages)。
+
 ## 架构文档导航
 
 - [协同开发指南与工程宪法](AGENTS.md)

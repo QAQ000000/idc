@@ -26,6 +26,14 @@ Route::middleware('client')->group(function (): void {
 });
 Route::post('admin/auth/login', [\App\Http\Controllers\AdminAuthController::class, 'login'])->middleware('captcha:login');
 Route::middleware('admin')->group(function (): void {
+    Route::get('admin/providers', [\App\Http\Controllers\AdminProductController::class, 'providers']);
+    Route::get('admin/products', [\App\Http\Controllers\AdminProductController::class, 'index']);
+    Route::post('admin/products/preview', [\App\Http\Controllers\AdminProductController::class, 'preview']);
+    Route::post('admin/products/import', [\App\Http\Controllers\AdminProductController::class, 'import']);
+    Route::get('admin/products/{id}', [\App\Http\Controllers\AdminProductController::class, 'show']);
+    Route::patch('admin/products/{id}', [\App\Http\Controllers\AdminProductController::class, 'update']);
+    Route::post('admin/products/{id}/snapshot/preview', [\App\Http\Controllers\AdminProductController::class, 'previewRefresh']);
+    Route::post('admin/products/{id}/snapshot', [\App\Http\Controllers\AdminProductController::class, 'refresh']);
     Route::get('admin/auth/me', [\App\Http\Controllers\AdminAuthController::class, 'me']);
     Route::get('admin/tasks', [\App\Http\Controllers\TaskController::class, 'index']);
     Route::get('admin/tasks/{id}', [\App\Http\Controllers\TaskController::class, 'show']);

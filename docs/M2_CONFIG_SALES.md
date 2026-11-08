@@ -135,3 +135,13 @@ php artisan products:snapshot < /safe/local/product.json
 ### 退款处理方式定案（2026-11-08）
 
 用户确认退款由管理员手动办理，本期不开发自动退款、自动补偿或网关退款调用/反查，不以退款自动化阻塞其他功能交付。实际退款保留原收款、退款凭证及经办记录，具体边界见 [人工退款策略](PAYMENTS_LEDGER.md#manual-refund-policy)。本次仅同步约束，未退还账单 3 的 ¥16.00、未改账或裁决任务，也未确认底层 33713 的清理情况；既有人工门禁及旧单未结清状态保持。
+
+## 商品运营入口增量（2026-11-08）
+
+现有 `products:snapshot` 继续可用，网页后台通过同一 ProductSnapshotService 提供“只读预览 → 确认导入/刷新”，不维护第二份 Schema 解析或定价逻辑。后台绑定原管理员身份/权限、预览确认及版本门禁、同事务审计；详情不公开原始 Schema/成本/凭据。详见 [商品 API](API.md#admin-products) 与 [页面契约](FRONTEND.md#admin-product-pages)。
+
+JSON 快照新增默认配置 `reference_costs[cycle].first/recurring` 与 `recurring_prices`，为目录加价提供原始基准和分开的参考价；旧 JSON 可缺，缺失时按 API 边界只读补取或拒绝猜价，无 schema 迁移。刷新仍保留原 Provider/PID 和 order_namespace，不改账单 price_snapshot、实例 config_snapshot/recurring_price/override_price 或原任务 payload。后台调价不替代原购买时的实时预检与五分钟报价确认；新预检可拒绝过期确认，历史成功 checkout_key 重放仍先返回原单。
+
+新导入默认 hidden，显式上架后才销售。hidden/retired 只限制新购，原冻结账单按原有效期付款，已付交付/原单未知结果调查及存量续费继续使用原资源和成本/权益快照。刷新不会自动恢复上架，也不禁用 Provider；无定时刷新、自动同步工具或新驱动。管理员证据与审计失败时整笔目录写入回滚。
+
+变更原因是补齐已验收销售能力的日常运营，影响 ProductSnapshotService、AdminProductService、管理员 API/单 Vue 页面和隔离测试；27 表保持，CLI 载荷兼容，不对历史订单重定价。本批验收不产生真实购买、续费或退款，不修改真实销售价格/状态；通过隔离闭环证明边界，真实上游只读预览单独记录。

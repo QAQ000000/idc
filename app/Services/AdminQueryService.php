@@ -56,7 +56,7 @@ final class AdminQueryService
     private function instanceListing(array $q): array
     {
         $where=[];$args=[];
-        foreach (['instance_id'=>'i.id','user_id'=>'i.user_id'] as $key=>$column) {
+        foreach (['instance_id'=>'i.id','user_id'=>'i.user_id','provider_id'=>'i.provider_id'] as $key=>$column) {
             if (isset($q[$key]) && $q[$key]!=='') { $where[]=$column.'=?';$args[]=Request::id($q[$key]); }
         }
         foreach (['ip_address'=>45,'remote_instance_id'=>100] as $key=>$max) {

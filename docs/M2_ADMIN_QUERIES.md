@@ -14,7 +14,7 @@ API 前缀 `/api/v1`，列表均为 items/total/page/per_page，page 默认 1、
 |---|---|
 | GET /admin/customers | user_id、精确 email（最长 100）可组合筛选；返回 id/email/status/created_at，无财务汇总 |
 | GET /admin/customers/:id | customer 与分页 instances（page/per_page）；关联列表固定该客户，不能用 query.user_id 切换归属 |
-| GET /admin/instances | instance_id、user_id、name（最长 100，字面子串）、ip_address（最长 45，精确）、remote_instance_id（最长 100，精确）组合筛选；返回实例、客户、商品及上游编号，不返回上游账号信息 |
+| GET /admin/instances | instance_id、user_id、provider_id（上游接入批次新增）、name（最长 100，字面子串）、ip_address（最长 45，精确）、remote_instance_id（最长 100，精确）组合筛选；返回实例、客户、商品及上游编号，不返回上游账号信息 |
 | GET /admin/instances/:id | instance 与本实例／客户一致的分页 invoices（page/per_page）；账单仅编号／类型／状态／时间，金额与渠道继续去原财务详情查看 |
 
 客户详情链接该客户实例、异常任务及（财务权限）账单／收款／钱包列表。实例详情列原账单编号和类型／状态，链接对应任务以及（财务权限）原账单资金详情；另外提供该实例全部账单、收款和相关钱包流水的筛选入口。沿用原详情，不复制一套资金／任务页面。任务列表新增 user_id 筛选，资金列表新增 instance_id 筛选，均使用参数化查询并核验账单归属。

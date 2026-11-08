@@ -98,6 +98,8 @@
 
 **管理员客户／实例只读查询**：同一 Vue `/admin/customers`、`/admin/instances` 及详情只读原事实，四种启用管理员可读，无驱动调用或写动作。关联账单仅投影编号／类型／状态／时间，金额／收款／钱包继续限 finance/super_admin；旧任务投影亦裁剪非财务角色的结构化财务字段。筛选与分页、当前身份重核、原账单／实例归属、敏感字段白名单与 no-store 不可绕过，27 表／DDL 保持，见 [查询契约](docs/M2_ADMIN_QUERIES.md)。
 
+**上游接入管理**：同一 Vue `/admin/providers` 提供安全列表／详情、超级管理员新增连接、版本校验改名及只读配置／报价验证；已保存账号／地址／驱动不可替换，换账号新建连接。原 CLI 与网页复用 ProviderConnectionService，参数规则只在插件可选 ConnectionConfigInterface 中维护，凭据加密且不回显，连接写入与审计同事务。原 `/admin/providers` API 选择数组兼容，商品导入仍默认下架，无迁移，见 [接入契约](docs/M2_PROVIDER_CONNECTIONS.md)。
+
 ## 四、 统一 Provider（上游驱动）开发规范
 
 所有上游系统对接必须遵守 `App\Plugins\Providers\UpstreamDriverInterface`，完整接口与 DTO 只在 [插件开发手册](docs/PLUGIN_DEV.md) 维护；M2 已实现最小新购与可选续费接口、魔方财务固定/独立枚举配置商品驱动、易支付收单和可靠 Worker（商品 14 独立新单已实付、开通回填并经 VNC 核对基础规格；丢响应后的原上游账单由人工单次支付恢复，旧单仍待核验，见 docs/M2_CONFIG_SALES.md）。新订单输入规则由驱动投影上游 Schema 并冻结；历史任务身份/已知远端 ID 调查不得被新生成规则改写。真实资金及上游交付验收须以路线图证据为准，不把协议夹具当作真实开通。

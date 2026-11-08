@@ -2,11 +2,33 @@
 declare(strict_types=1);
 namespace Plugins\providers\zjmf;
 use App\Core\Money;
+use App\Plugins\Providers\ConnectionConfigInterface;
 use App\Plugins\Providers\{UpstreamDriverInterface, RenewalDriverInterface, DriverExecutionResult as R, PreflightResult, ConfigurableDriverInterface, ConfigOptions, PasswordPolicy, PowerDriverInterface, PowerState, ConsoleDriverInterface, ConsoleTarget};
 
 /** Magic Finance agent API. Stateless cart_data avoids clearing or sharing the upstream account's cart. */
-final class ZjmfDriver implements UpstreamDriverInterface, RenewalDriverInterface, ConfigurableDriverInterface, PowerDriverInterface, ConsoleDriverInterface
+final class ZjmfDriver implements ConnectionConfigInterface, UpstreamDriverInterface, RenewalDriverInterface, ConfigurableDriverInterface, PowerDriverInterface, ConsoleDriverInterface
 {
+    public function connectionFields(): array
+    {
+        return [
+            ['key'=>'endpoint','label'=>'API 地址','type'=>'url','required'=>true,'max_length'=>255],
+            ['key'=>'username','label'=>'上游账号','type'=>'secret','required'=>true,'max_length'=>100],
+            ['key'=>'password','label'=>'API 密钥／密码','type'=>'secret','required'=>true,'max_length'=>512],
+        ];
+    }
+    public function validateConnection(array $input): array
+    {
+        $url=$input['endpoint']??null;$parts=is_string($url)?parse_url($url):false;
+        if(!is_string($url) || strlen($url)>255 || !filter_var($url,FILTER_VALIDATE_URL) || !$parts
+            || !in_array($parts['scheme']??'',['https','http'],true) || isset($parts['user']) || isset($parts['pass'])
+            || isset($parts['query']) || isset($parts['fragment'])){throw new \InvalidArgumentException('Invalid base URL');}
+        $credentials=$input['credentials']??null;
+        if(!is_array($credentials) || array_diff(array_keys($credentials),['username','password'])){throw new \InvalidArgumentException('Invalid credentials');}
+        foreach(['username'=>100,'password'=>512] as $key=>$max){
+            if(!is_string($credentials[$key]??null) || trim($credentials[$key])==='' || strlen($credentials[$key])>$max || preg_match('/[\x00-\x1f\x7f]/',$credentials[$key])){throw new \InvalidArgumentException('Invalid credentials');}
+        }
+        return ['endpoint'=>rtrim($url,'/'),'credentials'=>['username'=>$credentials['username'],'password'=>$credentials['password']]];
+    }
     public function getDriverId(): string { return 'zjmf'; }
     public function getQueryAuthority(): string { return 'EVENTUAL_CONSISTENCY'; }
     private function request(array $c, string $path, array $params = [], string $method = 'GET', ?string $token = null): array

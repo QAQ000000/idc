@@ -381,7 +381,7 @@ allowed_actions 是当前一致性快照下的候选操作，不能当作授权�
 
 | 路径（/api/v1） | 行为 |
 |---|---|
-| GET /admin/providers | 仅返回 id/name/driver/status/snapshot_supported，不返回 endpoint 或 credentials。用于选择既有上游，不提供新上游配置。 |
+| GET /admin/providers | 仅返回 id/name/driver/status/snapshot_supported，不返回 endpoint 或 credentials。保留选择既有上游的数组响应；连接管理使用独立接口，见 [上游接入](#admin-provider-connections)。 |
 | GET /admin/products | page 默认 1、最大 100000；per_page 默认 20、最大 100。按 status=active/hidden/retired、provider_id 和 name 子串筛选，按 ID 倒序返回 items/total/page/per_page。名称中的 `%`、`_` 按普通字符匹配。 |
 | GET /admin/products/{id} | 商品绑定、类型、销售状态、可售账期、默认参考首期价/新购续费参考价、加价规则、安全配置字段/默认选择、version 和分页审计。audit_page 默认 1，20 条/页，最大 100000；无商品 404。旧快照未记录续费参考价时明确缺失，不假定等于首期。 |
 | PATCH /admin/products/{id} | `{name,status,markup_type,markup_value,expected_version,evidence}`；完整提交以上字段，其他写字段拒绝。status=active/hidden/retired，markup_type=none/fixed/percent，markup_value 必须非负十进制字符串。none 规范化为 0.00。只改目录、不跨写账单/实例/任务。 |
@@ -448,7 +448,24 @@ wallet_credit_total 只汇总本客户／本账单 wallet 分户的正向 rechar
 |---|---|
 | /admin/customers | user_id、精确 email（最长 100）组合过滤；id/email/status/created_at，不含余额／消费／认证字段 |
 | /admin/customers/{id} | customer 与分页 instances；page/per_page 仅控制关联实例，归属固定路径客户，不能用 query.user_id 切换 |
-| /admin/instances | instance_id、user_id、name 字面子串（最长 100）、ip_address 精确合法 IP（最长 45）、remote_instance_id 精确编号（最长 100）组合过滤 |
+| /admin/instances | instance_id、user_id、provider_id、name 字面子串（最长 100）、ip_address 精确合法 IP（最长 45）、remote_instance_id 精确编号（最长 100）组合过滤 |
 | /admin/instances/{id} | instance 与分页 invoices；账单仅本实例／客户一致的 invoice_id/type/status/created_at/paid_at，不含金额／渠道 |
 
 instance 投影 id/user_id/user_email/product_id/product_name/provider_id/provider_name/name/status/remote_instance_id/ip_address/billing_cycle/start_date/due_date/suspend_type/auto_renew/created_at；不返回主机密码、上游地址／账号／密钥或配置快照。状态为本地服务状态。账单、凭证、流水继续使用原 finance 接口；任务链接使用原任务接口。无新写接口／表／迁移，权限收紧与兼容见 [本批契约](M2_ADMIN_QUERIES.md)。
+
+<a id="admin-provider-connections"></a>
+
+## 已有驱动的上游接入管理
+
+所有接口前缀 `/api/v1`，返回 no-store。当前启用管理员可读列表／详情；super_admin 才能读取表单目录、新增、改名及验证。匿名／客户401、禁用或越权403、非法参数400、详情缺失404、版本／重放输入冲突409。没有替换账号、改地址、改驱动、切换启用状态或删除接口。
+
+| 接口 | 输入与返回 |
+|---|---|
+| GET /admin/provider-connections | name 字面子串（最多50字节）、精确 driver、status=0/1；page 默认1／最大100000，per_page默认20／最大100；items/total/page/per_page，ID倒序 |
+| GET /admin/provider-connections/{id} | 原连接安全字段、version、分页 audit；audit_page 默认1，每页20，最大100000 |
+| GET /admin/provider-drivers | 已安装且实现可选连接配置契约的 items（id/fields/snapshot_supported）和目录 version；fields 为 key/label/type(url或secret)/required/max_length，不含值 |
+| POST /admin/provider-connections | name、driver、按驱动的 endpoint/credentials、request_key（16–64位字母数字下划线短横线）、catalog_version、evidence（10–1000字节）；返回 provider_id。同管理员同键同输入重放原连接，换输入409；创建不联网 |
+| PATCH /admin/provider-connections/{id} | 仅 name/expected_version/evidence；锁内版本检查、身份重核和同事务审计；返回 provider_id |
+| POST /admin/provider-connections/{id}/verify | remote_pid 正整数、billing_cycle=monthly/annually、expected_version；读取默认配置与报价，返回 verified/remote_pid/billing_cycle/field_count/currency/first_price/recurring_price/verified_at；无上游写操作，不返回原始 Schema 或错误 |
+
+列表／详情只投影 id/name/driver/status/created_at/updated_at/product_count/instance_count/driver_installed/configuration_complete/snapshot_supported/configuration_fields（key/label/configured）。不回显 endpoint、账号、凭据或密文。配置完整仅代表已填写，不代表可认证；失败统一脱敏且记本地验证审计。连接写入版本不因只读验证审计失效。详情审计只投影 evidence/before_name/after_name/remote_pid/billing_cycle/outcome/source，排除 HMAC 操作键／输入指纹与其他原始 JSON。新增实例查询 provider_id 筛选以关联原绑定；原商品导入保持 preview_token、权限、并发门禁及默认下架。兼容和网络信任边界见 [本批契约](M2_PROVIDER_CONNECTIONS.md)。

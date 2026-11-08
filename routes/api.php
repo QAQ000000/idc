@@ -37,6 +37,12 @@ Route::middleware('client')->group(function (): void {
 });
 Route::post('admin/auth/login', [\App\Http\Controllers\AdminAuthController::class, 'login'])->middleware('captcha:login');
 Route::middleware('admin')->group(function (): void {
+    Route::get('admin/provider-drivers', [\App\Http\Controllers\AdminProviderController::class, 'drivers']);
+    Route::get('admin/provider-connections', [\App\Http\Controllers\AdminProviderController::class, 'index']);
+    Route::post('admin/provider-connections', [\App\Http\Controllers\AdminProviderController::class, 'store']);
+    Route::get('admin/provider-connections/{id}', [\App\Http\Controllers\AdminProviderController::class, 'show']);
+    Route::patch('admin/provider-connections/{id}', [\App\Http\Controllers\AdminProviderController::class, 'update']);
+    Route::post('admin/provider-connections/{id}/verify', [\App\Http\Controllers\AdminProviderController::class, 'verify']);
     Route::get('admin/customers', [\App\Http\Controllers\AdminQueryController::class, 'customers']);
     Route::get('admin/customers/{id}', [\App\Http\Controllers\AdminQueryController::class, 'customer']);
     Route::get('admin/instances', [\App\Http\Controllers\AdminQueryController::class, 'instances']);

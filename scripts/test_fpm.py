@@ -95,5 +95,17 @@ def verify(socket_path, root):
     status, task = request(socket_path, root, 'GET', f'/api/v1/admin/tasks/{task_id}', token=support_token)
     assert status == 200 and not task['data']['can_view_finance'] and task['data']['receipts'] == []
     assert request(socket_path, root, 'GET', '/api/v1/admin/finance/invoices', token=support_token)[0] == 403
+    status, catalog = request(socket_path, root, 'GET', '/api/v1/admin/provider-drivers', token=admin_token)
+    assert status == 200 and catalog['data']['items']
+    assert request(socket_path, root, 'GET', '/api/v1/admin/provider-connections', token=client_token)[0] == 401
+    assert request(socket_path, root, 'GET', '/api/v1/admin/provider-connections', token=support_token)[0] == 200
+    assert request(socket_path, root, 'GET', '/api/v1/admin/provider-drivers', token=support_token)[0] == 403
+    status, connections = request(socket_path, root, 'GET', '/api/v1/admin/provider-connections?per_page=1', token=admin_token)
+    assert status == 200 and len(connections['data']['items']) == 1
+    provider_id = connections['data']['items'][0]['id']
+    status, connection = request(socket_path, root, 'GET', f'/api/v1/admin/provider-connections/{provider_id}', token=support_token)
+    assert status == 200 and 'credentials' not in connection['data'] and 'endpoint' not in connection['data']
+    assert request(socket_path, root, 'POST', '/api/v1/admin/provider-connections', {}, token=support_token)[0] == 403
+    print('PASS: isolated PHP-FPM provider queries, driver forms and configuration permission isolation')
     print('PASS: isolated PHP-FPM client/admin authentication, anonymous and cross-scope identity isolation')
     print('PASS: isolated PHP-FPM customer/instance navigation and finance role isolation')

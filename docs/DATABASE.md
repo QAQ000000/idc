@@ -17,6 +17,8 @@
 
 **充值唤醒增量**：Redis 集合只保存提交后待扫描的客户 ID，不新增账单、事件事实表、业务锁或汇总列。原 invoices CAS／周期唯一键、transactions 幂等键、users 钱包锁及 renew Outbox 事务继续裁决；丢失提示由 15 分钟 MySQL 扫描恢复。27 表与 DDL 不变，无迁移，见 [充值唤醒](M2_RENEWAL_CONTRACT.md#充值到账后的异步唤醒)。
 
+**上游接入管理增量**：复用 providers 的字段级 credentials 密文与 admin_audit_logs。显示名称写入使用原行／配置审计的 HMAC 版本，创建重放指纹只存原审计；无版本列、连接副本、新表、DDL 或迁移，27 表保持。账号／地址／驱动不提供网页替换；见 [接入契约](M2_PROVIDER_CONNECTIONS.md)。
+
 **管理员客户／实例查询增量**：只读关联 users/instances/products/providers 及原 invoices，财务和任务查询仅追加实例／客户筛选。无统计副本、新字段、索引、表、DDL 或迁移，27 表保持；密码、快照、密文和钱包金额不进入非财务投影，详见 [本批契约](M2_ADMIN_QUERIES.md)。
 
 **退款字段交付边界（2026-11-08）**：退款由管理员手动办理，现有 `refund_*` 字段及退款用途说明不代表已实现自动退款、自动网关调用或人工登记接口。本次仅调整交付范围，27 表、DDL、触发器与历史数据均不变；退款证据、防重记账和审计要求见 [人工退款策略](PAYMENTS_LEDGER.md#manual-refund-policy)。

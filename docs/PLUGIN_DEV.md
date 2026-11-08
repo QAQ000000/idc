@@ -301,3 +301,20 @@ PowerState 仅有 state（on/off/transitioning/unknown/unsupported）与白名�
 `App\Plugins\Providers\ConsoleDriverInterface::openConsole(array $instance, array $credentials): ConsoleTarget` 返回最小 DTO（url/password，仅云 WebSocket 与本次 VNC 连接密码）。按冻结 Provider/PID/远端 ID/账期核对账号范围内 Active 原资源和产品 VNC 按钮，不读取当前目录替换绑定。无此能力的驱动无需空实现。
 
 魔方驱动只解析同财务源 `/dcim/novnc` 标准 WebSocket 模式，拒绝外置控制台；不返回完整页面、host_token、主机密码或账户凭据。核心进行受信云目标白名单/公网预检，拒绝财务与控制台同主机名；浏览器自己解析 DNS/校验 TLS。用户已授权云连接参数返回浏览器以消除简云数据中转，不能再宣称所有上游地址/凭据隐藏、一次性或可由本站强制撤销。新购/续费接口与 schema 不变，详见 [VNC 契约](M2_INSTANCE_VNC.md)。
+
+
+## 可选上游连接配置能力（2026-11-08）
+
+`App\Plugins\Providers\ConnectionConfigInterface` 为已安装驱动提供后台连接表单，不改变 UpstreamDriverInterface 或现有资源执行协议：
+
+```php
+interface ConnectionConfigInterface
+{
+    public function connectionFields(): array;
+    public function validateConnection(array $input): array;
+}
+```
+
+connectionFields 返回 `{key,label,type,required,max_length}` 列表，type 仅 url/secret，endpoint 为独立地址，其余字段存入 credentials。validateConnection 只做无网络的参数验证／规范化，返回 `{endpoint:?string,credentials:array<string,string>}`；不能写业务表或调用购买／支付。ProviderRegistry.ids 仅枚举经过原物理 manifest 加载器校验的工厂键，网页不能指定类、文件路径或安装插件。未实现此能力的旧驱动仍可处理已有资源，不出现在新连接表单目录；新增连接需要显式配置能力。
+
+魔方自行声明 endpoint／username／password 的格式和长度，人工驱动声明零参数并拒绝远端参数。通用 ProviderConnectionService 只经契约调用验证并字段级 AES-256-GCM 加密，CLI 安装器与网页复用；核心没有具体驱动类或字段规则。HTTP(S) 地址属于受信超级管理员配置，拒绝 userinfo/query/fragment；受信网络范围及身份不可变边界见 [上游接入契约](M2_PROVIDER_CONNECTIONS.md)。在线验证复用原可选配置快照／报价能力，人工驱动不会伪装在线成功。所有验证结果和异常均用安全字段投影，不透传原始报文。

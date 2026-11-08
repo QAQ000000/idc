@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
 import { adminApi } from "../api/admin";
 import { cycleLabels, type ProductDetail, type Provider, type SnapshotPreview } from "../api/adminProducts";
@@ -8,8 +8,8 @@ import { message } from "../api/request";
 import ConfigOptionRenderer from "./ConfigOptionRenderer.vue";
 const props = defineProps<{ product?: ProductDetail }>();
 const emit = defineEmits<{ saved: [] }>();
-const router = useRouter(), providers = ref<Provider[]>([]);
-const form = reactive({ provider_id: "", remote_pid: "", name: "", type: "cloud", markup_type: "none", markup_value: "0.00", billing_cycles: props.product?.billing_cycles || ["monthly"] });
+const route = useRoute(), router = useRouter(), providers = ref<Provider[]>([]);
+const form = reactive({ provider_id: typeof route.query.provider_id === "string" ? route.query.provider_id : "", remote_pid: typeof route.query.remote_pid === "string" ? route.query.remote_pid : "", name: "", type: "cloud", markup_type: "none", markup_value: "0.00", billing_cycles: props.product?.billing_cycles || ["monthly"] });
 const options = ref<Record<string, string> | null>(props.product?.defaults || null), preview = ref<SnapshotPreview>(), busy = ref(false), saving = ref(false), error = ref(""), evidence = ref("");
 const payload = computed(() => props.product ? { expected_version: props.product.version, billing_cycles: form.billing_cycles, ...(options.value ? { config_options: options.value } : {}) } : { ...form, provider_id: Number(form.provider_id), remote_pid: Number(form.remote_pid), ...(options.value ? { config_options: options.value } : {}) });
 const confirmation = ref<{ token: string; input: object }>();

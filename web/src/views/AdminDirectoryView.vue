@@ -8,7 +8,7 @@ import AdminInstanceTable from "../components/AdminInstanceTable.vue";
 const props = defineProps<{ kind: "customers" | "instances" }>();
 const route = useRoute(), router = useRouter();
 const customers = computed(() => props.kind === "customers");
-const fields = computed(() => customers.value ? { user_id: "客户 ID", email: "客户邮箱（精确）" } : { instance_id: "实例 ID", name: "实例名称（包含）", ip_address: "IP 地址（精确）", remote_instance_id: "上游资源编号（精确）", user_id: "客户 ID" });
+const fields = computed(() => customers.value ? { user_id: "客户 ID", email: "客户邮箱（精确）" } : { instance_id: "实例 ID", name: "实例名称（包含）", ip_address: "IP 地址（精确）", remote_instance_id: "上游资源编号（精确）", provider_id: "上游连接 ID", user_id: "客户 ID" });
 const filters = reactive(Object.fromEntries(Object.keys(fields.value).map(key => [key, typeof route.query[key] === "string" ? route.query[key] : ""])) as Record<string, string>);
 const page = ref(String(route.query.page || "1")), size = String(route.query.per_page || "20");
 const data = ref<Page<Customer | AdminInstance>>(), busy = ref(false), error = ref("");

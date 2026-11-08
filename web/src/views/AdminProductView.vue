@@ -47,7 +47,7 @@ onMounted(() => load());
         <h2>{{ detail.name }}</h2>
         <el-descriptions :column="1" border>
           <el-descriptions-item label="销售状态">{{ salesLabels[detail.status] }} · {{ detail.provider_status ? '上游已启用' : '上游已禁用' }}</el-descriptions-item>
-          <el-descriptions-item label="上游绑定">#{{ detail.provider_id }} {{ detail.provider_name }} · {{ detail.driver }} · 商品 PID {{ detail.remote_pid }}</el-descriptions-item>
+          <el-descriptions-item label="上游绑定"><RouterLink :to="`/admin/providers/${detail.provider_id}`">#{{ detail.provider_id }} {{ detail.provider_name }}</RouterLink> · {{ detail.driver }} · 商品 PID {{ detail.remote_pid }}</el-descriptions-item>
           <el-descriptions-item label="商品类型 / 库存">{{ detail.type }} / {{ detail.stock === -1 ? '不限或以上游为准' : detail.stock }}</el-descriptions-item>
           <el-descriptions-item label="加价规则">{{ detail.markup_type === 'none' ? '不加价' : detail.markup_type === 'fixed' ? `固定 +¥${detail.markup_value}` : `百分比 +${detail.markup_value}%` }}</el-descriptions-item>
           <el-descriptions-item label="更新时间 (UTC)">{{ detail.updated_at }}</el-descriptions-item>

@@ -12,7 +12,8 @@ final class ConnectionSetupService
     public function install(array $input): array
     {
         if (PHP_SAPI !== 'cli') { throw new \RuntimeException('CLI configuration only'); }
-        $p = $input['provider']; $product = $input['product']; $payment = $input['payment'];
+        $connections=new ProviderConnectionService();
+        $p = $connections->prepare($input['provider']); $product = $input['product']; $payment = $input['payment'];
         $driver = ProviderRegistry::installed()->get($p['driver']); PaymentRegistry::installed()->get($payment['driver']);
         foreach ([$p['endpoint'], $payment['endpoint'], $payment['notify_url'], $payment['return_url']] as $url) {
             if (!is_string($url) || !filter_var($url, FILTER_VALIDATE_URL) || !in_array(parse_url($url, PHP_URL_SCHEME), ['https','http'],true)
@@ -25,10 +26,7 @@ final class ConnectionSetupService
         $quote = $driver->preflightPrice((int)$product['remote_pid'], 'monthly', [], $credentials);
         if ($quote->currency !== 'CNY' || bccomp($quote->amount, $expected, 2) !== 0 || $quote->config !== []) { throw new \RuntimeException('Expected fixed product price differs from upstream'); }
         return Database::transaction(static function (PDO $db) use ($p,$product,$payment,$schema,$expected): array {
-            $encrypted = [];
-            foreach ($p['credentials'] as $k => $v) { if (!is_string($v)) { throw new \InvalidArgumentException('Credential must be a string'); } $encrypted[$k] = Security::encrypt($v); }
-            $db->prepare('INSERT INTO providers (name,driver,endpoint,credentials) VALUES(?,?,?,?)')->execute([$p['name'],$p['driver'],$p['endpoint'],json_encode($encrypted,JSON_THROW_ON_ERROR)]);
-            $pid = (int)$db->lastInsertId();
+            $pid=(new ProviderConnectionService())->persist($db,$p);
             $cache = ['prices'=>['monthly'=>$expected], 'fixed_config'=>[], 'schema'=>$schema, 'order_namespace'=>bin2hex(random_bytes(20))];
             $db->prepare("INSERT INTO products(provider_id,remote_pid,name,type,markup_type,config_cache) VALUES(?,?,?,?,'none',?)")->execute([$pid,$product['remote_pid'],$product['name'],$product['type'],json_encode($cache,JSON_THROW_ON_ERROR)]);
             $productId=(int)$db->lastInsertId();

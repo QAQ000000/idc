@@ -35,7 +35,7 @@ onMounted(load);
         <el-descriptions-item label="商品"><RouterLink :to="`/admin/products/${data.instance.product_id}`">#{{ data.instance.product_id }} · {{ data.instance.product_name }}</RouterLink></el-descriptions-item>
         <el-descriptions-item label="服务状态">{{ serviceLabels[data.instance.status] || data.instance.status }}</el-descriptions-item>
         <el-descriptions-item label="IP">{{ data.instance.ip_address || '未回填' }}</el-descriptions-item>
-        <el-descriptions-item label="上游／资源">#{{ data.instance.provider_id }} · {{ data.instance.provider_name }} / {{ data.instance.remote_instance_id || '未回填' }}</el-descriptions-item>
+        <el-descriptions-item label="上游／资源"><RouterLink :to="`/admin/providers/${data.instance.provider_id}`">#{{ data.instance.provider_id }} · {{ data.instance.provider_name }}</RouterLink> / {{ data.instance.remote_instance_id || '未回填' }}</el-descriptions-item>
         <el-descriptions-item label="账期">{{ cycleLabels[data.instance.billing_cycle] || data.instance.billing_cycle }}</el-descriptions-item>
         <el-descriptions-item label="到期日（UTC）">{{ data.instance.due_date || '尚未起租' }}</el-descriptions-item>
         <el-descriptions-item label="起租时间（UTC）">{{ data.instance.start_date || '尚未起租' }}</el-descriptions-item>

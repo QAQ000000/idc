@@ -6,6 +6,8 @@
 
 ## 1. 总体分层架构 (Layered Architecture)
 
+**上游接入增量**：ProviderConnectionService 经可选 ConnectionConfigInterface 规范化并加密新增连接，原 CLI 安装器复用它；AdminProviderService 提供安全投影、当前超级管理员写权限、版本、重放和同事务审计。账号命名空间不可替换；验证仅复用 ProductSnapshotService.prepare 的只读配置／报价，不调用具体驱动类或增表，不混入商品／支付写入。见 [接入契约](M2_PROVIDER_CONNECTIONS.md)。
+
 **管理员查询增量**：AdminQueryService 仅从原客户／实例／商品／上游表投影非财务定位字段，账单状态按客户／实例一致关联；通过原 FinanceQueryService 与 TaskInspectionService 链接资金和异常。四个只读 GET 无驱动调用、写表、缓存副本或迁移；财务／超级管理员仍是金额／收款／流水边界，旧任务投影同步裁剪非财务角色的结构化财务字段。权限与兼容见 [只读查询契约](M2_ADMIN_QUERIES.md)。
 
 **充值运营增量**：WalletService 只创建原 invoices 的 recharge 账单，PaymentService 复用支付插件验签、凭证唯一键和账单 CAS，以同连接事务提交充值余额及 LedgerService 只追加流水；纯充值无实例、消费、佣金或 Outbox。FinanceQueryService 只投影原账单／凭证／钱包流水，不建同步副本；客户仅本人，管理员限当前启用 finance/super_admin。27 表保持，无迁移。接口和冻结契约变化见 [充值与资金查询](M2_WALLET_FINANCE.md)。

@@ -95,11 +95,9 @@ def main():
                     raise RuntimeError("Isolated MySQL did not become ready")
                 time.sleep(0.3)
             subprocess.run([php, "scripts/console.php", "db:init"], cwd=ROOT, env=env, check=True)
-            console_port, relay_port = free_port(), free_port()
-            env.update(CONSOLE_LISTEN=f'127.0.0.1:{relay_port}', CONSOLE_FIXTURE_PORT=str(console_port),
-                       CONSOLE_ORIGINS='https://console.example.test', CONSOLE_TARGETS=f'127.0.0.1:{console_port}',
-                       CONSOLE_TEST_LOOPBACK='1', CONSOLE_TEST_WS_URL=f'ws://127.0.0.1:{console_port}/vnc?token=SECRET',
-                       CONSOLE_TEST_AUTH_FILE=str(directory / 'console-auth.json'), CONSOLE_PID_FILE=str(directory / 'console-relay.pid'))
+            console_port = free_port()
+            env.update(CONSOLE_TARGETS=f'127.0.0.1:{console_port}',
+                       CONSOLE_TEST_LOOPBACK='1', CONSOLE_TEST_WS_URL=f'ws://127.0.0.1:{console_port}/vnc?token=SECRET')
             run_checks(php, 'tests/unit.php', env, r'\d+ unit checks passed\.')
             run_checks(php, 'tests/plugins.php', env, r'\d+ plugin checks passed\.')
             with (directory / "http.log").open("w") as log:
@@ -136,11 +134,6 @@ def main():
             run_checks(php, 'tests/admin_products.php', env, r'Admin product checks: \d+')
             run_checks(php, 'tests/power.php', env, r'Power checks: \d+')
             run_checks(php, 'tests/console.php', env, r'Console checks: \d+')
-            for script in ['tests/console_fixture.php', 'scripts/console_relay.php']:
-                with (directory / (Path(script).stem + '.log')).open('w') as log:
-                    processes.append(subprocess.Popen([php, script, 'start'], cwd=ROOT, env=env, stdout=log, stderr=log, start_new_session=True))
-            from test_console import verify_console
-            verify_console(env)
             subprocess.run([php, 'artisan', 'migrate', '--force'], cwd=ROOT, env=env, check=True)
             subprocess.run([php, 'tests/browser_fixture.php'], cwd=ROOT, env=env, check=True)
             fpm_socket = directory / 'fpm.sock'

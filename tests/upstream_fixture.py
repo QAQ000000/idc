@@ -178,7 +178,7 @@ class Handler(BaseHTTPRequestHandler):
             if func == 'vnc':
                 target = os.getenv('CONSOLE_TEST_WS_URL', 'ws://127.0.0.1:1/vnc')
                 query = urlencode({'url': base64.b64encode(target.encode()).decode(), 'password': 'password', 'host_token': 'SECRET-HOST-TOKEN'})
-                page = os.environ['UPSTREAM_TEST_URL'] + '/dcim/novnc?' + query
+                page = 'http://' + self.headers['Host'] + '/dcim/novnc?' + query
                 r = {'status': 200, 'data': {'url': page, 'pass': 'password', 'zjmfcloud_out_vnc': False}}
             elif func == 'status':
                 if state['power_mode'] == 'unavailable':

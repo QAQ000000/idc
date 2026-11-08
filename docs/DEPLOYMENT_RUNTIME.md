@@ -107,16 +107,14 @@ REDIS_SERVER=/absolute/path/to/redis-server python3 -B scripts/test_integration.
 
 仅启用 super_admin 可以提交裁决，管理员需为证据真实性负责；上游取消不证明扣款退回或底层资源清理。续费未知只读调查与告警，无自动退款。外部推送未接入，后台仍需有人值守；失败/成功人工裁决可从原审计查证，Worker 过程继续查 journal。
 
-## 可选本站 VNC 中继
+## 可选云控制台直连
 
-本能力不使用 Outbox，不占用 FPM 长连接，也不引入 Node 后端；Vue 仅打包 noVNC。PHP CLI 需 pcntl/posix/openssl/sockets，Composer 安装锁定的 Workerman，Redis 需 6.2+（原子 GETDEL）。HTTP API 与中继必须使用同一 APP_KEY、DB、Redis 和控制台配置；不能只给中继设置环境变量。正式环境仍单独部署，本批只接 M2。
+按用户最新定案，本站只提供 noVNC 页面/资源、权限校验和连接参数，画面及键鼠由浏览器直连独立云 WebSocket。不需要 Workerman、PHP 中继、额外监听端口/守护单元或 WS 反向代理。
 
-1. 在受保护的运行环境文件设置 `CONSOLE_LISTEN=127.0.0.1:18213`、`CONSOLE_ORIGINS=https://本站域名`（精确 scheme/host/port，可逗号分隔）、`CONSOLE_TARGETS=经运营核准的上游WS主机:443`。不填白名单则不能签发。该 WS 主机可能与 Provider API 域名不同，须通过服务端核验原资源响应后人工配置，不能自动信任返回目标。只允许 wss、公网 IPv4、有效证书，解析后固定 IP 并保留 TLS SNI/Host；不支持的外置控制台拒绝开放。`CONSOLE_TEST_LOOPBACK` 只在 APP_ENV=test 的独立夹具生效，部署不得使用 test。
-2. 用原 `render_systemd.py` 参数加 `--console` 生成额外的 `<name>-console.service`，审阅后只安装需要的单元。中继默认写 `storage/framework/console-relay.pid`，服务用户须有写权限；多个环境配置不同 `CONSOLE_PID_FILE`。启动前检查监听端口，不能覆盖现有 Redis/其他进程。
-3. 生产站点配置参考 `deploy/nginx/console.conf.example`，在本站 HTTPS server 转发 `/console/ws/`，保留原 Vue fallback 与 PHP API。必须传原始 Origin/WS 子协议，禁止把 Origin 重写为可信常量；仅 loopback 可访问中继。该路径关闭 access/error 日志（含任何上层流量采集），不得采集子协议头或票据。TLS 终止在本站反向代理；若经额外网关，同样禁用票据路径和头部记录。
-4. 重载本环境 API 的配置缓存/进程，使其读取配置；独立启用/重启 console 单元。Vite 开发代理默认 loopback 18213，可通过 `CONSOLE_PROXY_TARGET` 覆盖，仍保留浏览器同源路径。更改 APP_KEY/中继配置时重启中继，旧连接结束并重新授权；不要重启共享数据库/Redis。
-5. 以本人登录访问 `/instances/:id/console`，显式连接；验收 API 仅返回本站路径、WS 101、真实画面及浏览器没有供应商 HTTP/WS 请求。断开或主会话失效须结束连接，重放票据、跨 Origin 和跨用户连接须拒绝。中继日志仅有静态错误码；Workerman 原始帧诊断被关闭，避免协议异常把数据写日志。关闭/重启中继不应改变资金/实例/Outbox。
+1. 在 HTTP API 的受保护配置中设置精确 `CONSOLE_TARGETS=受信云控制台主机:443`（逗号分隔）。必须与 Provider 财务 API 主机名不同；生产只允许 wss、公网地址、有效 TLS。域名由运营核准，不能自动信任响应；浏览器自己解析 DNS，API 的公网预检不等于 DNS 固定。`CONSOLE_TEST_LOOPBACK` 仅隔离测试有效。已有 Redis 只承担签发限流，不再需要 GETDEL 票据。
+2. 如有站点 CSP，允许 `connect-src` 到已核准云 WS 主机；允许本网站 Origin 的工作由云系统负责，不能通过改本站 CORS 代替。TLS 校验/Origin 拒绝时失败关闭，不降级加载上游财务 HTML。勿把简云主 Token 发给云系统。
+3. 上一版已部署中继时，先验证直连，再停用并退役项目专属 `<name>-console.service` 及本站 `/console/ws/` 代理；保留 Worker、schedule 与共享 Redis。清除旧 CONSOLE_LISTEN/CONSOLE_ORIGINS/CONSOLE_PID_FILE，保留目标白名单；旧页面须刷新。本仓库已删除旧中继脚本、模板和生成器 --console 选项，不应再启动旧单元。
+4. 客户进入 `/instances/:id/console` 显式连接。页面/静态资源应来自本站，VNC WS 应直达云域名；API 响应不得含财务域名/账号凭据/host_token/主机密码。云连接密码只在页面内存，页面 URL/本地存储不携带。日志、APM 不采集响应连接参数或 WS query。
+5. 页面每 15 秒检查资格/绑定，退出或到达主 Token 到期/15 分钟上限会主动断开。但云系统实际凭据 TTL、复用和强制撤销仍由上游控制；不要把页面行为描述成本站服务器能强制切断直连。需强制撤销时另行验证上游能力。
 
-每个连接上限 15 分钟且不超过主 Token 的到期，每 15 秒核验账号、归属、权益和任务门禁；非 Token 到期的封禁/归属变化最多有一个检查周期延迟。单进程最多 32 个连接（含未认证握手）、每实例最多一个连接，握手/认证 20 秒超时，帧 4 MiB、发送缓冲 8 MiB 超限断开；当前是 M2 单进程小规模部署，横向扩容须另审连接占用与容量。Redis 丢失/不可用只使短效授权失败关闭，不能解除 MySQL 任务占用。
-
-M2 单元：`jianyun-m2-console.service`，只监听 127.0.0.1:18213；原 18212 是 Redis，保持原服务。M2 API、Worker、调度及中继的实际结果以 [电源契约](M2_INSTANCE_POWER.md) 与 [VNC 契约](M2_INSTANCE_VNC.md) 为准。
+M2 已授权切换直连并退役原专属中继；正式环境单独部署。无数据库迁移和资金/实例/Outbox 状态重写。当前只支持已验收魔方标准 WS 模式，详见 [VNC 契约](M2_INSTANCE_VNC.md)。

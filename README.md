@@ -206,8 +206,8 @@ M2 独立枚举配置销售已接入安全 Schema 投影、Element Plus 动态�
 
 ### 实例运行状态与电源操作
 
-客户实例详情新增运行状态查询、按实际产品能力开放的开机/关机/重启、确认弹窗和原任务结果跟踪；管理员原异常入口支持 power 任务核验。所有写操作先落 Outbox，超时或崩溃不盲目重发重启，不改资金、历史订单与实例权益；本站 VNC 通过独立 PHP 中继提供。**已有数据库启用前必须运行 `php artisan migrate --force` 扩展任务枚举，再重启 Worker**。M2 验收环境已完成该迁移与 Worker 重启，真实实例 3 已执行关机/开机/重启，命令均被接受，关开状态已回查；原账单与资金保持不变。实现、兼容与验证见 [电源契约](docs/M2_INSTANCE_POWER.md)。
+客户实例详情新增运行状态查询、按实际产品能力开放的开机/关机/重启、确认弹窗和原任务结果跟踪；管理员原异常入口支持 power 任务核验。所有写操作先落 Outbox，超时或崩溃不盲目重发重启，不改资金、历史订单与实例权益；本站 VNC 页面通过 noVNC 直连独立云控制台。**已有数据库启用前必须运行 `php artisan migrate --force` 扩展任务枚举，再重启 Worker**。M2 验收环境已完成该迁移与 Worker 重启，真实实例 3 已执行关机/开机/重启，命令均被接受，关开状态已回查；原账单与资金保持不变。实现、兼容与验证见 [电源契约](docs/M2_INSTANCE_POWER.md)。
 
 ### 本站 VNC
 
-实例详情 → VNC 控制台（`/instances/:id/console`），同一 Vue 打包 noVNC，WebSocket 也经本站。上游临时 URL、密码及主机令牌只保留服务端。需配置精确 `CONSOLE_ORIGINS`、`CONSOLE_TARGETS`，运行 `php scripts/console_relay.php start` 并配置本站 WS 反向代理。可用 `scripts/render_systemd.py --console` 生成独立 PHP 中继守护单元，默认只绑定 `127.0.0.1:18213`；不添加 Node 后端或新业务表。前置依赖与验证边界见 [控制台契约](docs/M2_INSTANCE_VNC.md) 和 [部署规程](docs/DEPLOYMENT_RUNTIME.md)。
+实例详情 → VNC 控制台（`/instances/:id/console`），同一 Vue 本地打包 noVNC；浏览器直连云系统 WS，画面和键鼠不经简云中转。配置 `CONSOLE_TARGETS=受信云控制台主机:443`，必须与财务 API 主机名不同，生产要求 WSS/公网地址。财务账号/密钥、主机密码和 host_token 不返回；云地址及本次连接凭据会在浏览器可见，页面 URL 不携带它们。无 PHP 中继、额外守护进程/WS 反代或新业务表。页面期限和持续校验不能替代上游凭据撤销能力；详见 [控制台契约](docs/M2_INSTANCE_VNC.md) 和 [部署规程](docs/DEPLOYMENT_RUNTIME.md)。

@@ -4,5 +4,5 @@ namespace App\Plugins\Providers;
 
 final readonly class ConsoleTarget
 {
-    public function __construct(public string $url, public string $password, public string $origin) {}
+    public function __construct(public string $url, public string $password) {}
 }

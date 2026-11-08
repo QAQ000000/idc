@@ -157,13 +157,12 @@
 - **结果**：任务 success 仅证明命令被上游接受，状态查询与 OS 健康独立；丢响应或崩溃只读调查，无法证明结果则进入管理员待核验，不能盲目重启。管理员任务 action 筛选支持 power；super_admin 按原证据/令牌可 investigate/fulfill/close_unexecuted，无 retry/退款动作。
 - **历史不变量**：不修改资金、账单、冻结配置、实例续费价/账期/交付状态；目录下架不影响存量电源操作。完整兼容及枚举迁移见 [电源契约](M2_INSTANCE_POWER.md)。
 
-### 4. 本站 Web VNC（可选驱动）
+### 4. 本站页面、云控制台直连
 
-- **签发**：`POST /api/v1/instances/{id}/console`，本人客户主 Token；空 JSON 请求体。响应仅 `{path:"/console/ws/<一次性随机票据>", expires_in:60, max_duration:900}`，`Cache-Control: no-store`。未启用返回 503，能力/状态/门禁不满足 409，频繁签发 429。
-- **页面**：`/instances/{id}/console`，本地打包 noVNC；不会返回旧规划中的 `vnc_url` 或实现旧 GET `/vnc`。
-- **连接**：本站 WS 路径，子协议头依次 `binary, jianyun.<原主Token>`，服务端只选择 `binary`；精确 Origin + 主登录 + 归属/状态 + 单次票据共同验证，拒绝返回 403。不将主 Token 放入 URL；票据不是登录凭证。连接最长 15 分钟/主会话到期前，周期核验封禁/归属/任务门禁；断线必须重新签发。
-- 上游 URL、VNC 密码、host_token 留在服务端；PHP 中继替客户完成上游 RFB 认证并替换桌面标题。目标白名单、TLS/DNS 边界、反向代理与兼容见 [VNC 契约](M2_INSTANCE_VNC.md)。不增加任务、资金变动或 schema。
-
+- **获取连接**：`POST /api/v1/instances/{id}/console`，本人主 Token、空 JSON。响应 `{websocket_url,password,binding,client_disconnect_at}`，no-store；503 未配置、409 能力/门禁/目标不满足、429 频繁签发。只投影独立云控制台的本次连接凭据，不返回财务域名、账号密钥、主机密码或 host_token。
+- **页面检查**：`POST /api/v1/instances/{id}/console/check`，同样验证主登录/归属/权益/任务资金门禁，返回 `{binding}`，不读上游。页面每 15 秒调用，binding 改变或校验失败主动断开。
+- **页面**：`/instances/{id}/console`，noVNC 本地打包；浏览器 WebSocket 直接连接云系统，只发送云连接凭据，不发送本站 Token。页面 URL 不附地址/密码，不使用供应商 HTML 或 iframe。
+- 原 `/console` 的中继票据响应及 `/console/ws/<ticket>` 已退役，旧页面须刷新。deadline 是客户端断开策略，非上游凭据 TTL；本站不能强制撤销脱离页面使用的上游连接。直连信任边界、兼容与验收见 [VNC 契约](M2_INSTANCE_VNC.md)。
 
 ### 5. 一键重装系统
 - **请求**：`POST /api/v1/instances/{id}/reinstall`

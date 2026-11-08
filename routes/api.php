@@ -21,6 +21,7 @@ Route::middleware('client')->group(function (): void {
     Route::get('instances', [\App\Http\Controllers\InstanceController::class, 'index']);
     Route::get('instances/{id}', [\App\Http\Controllers\InstanceController::class, 'show']);
     Route::get('instances/{id}/credentials', [\App\Http\Controllers\InstanceController::class, 'credentials']);
+    Route::post('instances/{id}/console/check', [\App\Http\Controllers\InstanceController::class, 'consoleCheck']);
     Route::post('instances/{id}/console', [\App\Http\Controllers\InstanceController::class, 'console']);
     Route::get('instances/{id}/runtime', [\App\Http\Controllers\InstanceController::class, 'runtime']);
     Route::post('instances/{id}/power', [\App\Http\Controllers\InstanceController::class, 'power']);

@@ -314,6 +314,6 @@ PowerState 仅有 state（on/off/transitioning/unknown/unsupported）与白名�
 
 ## 可选控制台能力（2026-11-08）
 
-`App\Plugins\Providers\ConsoleDriverInterface::openConsole(array $instance, array $credentials): ConsoleTarget` 只返回服务端 DTO（url/password/origin），不得直接序列化给客户。输入复用冻结实例 Provider/PID/远端 ID/账期；必须在上游账号范围核对原资源、Active 状态及该产品的 VNC 按钮/权限，不读取当前商品目录替换绑定。无此能力的驱动无需空实现。
+`App\Plugins\Providers\ConsoleDriverInterface::openConsole(array $instance, array $credentials): ConsoleTarget` 返回最小 DTO（url/password，仅云 WebSocket 与本次 VNC 连接密码）。按冻结 Provider/PID/远端 ID/账期核对账号范围内 Active 原资源和产品 VNC 按钮，不读取当前目录替换绑定。无此能力的驱动无需空实现。
 
-魔方驱动只解析同源 `/dcim/novnc` 的标准 WebSocket 模式，拒绝外置控制台；host_token 不传给浏览器，也不作为主会话。中继还需独立部署的目标白名单和公网 DNS/TLS 校验，不因驱动返回 URL 就信任任意目标。新购/续费接口不变，无 schema/历史身份迁移。详见 [VNC 契约](M2_INSTANCE_VNC.md)。
+魔方驱动只解析同财务源 `/dcim/novnc` 标准 WebSocket 模式，拒绝外置控制台；不返回完整页面、host_token、主机密码或账户凭据。核心进行受信云目标白名单/公网预检，拒绝财务与控制台同主机名；浏览器自己解析 DNS/校验 TLS。用户已授权云连接参数返回浏览器以消除简云数据中转，不能再宣称所有上游地址/凭据隐藏、一次性或可由本站强制撤销。新购/续费接口与 schema 不变，详见 [VNC 契约](M2_INSTANCE_VNC.md)。

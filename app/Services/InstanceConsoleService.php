@@ -4,7 +4,7 @@ namespace App\Services;
 
 use App\Core\{ApiException, Database, RedisStore, Security};
 use App\Plugins\Providers\ConsoleDriverInterface;
-use App\ConsoleRelay\TargetPolicy;
+
 use PDO;
 
 final class InstanceConsoleService
@@ -42,7 +42,7 @@ final class InstanceConsoleService
 
     public function issue(string $token, int $id): array
     {
-        if (!config('console.origins') || !config('console.targets')) { throw new ApiException('Console is not configured',503,503); }
+        if (!config('console.targets')) { throw new ApiException('Console is not configured',503,503); }
         $user=$this->principal($token);$i=$this->eligible($user,$id);
         $redis=new RedisStore();
         if (!$redis->command('SET','console:rate:'.$user.':'.$id,'1','NX','EX','5')) { throw new ApiException('Please wait before reconnecting',429,429); }
@@ -50,35 +50,22 @@ final class InstanceConsoleService
             [$d,$c]=(new ProviderService())->resolve((int)$i['provider_id']);
             if (!$d instanceof ConsoleDriverInterface) { throw new \RuntimeException(); }
             $target=$d->openConsole(InstancePowerService::context($i),$c);
-            TargetPolicy::validate($target->url);
+            ConsoleTargetPolicy::validate($target->url);
+            if (rtrim(strtolower(parse_url($target->url,PHP_URL_HOST)),'.')===rtrim(strtolower(parse_url($c['endpoint'],PHP_URL_HOST)),'.')) {
+                throw new \RuntimeException('Console must use a separate cloud domain');
+            }
         } catch (\Throwable) { throw new ApiException('控制台暂不可用，请稍后重试或联系客服',409,409); }
         $fresh=$this->eligible($this->principal($token),$id);
         if (!hash_equals($this->binding($i),$this->binding($fresh))) { throw new ApiException('Instance changed; refresh first',409,409); }
-        $ticket=bin2hex(random_bytes(32));
-        $record=['user'=>$user,'instance'=>$id,'session'=>Security::requestFingerprint($token),'binding'=>$this->binding($i),
-            'expires'=>time()+60,'url'=>$target->url,'password'=>$target->password,'origin'=>$target->origin];
-        if (!$redis->command('SET','console:ticket:'.hash('sha256',$ticket),Security::encrypt(json_encode($record,JSON_THROW_ON_ERROR)),'NX','EX','60')) {
-            throw new ApiException('Console authorization unavailable',503,503);
-        }
-        return ['path'=>'/console/ws/'.$ticket,'expires_in'=>60,'max_duration'=>900];
+        $claims=Security::verifyToken($token) ?? throw new ApiException('Session expired',401,401);
+        return ['websocket_url'=>$target->url,'password'=>$target->password,'binding'=>$this->binding($i),
+            'client_disconnect_at'=>min(time()+900,$claims['exp'])];
     }
 
-    public function consume(string $token, string $ticket, string $origin): array
+    /** Client-side continuity check. Direct upstream credentials cannot be revoked by this endpoint. */
+    public function check(string $token, int $id): array
     {
-        if (!in_array($origin,config('console.origins'),true) || !preg_match('/^[a-f0-9]{64}$/D',$ticket)) { throw new ApiException('Console rejected',403,403); }
-        $user=$this->principal($token);
-        $raw=(new RedisStore())->command('GETDEL','console:ticket:'.hash('sha256',$ticket));
-        $r=is_string($raw)?json_decode(Security::decrypt($raw)??'null',true):null;
-        if (!$r || $r['expires']<=time() || $r['user']!==$user || !hash_equals($r['session'],Security::requestFingerprint($token))) {
-            throw new ApiException('Console authorization expired or used',403,403);
-        }
-        $this->revalidate($token,$r);
-        return $r;
-    }
-
-    public function revalidate(string $token, array $r): void
-    {
-        $i=$this->eligible($this->principal($token),(int)$r['instance']);
-        if (!hash_equals($r['binding'],$this->binding($i))) { throw new ApiException('Instance changed',409,409); }
+        $i=$this->eligible($this->principal($token),$id);
+        return ['binding'=>$this->binding($i)];
     }
 }

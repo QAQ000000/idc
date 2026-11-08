@@ -180,4 +180,4 @@ sequenceDiagram
 
 ## 本站控制台运行边界
 
-VNC 使用可选 Provider 能力和独立 PHP CLI 中继，Vue 本地 noVNC → 本站反向代理 → WebSocket/RFB 桥 → 白名单上游。主登录与 Redis 加密、60 秒单次授权共同验证；上游密码认证由服务端完成，不占用 FPM 长连接或追加 Node 后端。Redis 临时授权可丢失且失败关闭，不改变 MySQL Outbox/资源归属/资金事实。实现、威胁边界及验证见 [M2_INSTANCE_VNC.md](M2_INSTANCE_VNC.md)。
+用户定案为“本站页面 + 独立云控制台直连”。领域服务验证主登录、归属、权益/任务/资金门禁，Provider 可选能力返回经白名单预检的独立云 WS 和本次连接密码；浏览器本地 noVNC 与云系统直接交换画面和键鼠，本站不持有数据通道。财务域名/API 密钥、主机密码和 host_token 留在服务端，云连接参数允许浏览器读取。删除旧 PHP/RFB 中继、守护和 Redis 连接票据，不增加表或改 Outbox。页面检查与断开仅能约束正常页面，不能冒充上游连接强制撤销；详见 [M2_INSTANCE_VNC.md](M2_INSTANCE_VNC.md)。

@@ -326,8 +326,7 @@ final class ZjmfDriver implements UpstreamDriverInterface, RenewalDriverInterfac
         $url=is_string($q['url']??null)?base64_decode($q['url'],true):false;
         $password=$q['password']??$r['data']['pass']??null;
         if(!$url || !is_string($password) || strlen($password)>128){throw new \RuntimeException('Console response invalid');}
-        $origin=$p['scheme'].'://'.$p['host'].(isset($p['port'])?':'.$p['port']:'');
-        return new ConsoleTarget($url,$password,$origin);
+        return new ConsoleTarget($url,$password);
     }
 
     public function inspectPower(array $instance, array $credentials): PowerState

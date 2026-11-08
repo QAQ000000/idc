@@ -145,8 +145,10 @@ M2 已授权切换直连并退役原专属中继；正式环境单独部署。�
 
 启用本批 HTTP 代码前备份并运行 `php artisan migrate --force`（000007 增加 users.auth_version，默认 0，原无 av Token 保持兼容），然后重启本环境独立邮件 Worker 以加载密码重置场景；不重置真实用户密码、不改 SMTP 凭据、不扩大客户提醒开关。需要回滚代码时保留认证版本列及递增历史，不能回滚到忽略版本撤销的旧鉴权实现。M2 已完成备份/迁移/邮件 Worker 重启，正式环境仍另行部署。验收与 VPS 可用性限制见 [客户自助契约](M2_CUSTOMER_SELF_SERVICE.md)。
 
-## 客户重装运行接入（待执行）
+## 客户重装运行接入（M2 已执行，2026-11-09）
 
 已有库先备份并用目标环境 PHP／私有配置运行 `php artisan migrate --force`，新增 000008 仅扩展 tasks.action=reinstall，保留 27 表与历史任务。按本规程核验原 Worker 的归属后优雅重启，不重置任务／令牌，不重发未知操作。HTTP 与 Worker 的 APP_KEY／DB 保持原值；已有 power、续费与资金门禁继续适用。
 
-此批仅隔离环境验证，未迁移或重启真实 M2，未重装真实资源。启用不等于授权清盘；真实验收须另行确认实例／镜像、备份和系统盘清空许可。当前魔方云需人工证据完成回填，不以 Active 或 header 密码变化证明完成，见 [重装契约](M2_INSTANCE_REINSTALL.md)。
+M2 已在无执行中任务时停启原 Worker，私有 MySQL 8 完整备份含 27 表／5 触发器后运行 000008；02:16:18（Asia/Shanghai）新 Worker 启动，最终 PID 997094、active/running、NRestarts=0。核实原 HTTP／Worker 的 APP_KEY、DB、Redis 和配置缓存一致；迁移前后仅 migrations 增加登记，原任务及令牌不变，分钟 timer 自然触发与健康接口正常。宿主旧 mysqldump 首次备份失败时没有执行迁移，并先恢复 Worker；成功备份后才继续。未重启共享 HTTP、邮件、Redis 或数据库服务，正式环境未部署。
+
+用户另行指定实例 3／host:4253、Ubuntu 20.04 并允许清空系统盘后，从客户网页只提交一次重装，原 Worker 已受理任务 #9 并持续只读跟踪。公网 SSH 已证明 Ubuntu 20.04.4／root:22 可登录，DNS／HTTPS 正常；但真实上游仅返回通用“任务处理中”，缺少自动 execution_ended 所需的重装执行证据，**自动凭据同步及解除占用未通过**。任务保持 investigating，旧凭据读取 409；一小时窗口及后续人工异常规则保持，不伪造成功或重发。运行启用、执行结束与实际登录三类证据分开记录，详见 [本次重装验收](M2_INSTANCE_REINSTALL.md#m2-运行接入与真实-ubuntu-验收2026-11-09)。其他实例清盘仍需另行授权。

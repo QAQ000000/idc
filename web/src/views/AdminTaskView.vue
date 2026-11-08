@@ -53,11 +53,12 @@ onMounted(() => load());
   <div v-loading="busy" class="task-detail">
     <template v-if="detail">
       <el-alert v-if="detail.invoice?.status === 'paid' && detail.task.status !== 'success'" title="客户已付款，履约尚未确认完成。请先核实上游原订单，避免重复购买或重复续费。" type="warning" :closable="false" />
+      <el-alert v-if="detail.task.reinstall_result === 'execution_ended'" title="已自动跟踪到重装执行结束并同步上游凭据；这不代表已验证系统重装成功或登录成功。正常流程无需管理员逐单确认。" type="info" :closable="false" />
       <el-card>
         <h2>任务与异常</h2>
         <el-descriptions :column="1" border>
           <el-descriptions-item label="状态 / 类型">{{ detail.task.status }} / {{ detail.task.action }}</el-descriptions-item>
-          <el-descriptions-item label="异常原因">{{ detail.task.last_error || '无异常码；执行或只读调查仍可能在进行' }}</el-descriptions-item>
+          <el-descriptions-item label="状态说明 / 异常码">{{ detail.task.last_error || '无异常码；执行或只读调查仍可能在进行' }}</el-descriptions-item>
           <el-descriptions-item label="执行令牌">{{ detail.task.execution_token }}</el-descriptions-item>
           <el-descriptions-item label="上游操作 / 资源编号">{{ detail.task.upstream_task_id || '未取得' }} / {{ detail.instance.remote_instance_id || '未回填' }}</el-descriptions-item>
           <el-descriptions-item label="重试次数">{{ detail.task.retry_count }} / {{ detail.task.max_retries }}</el-descriptions-item>

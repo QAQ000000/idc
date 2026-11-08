@@ -8,7 +8,7 @@ use PDO;
 /** Administrator-only projections. Never return task payloads, connection settings or credentials. */
 final class TaskInspectionService
 {
-    private const COLUMNS = 't.id,t.instance_id,t.invoice_id,t.action,t.status,t.execution_token,t.upstream_task_id,t.last_error,t.retry_count,t.max_retries,t.lease_until,t.next_retry_at,t.created_at,t.updated_at,i.user_id,i.name AS instance_name,i.status AS instance_status,i.remote_instance_id,v.status AS invoice_status,v.total,p.name AS product_name,r.id AS provider_id,r.name AS provider_name';
+    private const COLUMNS = 'JSON_UNQUOTE(JSON_EXTRACT(t.payload,\'$.reinstall_accepted\')) AS _reinstall_accepted,JSON_UNQUOTE(JSON_EXTRACT(t.payload,\'$.reinstall_outcome\')) AS _reinstall_outcome,t.id,t.instance_id,t.invoice_id,t.action,t.status,t.execution_token,t.upstream_task_id,t.last_error,t.retry_count,t.max_retries,t.lease_until,t.next_retry_at,t.created_at,t.updated_at,i.user_id,i.name AS instance_name,i.status AS instance_status,i.remote_instance_id,v.status AS invoice_status,v.total,p.name AS product_name,r.id AS provider_id,r.name AS provider_name';
     private const JOINS = ' FROM tasks t JOIN instances i ON i.id=t.instance_id LEFT JOIN invoices v ON v.id=t.invoice_id AND v.instance_id=i.id AND v.user_id=i.user_id JOIN products p ON p.id=i.product_id JOIN providers r ON r.id=i.provider_id';
 
     public function listing(array $query, int $admin): array
@@ -19,7 +19,7 @@ final class TaskInspectionService
         $status = $query['status'] ?? 'attention';
         if (!is_string($status) || !in_array($status,['attention','manual','pending','running','investigating','failed','success','all'],true)) { throw new ApiException('Invalid task status'); }
         $where = []; $params = [];
-        if ($status === 'attention') { $where[] = "((t.status='failed' AND COALESCE(t.last_error,'') NOT LIKE 'PERMANENTLY_CANCELLED:%' AND COALESCE(t.last_error,'') NOT LIKE 'CANCELLED_BY_REFUND:%' AND COALESCE(t.last_error,'') <> 'CANCELLED_BY_RENEWAL' AND COALESCE(t.last_error,'') NOT LIKE 'ADMIN_VERIFIED:%') OR t.status='investigating' OR (t.status='running' AND (t.lease_until IS NULL OR t.lease_until<=UTC_TIMESTAMP())))"; }
+        if ($status === 'attention') { $where[] = "((t.status='failed' AND COALESCE(t.last_error,'') NOT LIKE 'PERMANENTLY_CANCELLED:%' AND COALESCE(t.last_error,'') NOT LIKE 'CANCELLED_BY_REFUND:%' AND COALESCE(t.last_error,'') <> 'CANCELLED_BY_RENEWAL' AND COALESCE(t.last_error,'') NOT LIKE 'ADMIN_VERIFIED:%') OR (t.status='investigating' AND NOT (t.action='reinstall' AND COALESCE(JSON_EXTRACT(t.payload,'$.reinstall_accepted')=true,0))) OR (t.status='running' AND (t.lease_until IS NULL OR t.lease_until<=UTC_TIMESTAMP())))"; }
         elseif ($status === 'manual') { $where[] = "(t.status='failed' AND t.last_error LIKE 'MANUAL_AUDIT_REQUIRED:%')"; }
         elseif ($status !== 'all') { $where[] = 't.status=?'; $params[] = $status; }
         if (isset($query['action']) && $query['action'] !== '') {
@@ -98,6 +98,8 @@ final class TaskInspectionService
     }
     private function safeTask(array $task): array
     {
+        $task['reinstall_result']=$task['action']==='reinstall'?InstanceReinstallService::result($task,['reinstall_accepted'=>$task['_reinstall_accepted']==='true','reinstall_outcome'=>$task['_reinstall_outcome']]):null;
+        unset($task['_reinstall_accepted'],$task['_reinstall_outcome']);
         $raw=$task['last_error'];
         // Error codes are operational identifiers; legacy arbitrary errors must not leak upstream response bodies.
         $task['last_error']=$raw===null ? null : (preg_match('/^[A-Z][A-Z0-9_]*(?::[A-Z0-9_]+)*$/D',$raw) ? $raw : 'DETAILS_REDACTED');

@@ -14,6 +14,7 @@ export const actionLabels: Record<Resolution, string> = {
 };
 export interface Task {
   id: number; instance_id: number; invoice_id: number | null; user_id: number;
+  reinstall_result: string | null;
   action: string; status: string; execution_token: number;
   upstream_task_id: string | null; remote_instance_id: string | null;
   last_error: string | null; retry_count: number; max_retries: number;

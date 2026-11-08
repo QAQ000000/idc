@@ -177,7 +177,7 @@
 ### 5. 实例自助重装系统（可选能力）
 - **读取**：`GET /api/v1/instances/{id}/reinstall`，返回 state（available/unsupported/unavailable）、available、blocked、images（id/name）、password_mode=upstream_generated、data_disk=no_format_requested、120 秒 operation_token 及最近 10 条 tasks。任务只投影 id/status/image_name/result/accepted/updated_at；accepted 仅是上游受理，不是完成。
 - **提交**：`POST /api/v1/instances/{id}/reinstall`，载荷 `{ "image_id": "1173023", "operation_token": "...", "request_key": "16-64位字母数字下划线或连字符", "confirmed_system_disk_erase": true }`。只允许本人会话；需先读能力，明确系统盘清空。客户自定义密码、端口和格式化数据盘字段均拒绝，不能静默忽略。响应为 task_id/status=pending，实例／能力变化、重复或冲突返回 409；权限不通过 401/403/404。
-- **跟踪**：仍 GET 原路径。pending/running/investigating/needs_review/success/not_executed 分开呈现，魔方 dcimcloud 无本次完成回执，受理后只读调查转人工核验，不以 Active 或镜像变化回填。未决重装期间 `/credentials` 返回 409；确认完成后返回加密保存的新凭据，响应 no-store。原交易、资源与账期保留，详见 [重装契约](M2_INSTANCE_REINSTALL.md)。
+- **跟踪**：仍 GET 原路径。result 区分 pending/running/accepted/executing/awaiting_credentials/query_unavailable/investigating/needs_review/execution_ended/success/not_executed。accepted/executing 是正常自助状态；空闲预检、明确受理、观察重装后恢复空闲、原资源凭据及再次空闲齐备才自动同步并结束原任务，status=success/result=execution_ended 只表示执行结束，不证明系统成功。未知／漏观察／超时才异常核验，不以单个 Active 或镜像变化回填。未决 `/credentials` 返回 409；同步后返回加密保存的当前凭据及 verification=upstream_reported（未验证登录）或 verified，响应 no-store。管理员任务新增脱敏 reinstall_result，不返回 payload。原交易、资源与账期保留，详见 [重装契约](M2_INSTANCE_REINSTALL.md)。
 - **管理员裁决**：现有 `/admin/tasks` action 筛选增加 reinstall；超级管理员经 `/admin/tasks/{id}/resolve` 只允许 investigate/fulfill/close_unexecuted。fulfill 除原资源／令牌／证据外须 `confirmed_reinstall_completed=true`、username、new_password（1–128 字节、实际验证的上游密码，不套用新购生成规则）；凭据不回显或进入审计。close_unexecuted 必须确认无执行／无延迟请求。禁止通用重试、退款或新购取消。
 
 ### 6. 实例自主续费（当前一个原账期，余额或现有渠道付款）
@@ -327,7 +327,7 @@
 | GET /instances/{id}/credentials | 当前所有者且 active；返回远端 username/password，仅独立点击加载，所有响应 no-store。 |
 | POST /admin/tasks/{id}/resolve | admin Token 且数据库中启用的 super_admin；动作/材料/旧 token 规则见 Outbox 契约。 |
 
-CDN 交付可没有 IP，不以缺 IP 判定失败。电源、本站 VNC 和限定云模块的重装由独立可选能力接口提供；重装完成按实际回执或管理员核验。详情与凭据对非所有者均返回 404。
+CDN 交付可没有 IP，不以缺 IP 判定失败。电源、本站 VNC 和限定云模块的重装由独立可选能力接口提供；重装区分自动观察执行结束与实际回执／管理员确认成功。详情与凭据对非所有者均返回 404。
 
 ## 固定套餐续费当前接口补充
 

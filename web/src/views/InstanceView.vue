@@ -15,6 +15,7 @@ const route = useRoute(),
 const credentials = ref<{
   username: string | null;
   password: string | null;
+  verification?: string;
 } | null>(null);
 let credentialVersion = 0;
 const labels: Record<string, string> = {
@@ -57,6 +58,7 @@ async function reveal() {
     const value = await api<{
       username: string | null;
       password: string | null;
+  verification?: string;
     }>("/instances/" + route.params.id + "/credentials");
     if (version === credentialVersion && !document.hidden)
       credentials.value = value;
@@ -267,6 +269,7 @@ VNC 控制台 ↗
             </div>
             <div v-if="credentials" class="credentials-panel">
               <p class="muted">请妥善保管，切换标签页或刷新详情后隐藏。</p>
+              <p v-if="credentials.verification === 'upstream_reported'" class="muted">当前凭据来自上游，本站尚未验证系统登录；如登录失败，请联系支持。</p>
               <dl>
                 <dt>账号</dt>
                 <dd class="mono">{{ credentials.username || "上游未提供" }}</dd>

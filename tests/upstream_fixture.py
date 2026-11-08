@@ -66,6 +66,10 @@ class Handler(BaseHTTPRequestHandler):
         elif path == '/__reinstall_mode':
             state['reinstall_mode'] = p['mode'][0]
             r = {'ok': True}
+        elif path == '/__reinstall_phase':
+            h = state['hosts'][int(p['hostid'][0])]
+            h['reinstall_phase'] = p['phase'][0]
+            r = {'ok': True}
         elif path == '/__power_mode':
             state['power_mode'] = p['mode'][0]
             r = {'ok': True}
@@ -171,6 +175,7 @@ class Handler(BaseHTTPRequestHandler):
         elif path == '/host/header':
             h = dict(state['hosts'][int(p['host_id'][0])])
             if state['power_mode'] == 'wrong_header' or state['reinstall_mode'] == 'wrong_header': h['id'] += 1
+            if state['reinstall_mode'] == 'missing_credentials': h['password'] = ''
             h['type'] = 'dcimcloud' if state['reinstall_mode'] != 'unsupported' else 'dcim'
             if state['reinstall_mode'] == 'unavailable':
                 self.send_error(503)
@@ -199,6 +204,7 @@ class Handler(BaseHTTPRequestHandler):
                     h['os'] = 'Debian-12.0_x64'
                     h['username'] = 'root'
                     h['password'] = 'NEVER-EXPOSE-NEW-HEADER-PASSWORD'
+                    h['reinstall_phase'] = 'idle' if state['reinstall_mode'] == 'missed_execution' else 'executing'
                 if state['reinstall_mode'] == 'drop':
                     self.close_connection = True
                     return
@@ -207,7 +213,12 @@ class Handler(BaseHTTPRequestHandler):
                 if state['power_mode'] == 'unavailable':
                     self.send_error(503)
                     return
-                r = {'status': 200, 'data': {'status': h.get('power_state', 'on'), 'des': 'NEVER-EXPOSE-STATUS-SECRET'}}
+                phase = h.get('reinstall_phase', 'idle')
+                status, description = h.get('power_state', 'on'), 'NEVER-EXPOSE-STATUS-SECRET'
+                if phase == 'executing': status, description = 'process', '重装系统中'
+                elif phase == 'unrelated': status, description = 'process', '创建快照中'
+                elif phase == 'unknown': status = 'unknown'
+                r = {'status': 200, 'data': {'status': status, 'des': description}}
             else:
                 if func not in ['on', 'off', 'reboot'] or p.get('is_api') != ['1']:
                     self.send_error(422)

@@ -27,7 +27,7 @@
 
 **商品运营增量（2026-11-08）**：复用 products.config_cache 记录默认配置 reference_costs（first/recurring）与 recurring_prices，旧 JSON 可缺，按 [商品 API](API.md#admin-products) 只读补取或拒绝猜价。复用 admin_audit_logs，商品版本由销售字段/快照指纹与最新商品审计构成，不新增版本表/字段或同步副本。无 DDL/迁移与历史快照重写，27 表保持。
 
-**重装增量**：tasks.action 追加 reinstall，invoice_id=NULL，payload 冻结镜像／能力与原资源身份，不存明文密码；复用实例 encrypted_password 与 delivery 元数据。27 表保持，已有库先执行 000008 再加载新 Worker；不删除历史枚举。详见 [重装契约](M2_INSTANCE_REINSTALL.md)。
+**重装增量**：tasks.action 追加 reinstall，invoice_id=NULL，payload 冻结镜像／能力与原资源身份，不存明文密码；复用 payload 记录受理、monitor version 1、已观察执行及 execution_ended／verified 结果，复用实例 encrypted_password 与 delivery.credentials_verification 区分上游提供和已核验凭据。自动执行结束不写已确认镜像；无新增 DDL。27 表保持，已有库先执行 000008 再加载新 Worker；不删除历史枚举。详见 [重装契约](M2_INSTANCE_REINSTALL.md)。
 
 **电源运维增量（2026-11-08）**：tasks.action 增加 power，invoice_id=NULL；payload 冻结命令、原资源绑定及请求客户，max_retries=0，沿用任务令牌/状态和管理员审计。无新表、实例状态副本或资金变更，27 表保持。已有库须执行 2026_11_08_000005 增量迁移；语义与兼容见 [电源契约](M2_INSTANCE_POWER.md)。
 

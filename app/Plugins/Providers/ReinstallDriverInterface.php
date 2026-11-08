@@ -6,7 +6,7 @@ namespace App\Plugins\Providers;
 interface ReinstallDriverInterface
 {
     public function inspectReinstall(array $instance, array $credentials): ReinstallOptions;
-    /** Acceptance is pending; succeeded requires operation-correlated completion and new credentials. */
+    /** Acceptance is pending. succeeded requires new credentials and correlated completion; REINSTALL_EXECUTION_ENDED only confirms an observed execution returned idle, not OS/login success. */
     public function executeReinstall(array $operation, array $credentials): DriverExecutionResult;
     /** Read-only, including after a lost response or claim recovery. */
     public function queryReinstall(array $operation, array $credentials): DriverExecutionResult;

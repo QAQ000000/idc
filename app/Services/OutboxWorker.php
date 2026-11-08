@@ -163,7 +163,10 @@ final class OutboxWorker
                 return null;
             }
             $p = json_decode($t['payload'] ?? '{}', true, 32, JSON_THROW_ON_ERROR);
-            if ($t['action']==='reinstall' && $result->code==='REINSTALL_ACCEPTED') { $p['reinstall_accepted']=true; }
+            if ($t['action']==='reinstall' && in_array($result->code,['REINSTALL_ACCEPTED','REINSTALL_EXECUTING'],true)) {
+                $p['reinstall_accepted']=true; $p['reinstall_monitor_version']=1;
+                if ($result->code==='REINSTALL_EXECUTING') { $p['reinstall_execution_observed']=true; }
+            }
             $retry = (int)$t['retry_count'];
             $next = null; $status = 'investigating'; $error = $result->code;
             if ($result->status === 'not_executed') {
@@ -177,7 +180,7 @@ final class OutboxWorker
                 $p['investigation_started_at'] ??= time();
                 if ($result->code === 'NON_QUERYABLE' || time() - $p['investigation_started_at'] >= 3600) {
                     $status = 'failed'; $error = 'MANUAL_AUDIT_REQUIRED:' . $error;
-                } else { $next = gmdate('Y-m-d H:i:s', time() + 60); }
+                } else { $next = gmdate('Y-m-d H:i:s', time() + ($t['action']==='reinstall'?15:60)); }
             }
             $db->prepare('UPDATE tasks SET status = ?, worker_id = NULL, lease_until = NULL, next_retry_at = ?, retry_count = ?, last_error = ?, payload = ?, upstream_task_id = COALESCE(?, upstream_task_id) WHERE id = ?')
                 ->execute([$status, $next, $retry, $error, json_encode($p, JSON_THROW_ON_ERROR), $result->operationId, $t['id']]);

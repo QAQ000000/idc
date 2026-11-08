@@ -44,11 +44,25 @@ final class InstanceReinstallService
             $body=rtrim(strtr(base64_encode(json_encode($claims,JSON_THROW_ON_ERROR)),'+/','-_'),'=');
             $s=$db->prepare("SELECT id,status,last_error,payload,updated_at FROM tasks WHERE instance_id=? AND action='reinstall' ORDER BY id DESC LIMIT 10");$s->execute([$id]);$tasks=[];
             foreach($s->fetchAll() as $t){$p=json_decode($t['payload'],true,32,JSON_THROW_ON_ERROR);$tasks[]=['id'=>(int)$t['id'],'status'=>$t['status'],'image_name'=>$p['image_name']??'',
-                'result'=>$t['status']==='failed'?($t['last_error']==='ADMIN_VERIFIED:REINSTALL_NOT_EXECUTED'?'not_executed':'needs_review'):$t['status'],
+                'result'=>self::result($t,$p),
                 'accepted'=>($p['reinstall_accepted']??false)===true,'updated_at'=>$t['updated_at']];}
             return ['state'=>hash_equals($version,$current)?$state:'unavailable','available'=>(bool)$available,'blocked'=>$blocked,
                 ...$options->projection(),'operation_token'=>$body.'.'.Security::requestFingerprint('reinstall:'.$body),'tasks'=>$tasks];
         });
+    }
+    public static function result(array $task,array $payload): string
+    {
+        if ($task['status']==='failed') { return $task['last_error']==='ADMIN_VERIFIED:REINSTALL_NOT_EXECUTED'?'not_executed':'needs_review'; }
+        if ($task['status']==='success') { return ($payload['reinstall_outcome']??null)==='execution_ended'?'execution_ended':'success'; }
+        if ($task['status']==='investigating' && ($payload['reinstall_accepted']??false)===true) {
+            return match($task['last_error']) {
+                'REINSTALL_EXECUTING'=>'executing',
+                'REINSTALL_ACCEPTED','REINSTALL_ACCEPTED_WAITING'=>'accepted',
+                'REINSTALL_CREDENTIALS_PENDING'=>'awaiting_credentials',
+                default=>'query_unavailable',
+            };
+        }
+        return $task['status'];
     }
     public function submit(int $user,int $id,array $input): array
     {
@@ -94,7 +108,14 @@ final class InstanceReinstallService
             ||preg_match('/[\x00-\x1f\x7f]/',$result->username.$result->password)){throw new ApiException('Reinstall completion requires original resource and verified new credentials',409,409);}
         $snapshot=json_decode($i['config_snapshot'],true,64,JSON_THROW_ON_ERROR);
         $snapshot['delivery']['username']=$result->username;
-        $snapshot['delivery']['reinstalled_image']=$p['image_name'];
+        $ended=$result->code==='REINSTALL_EXECUTION_ENDED';
+        if ($ended && (($p['reinstall_accepted']??false)!==true || ($p['reinstall_monitor_version']??null)!==1
+            || ($p['reinstall_execution_observed']??false)!==true)) { throw new ApiException('Reinstall execution observation missing',409,409); }
+        if ($ended) { unset($snapshot['delivery']['reinstalled_image']); }
+        else { $snapshot['delivery']['reinstalled_image']=$p['image_name']; }
+        $snapshot['delivery']['credentials_verification']=$ended?'upstream_reported':'verified';
+        $p['reinstall_outcome']=$ended?'execution_ended':'verified';
+        $db->prepare('UPDATE tasks SET payload=? WHERE id=?')->execute([json_encode($p,JSON_THROW_ON_ERROR),$task['id']]);
         $db->prepare('UPDATE instances SET config_snapshot=?,encrypted_password=? WHERE id=?')->execute([json_encode($snapshot,JSON_THROW_ON_ERROR),Security::encrypt($result->password),$i['id']]);
     }
 }

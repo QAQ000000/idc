@@ -376,19 +376,64 @@ final class ZjmfDriver implements ConnectionConfigInterface, UpstreamDriverInter
             || !in_array($operation['image_id']??'',array_column($options->images,'id'),true)) {
             return new R('rejected',code:'REINSTALL_CAPABILITY_CHANGED');
         }
+        $token=$this->token($credentials);
+        $before=$this->reinstallRuntime($operation,$credentials,$token);
+        if (!in_array($before['status']??'', ['on','off'],true)) { return new R('rejected',code:'REINSTALL_UPSTREAM_BUSY'); }
         preg_match('/^host:([0-9]+)$/D',$operation['remote_instance_id'],$m);
         // Exactly one destructive request. Do not send password, format=1, arbitrary port or raw client fields.
         $r=$this->request($credentials,'/provision/default',['id'=>$m[1],'func'=>'reinstall','os'=>$operation['image_id'],
             'format_data_disk'=>0,'is_api'=>1],'POST',$this->token($credentials));
-        return ($r['status']??0)===200 ? new R('pending',code:'REINSTALL_ACCEPTED') : new R('unknown',code:'REINSTALL_RESULT_UNCONFIRMED');
+        if (($r['status']??0)!==200) { return new R('unknown',code:'REINSTALL_RESULT_UNCONFIRMED'); }
+        // Capture short tasks immediately; failure of this optional read must not discard a known acknowledgement.
+        try {
+            $state=$this->reinstallRuntime($operation,$credentials,$token);
+            if ($this->isReinstallRunning($state)) { return new R('pending',code:'REINSTALL_EXECUTING'); }
+        } catch (\Throwable) {}
+        return new R('pending',code:'REINSTALL_ACCEPTED');
     }
 
     public function queryReinstall(array $operation, array $credentials): R
     {
-        // A current image, Active state or header password can change at acceptance, before disk work finishes.
-        // This API offers no operation-correlated completion receipt. Never infer success or resend.
-        $this->powerHost($operation,$credentials,$this->token($credentials));
-        return new R('unknown',code:'NON_QUERYABLE');
+        $token=$this->token($credentials);
+        $host=$this->powerHost($operation,$credentials,$token);
+        $state=$this->reinstallRuntime($operation,$credentials,$token);
+        // A lost acknowledgement or old task lacks the idle preflight. Neither can be correlated by current power state.
+        if (($operation['reinstall_accepted']??false)!==true || ($operation['reinstall_monitor_version']??null)!==1) {
+            return new R('unknown',code:'REINSTALL_SUBMISSION_UNCONFIRMED');
+        }
+        if ($this->isReinstallRunning($state)) { return new R('pending',code:'REINSTALL_EXECUTING'); }
+        if (!in_array($state['status']??'', ['on','off'],true) || ($operation['reinstall_execution_observed']??false)!==true) {
+            return new R('pending',code:'REINSTALL_ACCEPTED_WAITING');
+        }
+        $r=$this->request($credentials,'/host/header',['host_id'=>$host['id']],token:$token);$h=$r['data']['host_data']??[];
+        if (($r['status']??0)!==200 || (string)($h['id']??'')!==(string)$host['id']
+            || (int)($h['productid']??0)!==(int)$operation['remote_pid'] || ($h['type']??'')!=='dcimcloud'
+            || ($h['domainstatus']??'')!=='Active') { return new R('unknown',code:'REINSTALL_RESOURCE_MISMATCH'); }
+        $username=$h['username']??null;$password=$h['password']??null;
+        if (!is_string($username)||trim($username)===''||!is_string($password)||$password===''
+            || preg_match('/[\x00-\x1f\x7f]/',$username.$password)) { return new R('pending',code:'REINSTALL_CREDENTIALS_PENDING'); }
+        // Recheck idle after reading credentials. This proves the observed execution ended, NOT that the OS boots/logs in.
+        $after=$this->reinstallRuntime($operation,$credentials,$token);
+        if (!in_array($after['status']??'', ['on','off'],true)) { return new R('pending',code:'REINSTALL_ACCEPTED_WAITING'); }
+        return new R('succeeded',remoteInstanceId:$operation['remote_instance_id'],code:'REINSTALL_EXECUTION_ENDED',username:$username,password:$password);
+    }
+
+    private function reinstallRuntime(array $operation,array $credentials,string $token): array
+    {
+        if (!preg_match('/^host:([0-9]+)$/D',$operation['remote_instance_id']??'', $m)) { throw new \RuntimeException('Invalid reinstall binding'); }
+        $r=$this->request($credentials,'/provision/default',['id'=>$m[1],'func'=>'status','is_api'=>1],'POST',$token);
+        if (($r['status']??0)!==200 || !is_array($r['data']??null)
+            || !in_array($r['data']['status']??'', ['on','off','waiting','process','paused','cold_migrate','hot_migrate','suspend'],true)) {
+            throw new \RuntimeException('Reinstall runtime unavailable');
+        }
+        return $r['data'];
+    }
+
+    private function isReinstallRunning(array $state): bool
+    {
+        // Financial API maps cloud task_name to des; never expose arbitrary supplier descriptions.
+        return ($state['status']??'')==='process' && is_string($state['des']??null)
+            && preg_match('/^(重装系统|系统重装|重装操作系统|重装)中$/uD',$state['des'])===1;
     }
 
     public function inspectPower(array $instance, array $credentials): PowerState

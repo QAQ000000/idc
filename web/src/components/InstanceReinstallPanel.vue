@@ -10,7 +10,7 @@ interface View {
   tasks: { id: number; status: string; image_name: string; result: string; accepted: boolean; updated_at: string }[];
 }
 const view = ref<View>(), busy = ref(false), error = ref(""), notice = ref(""), image = ref(""), confirmed = ref(false);
-const results: Record<string, string> = { pending: "已排队", running: "提交中", investigating: "完成结果尚待核验", success: "已确认完成，新凭据可在本站查看", needs_review: "需要管理员核验，请勿重复重装", not_executed: "管理员已确认未执行并结束" };
+const results: Record<string, string> = { pending: "已排队", running: "提交中", accepted: "上游已受理，自动跟踪执行状态", executing: "已观察到上游重装执行，自动跟踪中", awaiting_credentials: "上游已空闲，等待凭据同步", query_unavailable: "上游已受理，当前查询未能确认结果，继续只读跟踪", execution_ended: "上游执行已结束，新凭据已同步；请登录检查系统结果", investigating: "提交结果未知，正在只读调查，请勿重复提交", success: "已确认完成，新凭据可在本站查看", needs_review: "需要管理员核验，请勿重复重装", not_executed: "管理员已确认未执行并结束" };
 let timer: ReturnType<typeof setTimeout> | undefined, disposed = false, signature = "";
 async function refresh() {
   if (busy.value || disposed) return;
@@ -19,7 +19,8 @@ async function refresh() {
     const current = await api<View>(`/instances/${props.instanceId}/reinstall`);
     if (disposed) return;
     view.value = current; emit("blocked", current.blocked);
-    const next = JSON.stringify(current.tasks.map(t => [t.id, t.status]));
+    if (current.tasks[0] && ["success", "failed"].includes(current.tasks[0].status)) notice.value = "";
+    const next = JSON.stringify(current.tasks.map(t => [t.id, t.status, t.result]));
     if (signature && signature !== next) emit("changed");
     signature = next;
     if (!current.images.some(v => v.id === image.value)) { image.value = ""; confirmed.value = false; }
@@ -35,7 +36,7 @@ async function submit() {
   const token = view.value.operation_token;
   clearTimeout(timer); busy.value = true; error.value = ""; notice.value = "";
   try {
-    await ElMessageBox.confirm(`将重装为 ${selected.name}。系统盘全部数据会被清空，无法撤销。数据盘不请求格式化，但仍需提前备份。新密码由上游生成，核验完成后在本站查看。确认已备份并提交一次？`, "再次确认重装系统", { type: "warning", confirmButtonText: "确认清空系统盘并重装", cancelButtonText: "取消" });
+    await ElMessageBox.confirm(`将重装为 ${selected.name}。系统盘全部数据会被清空，无法撤销。数据盘不请求格式化，但仍需提前备份。新密码由上游生成，执行结束并同步后在本站查看。确认已备份并提交一次？`, "再次确认重装系统", { type: "warning", confirmButtonText: "确认清空系统盘并重装", cancelButtonText: "取消" });
   } catch { busy.value = false; await refresh(); return; }
   try {
     emit("changed");
@@ -51,8 +52,8 @@ onUnmounted(() => { disposed = true; clearTimeout(timer); });
   <el-card shadow="never">
     <el-alert v-if="error" :title="error" type="error" :closable="false" role="alert" />
     <el-alert v-if="notice" :title="notice" type="info" :closable="false" />
-    <el-alert v-if="view?.blocked" title="存在排队、未决操作或资金冻结，暂不能重装。请等待原任务或联系管理员。" type="warning" :closable="false" />
-    <p v-for="task in view?.tasks.filter(t => ['pending', 'running', 'investigating'].includes(t.status) || t.result === 'needs_review') || []" :key="task.id" class="operation-notice" role="status">重装任务 #{{ task.id }} · {{ results[task.result] }}</p>
+    <el-alert v-if="view?.blocked" title="存在进行中的操作或资金冻结，暂不能重装。原任务会自动跟踪，异常时再联系管理员。" type="warning" :closable="false" />
+    <p v-for="task in view?.tasks.filter((t, index) => index === 0 || ['pending', 'running', 'investigating'].includes(t.status) || t.result === 'needs_review') || []" :key="task.id" class="operation-notice" role="status">重装任务 #{{ task.id }} · {{ results[task.result] }}</p>
     <!-- Native details keeps capability polling and blocked events mounted. -->
     <details class="auxiliary-details">
       <summary>重装系统与操作记录</summary>
@@ -63,7 +64,7 @@ onUnmounted(() => { disposed = true; clearTimeout(timer); });
           <el-form v-if="view.images.length" label-position="top" @submit.prevent="submit">
             <el-alert title="系统盘全部清空，操作不可撤销；数据盘固定不请求格式化，仍须备份重要数据。" type="warning" :closable="false" />
             <el-form-item label="系统镜像"><el-select v-model="image" aria-label="重装系统镜像" placeholder="请选择上游提供的镜像" :disabled="busy || !view.available" style="width: 100%" @change="confirmed = false"><el-option v-for="os in view.images" :key="os.id" :label="os.name" :value="os.id" /></el-select></el-form-item>
-            <p class="muted">密码由上游生成；完成核验后通过本站“查看登录凭据”获取。重装不改变原资源、到期日或续费价。</p>
+            <p class="muted">密码由上游生成；执行结束并同步后通过本站“查看登录凭据”获取。重装不改变原资源、到期日或续费价。</p>
             <el-checkbox v-model="confirmed" class="task-confirm" :disabled="busy || !view.available" style="height: auto; white-space: normal; margin-bottom: 16px">已备份重要数据，确认允许清空系统盘</el-checkbox>
             <div class="actions"><el-button native-type="submit" type="danger" :disabled="!view.available || !image || !confirmed || busy">重装系统</el-button></div>
           </el-form>
@@ -72,7 +73,7 @@ onUnmounted(() => { disposed = true; clearTimeout(timer); });
             <el-table-column label="结果" min-width="270"><template #default="{ row }"><div v-if="row.accepted">上游已受理</div>{{ results[row.result] }}</template></el-table-column>
             <el-table-column prop="updated_at" label="更新时间 (UTC)" min-width="180" />
           </el-table>
-          <p class="muted">最近 10 次操作。在途任务每 15 秒只读查询；无可靠完成回执时需管理员核验，不自动重发，也不以运行状态代替完成结果。</p>
+          <p class="muted">最近 10 次操作。在途任务每 15 秒只读查询；已受理任务自动跟踪；上游恢复空闲仅表示执行结束，不保证系统可登录。结果未知、超时等异常才转管理员核验，始终不自动重发。</p>
         </template>
         <el-button :loading="busy" @click="refresh">刷新镜像与重装结果</el-button>
       </div>

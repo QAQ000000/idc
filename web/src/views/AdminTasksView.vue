@@ -71,7 +71,7 @@ onUnmounted(() => compactQuery.removeEventListener("change", syncCompact));
     </div>
     <el-table v-loading="busy" :data="data?.items || []" :empty-text="busy ? '正在查询任务…' : error ? '任务查询失败，请刷新重试' : '没有匹配的任务'" row-key="id" style="width:100%">
       <el-table-column label="任务" width="110"><template #default="{ row }"><RouterLink :to="`/admin/tasks/${row.id}`">#{{ row.id }} 详情</RouterLink></template></el-table-column>
-      <el-table-column prop="action" label="类型" width="90" /><el-table-column prop="status" label="状态" width="125" />
+      <el-table-column prop="action" label="类型" width="90" /><el-table-column label="状态" min-width="150"><template #default="{ row }">{{ row.reinstall_result === "execution_ended" ? "执行已结束（系统未验证）" : row.reinstall_result === "accepted" ? "上游已受理" : row.reinstall_result === "executing" ? "上游重装中" : row.status }}</template></el-table-column>
       <el-table-column label="账单 / 实例" width="150"><template #default="{ row }">账单 {{ row.invoice_id ? '#' + row.invoice_id : '—' }}<br><RouterLink :to="`/admin/instances/${row.instance_id}`">实例 #{{ row.instance_id }}</RouterLink></template></el-table-column>
       <el-table-column label="账单状态" width="130"><template #default="{ row }">{{ row.invoice_status || '无账单' }}<template v-if="row.total !== null"><br>¥{{ row.total }}</template></template></el-table-column>
       <el-table-column prop="product_name" label="商品" min-width="150" />

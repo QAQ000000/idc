@@ -1,0 +1,7 @@
+# Launch Codex from this repository root. No deployment environment is inherited by PHP.
+[mcp_servers.laravel-boost]
+command = "python3"
+args = ["scripts/boost_mcp.py"]
+env_vars = ["JIANYUN_BOOST_DATABASE_CONFIG"]
+startup_timeout_sec = 20
+tool_timeout_sec = 45

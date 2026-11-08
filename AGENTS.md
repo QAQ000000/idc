@@ -128,4 +128,6 @@ git diff --check
 
 集成测试需要 Docker、PHP、Python 3.9+ 和 `redis-server`；Redis 不在 PATH 时设置 `REDIS_SERVER=/absolute/path/to/redis-server`。脚本创建独立 MySQL/Redis/HTTP 环境，不读取部署 `.env`、不连接业务库。数据库字典 SQL 由 `schema.sql` 生成，修改后用 `python3 scripts/sync_schema_docs.py --write` 同步再检查；增量迁移仍需独立编写与审阅。
 
+开发 Agent 可使用 [Boost 开发指南](docs/DEVELOPMENT_AGENTS.md) 中的隔离 MCP；项目领域约束与上述自定义检查入口优先。Boost 只作为开发依赖，不覆盖本文件或引入业务 AI，禁止将其连接 M2/正式库。
+
 完成前说明实际变更、验证结果与未验证边界。修改已冻结契约时必须记录变更原因、受影响文档/模块、兼容或迁移影响及验证证据，并同步摘要、接口、字典和路线图；文档补齐不能把待实现任务勾为完成。

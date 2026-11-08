@@ -90,6 +90,10 @@ REDIS_SERVER=/absolute/path/to/redis-server python3 scripts/test_integration.py
 
 ---
 
+## 开发 Agent 工具
+
+已将 Laravel Boost 作为开发依赖接入，项目 Codex MCP 配置通过隔离启动器提供框架信息及文档检索，数据库工具仅向显式绑定的独立开发/测试库开放。原有检查脚本与领域约束保留，不增加业务 AI 功能或生产服务。启动、权限与验收见 [开发 Agent 指南](docs/DEVELOPMENT_AGENTS.md)。
+
 ## 管理后台：异常任务与人工核验
 
 沿用同一前端，打开 `/admin/login`，任务入口 `/admin/tasks`。启用的管理员可以筛选、分页查看异常任务及账单/实例/上游上下文和审计；只有启用的 `super_admin` 能提交原有人工核验动作，操作要求证据和页面所读执行令牌，越权、重放或过期状态会被拒绝。客户与管理员账号/Token 分离。

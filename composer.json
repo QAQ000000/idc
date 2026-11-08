@@ -20,5 +20,8 @@
     },
     "config": {"sort-packages": true, "allow-plugins": {}},
     "minimum-stability": "stable",
-    "prefer-stable": true
+    "prefer-stable": true,
+    "require-dev": {
+        "laravel/boost": "^2.10"
+    }
 }

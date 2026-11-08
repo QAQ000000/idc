@@ -43,6 +43,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--browser', action='store_true', help='Keep an isolated backend + Vite running until Enter')
     parser.add_argument('--runtime', action='store_true', help='Also verify temporary systemd units, timer, restart and journal (root + systemd required)')
+    parser.add_argument('--boost', action='store_true', help='Also verify the dev-only Boost MCP against the isolated database')
     parser.add_argument('--deployment', action='store_true', help='Also rehearse a fresh production-mode release with isolated HTTPS/FPM/database')
     parser.add_argument('--deployment-only', action='store_true', help='Run only the fresh-install rehearsal, using the same disposable infrastructure')
     args = parser.parse_args()
@@ -99,6 +100,9 @@ def main():
                     raise RuntimeError("Isolated MySQL did not become ready")
                 time.sleep(0.3)
             subprocess.run([php, "scripts/console.php", "db:init"], cwd=ROOT, env=env, check=True)
+            if args.boost:
+                from test_boost import verify_boost
+                verify_boost(env, directory, php)
             if args.deployment_only:
                 from test_deployment import verify_deployment
                 verify_deployment(env, directory, php, fpm, name)

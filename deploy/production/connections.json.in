@@ -1,0 +1,18 @@
+{
+  "provider": {
+    "driver": "zjmf",
+    "name": "REPLACE_WITH_APPROVED_PROVIDER_NAME",
+    "endpoint": "https://upstream.example.com",
+    "credentials": {"username": "REPLACE_WITH_PRODUCTION_ACCOUNT", "password": "REPLACE_WITH_API_SECRET"}
+  },
+  "product": {"remote_pid": 391, "name": "REPLACE_WITH_APPROVED_PRODUCT_NAME", "type": "cdn", "monthly_price": "0.01"},
+  "payment": {
+    "driver": "epay",
+    "endpoint": "https://pay.example.com",
+    "pid": "REPLACE_WITH_PRODUCTION_MERCHANT_ID",
+    "type": "alipay",
+    "notify_url": "https://shop.example.com/api/v1/payments/epay/notify",
+    "return_url": "https://shop.example.com",
+    "credentials": {"key": "REPLACE_WITH_PAYMENT_SECRET"}
+  }
+}

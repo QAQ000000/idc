@@ -2,6 +2,8 @@
 
 本规程只接入现有 Laravel 调度、Outbox Worker 与日志，不替代生产 HTTP、数据库备份或完整割接。续费异常按“告警管理员、不自动退款”处理，见 [续费契约](M2_RENEWAL_CONTRACT.md)。
 
+正式环境的完整安装顺序、Nginx/PHP-FPM、HTTPS/回调、备份恢复和邀请试售以 [正式部署入口](PRODUCTION_READINESS.md) 为准；下方 M2 记录保留其原批次边界。
+
 ## 运行单元
 
 模板位于 [deploy/systemd](../deploy/systemd/worker.service.in)，由 [渲染命令](../scripts/render_systemd.py) 生成四个带环境名称的单元：

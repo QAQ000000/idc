@@ -43,7 +43,11 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--browser', action='store_true', help='Keep an isolated backend + Vite running until Enter')
     parser.add_argument('--runtime', action='store_true', help='Also verify temporary systemd units, timer, restart and journal (root + systemd required)')
+    parser.add_argument('--deployment', action='store_true', help='Also rehearse a fresh production-mode release with isolated HTTPS/FPM/database')
+    parser.add_argument('--deployment-only', action='store_true', help='Run only the fresh-install rehearsal, using the same disposable infrastructure')
     args = parser.parse_args()
+    if args.deployment_only and (args.runtime or args.browser):
+        parser.error('--deployment-only cannot be combined with --runtime or --browser')
     php = shutil.which("php")
     redis = os.getenv("REDIS_SERVER") or shutil.which("redis-server")
     fpm = os.getenv('PHP_FPM') or (str(Path(php).resolve().parent.parent / 'sbin/php-fpm') if php else '')
@@ -95,6 +99,11 @@ def main():
                     raise RuntimeError("Isolated MySQL did not become ready")
                 time.sleep(0.3)
             subprocess.run([php, "scripts/console.php", "db:init"], cwd=ROOT, env=env, check=True)
+            if args.deployment_only:
+                from test_deployment import verify_deployment
+                verify_deployment(env, directory, php, fpm, name)
+                print('Fresh installation rehearsal verified; cleaning up all test resources.')
+                return
             console_port = free_port()
             env.update(CONSOLE_TARGETS=f'127.0.0.1:{console_port}',
                        CONSOLE_TEST_LOOPBACK='1', CONSOLE_TEST_WS_URL=f'ws://127.0.0.1:{console_port}/vnc?token=SECRET')
@@ -173,6 +182,9 @@ def main():
             if args.runtime:
                 from test_runtime import verify_runtime
                 verify_runtime(env, directory, php)
+            if args.deployment:
+                from test_deployment import verify_deployment
+                verify_deployment(env, directory, php, fpm, name)
             if args.browser:
                 vite_port = free_port()
                 vite_env = env | {'API_PROXY_TARGET': env['TEST_BASE_URL']}

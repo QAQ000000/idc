@@ -1,0 +1,55 @@
+# Include inside nginx's http {}. Generated files do not start or reload nginx.
+log_format @LOG_NAME@ '$remote_addr [$time_local] "$request_method $uri $server_protocol" $status $body_bytes_sent';
+server {
+    listen @BIND@:@HTTP_PORT@;
+    server_name @DOMAIN@;
+    access_log "@LOG_DIR@/access.log" @LOG_NAME@;
+    error_log "@LOG_DIR@/error.log" warn;
+    location ^~ /.well-known/acme-challenge/ {
+        root "@ACME_ROOT@";
+        try_files $uri =404;
+    }
+    location / { return 308 https://@HTTPS_AUTHORITY@$request_uri; }
+}
+server {
+    listen @BIND@:@HTTPS_PORT@ ssl;
+    server_name @DOMAIN@;
+    ssl_certificate "@CERT@";
+    ssl_certificate_key "@CERT_KEY@";
+    ssl_protocols TLSv1.2 TLSv1.3;
+    root "@APP@/web/dist";
+    include "@MIME_TYPES@";
+    index index.html;
+    client_max_body_size 64k;
+@INVITE_GATE@
+    access_log "@LOG_DIR@/access.log" @LOG_NAME@;
+    error_log "@LOG_DIR@/error.log" warn;
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy no-referrer always;
+    location = /api {
+@BACKEND@
+    }
+    # Gateway callbacks must remain reachable when invitation access is restricted.
+    location = /api/v1/payments/epay/notify {
+        allow all;
+@BACKEND@
+    }
+    location ^~ /api/ {
+@BACKEND@
+    }
+    location = /health {
+@BACKEND@
+    }
+    location ~ (^|/)\. { return 404; }
+    location ~ \.php(?:/|$) { return 404; }
+    location /assets/ {
+        try_files $uri =404;
+        expires 7d;
+    }
+    location = /index.html {
+        add_header Cache-Control "no-store";
+        add_header X-Content-Type-Options nosniff always;
+        add_header Referrer-Policy no-referrer always;
+    }
+    location / { try_files $uri $uri/ /index.html; }
+}

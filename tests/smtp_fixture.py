@@ -3,6 +3,7 @@
 import http.server
 import json
 import socketserver
+import ssl
 import sys
 import threading
 
@@ -73,5 +74,9 @@ class Server(socketserver.ThreadingTCPServer):
 
 if __name__ == '__main__':
     smtp = Server(('127.0.0.1', int(sys.argv[1])), SMTP)
+    if len(sys.argv) == 5:
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(sys.argv[3], sys.argv[4])
+        smtp.socket = context.wrap_socket(smtp.socket, server_side=True)
     threading.Thread(target=smtp.serve_forever, daemon=True).start()
     http.server.ThreadingHTTPServer(('127.0.0.1', int(sys.argv[2])), Control).serve_forever()

@@ -1,0 +1,18 @@
+[Unit]
+Description=JianYun dedicated PHP-FPM (@NAME@)
+After=network.target
+
+[Service]
+Type=simple
+# The master creates the socket; the pool drops privileges to @USER@.
+ExecStart=@FPM@ --nodaemonize --fpm-config @OUTPUT@/master.conf
+Restart=on-failure
+RestartSec=5
+RuntimeDirectory=@NAME@
+UMask=0077
+NoNewPrivileges=true
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

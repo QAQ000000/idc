@@ -114,7 +114,7 @@
 | Worker、实例、续费、快照 | [Outbox](docs/TASKS_OUTBOX.md)、[生命周期](docs/LIFECYCLE_PRICING.md)、[快照调度](docs/BACKUP_SCHEDULER.md) |
 | 插件、验证码、通知 | [插件手册](docs/PLUGIN_DEV.md)、[验证码](docs/CAPTCHA.md)、[通知](docs/NOTIFICATIONS.md) |
 | 接口、前端、割接 | [API](docs/API.md)、[前端](docs/FRONTEND.md)、[割接规程](docs/MIGRATION_RUNBOOK.md) |
-| 部署、调度、Worker 守护与日志 | [运行部署规程](docs/DEPLOYMENT_RUNTIME.md)；区分 M2 验收环境与正式环境，接管前核验原进程归属 |
+| 部署、调度、Worker 守护与日志 | [正式部署入口](docs/PRODUCTION_READINESS.md)、[运行部署规程](docs/DEPLOYMENT_RUNTIME.md)；区分 M2 验收环境与正式环境，接管前核验原进程归属 |
 
 常用验证命令（从仓库根目录执行）：
 

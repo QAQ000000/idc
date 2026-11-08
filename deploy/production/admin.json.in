@@ -1,0 +1,6 @@
+{
+  "username": "REPLACE_WITH_ADMIN_LOGIN",
+  "email": "operator@example.com",
+  "password": "REPLACE_WITH_RANDOM_ADMIN_PASSWORD",
+  "role": "super_admin"
+}

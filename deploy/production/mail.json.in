@@ -1,0 +1,17 @@
+{
+  "enabled": true,
+  "task_alerts": true,
+  "due_reminders": false,
+  "site_url": "https://shop.example.com",
+  "admin_ids": [1],
+  "subject_prefix": "[简云] ",
+  "config": {
+    "host": "smtp.example.com",
+    "port": 465,
+    "security": "smtps",
+    "username": "REPLACE_WITH_SMTP_USERNAME",
+    "password": "REPLACE_WITH_SMTP_PASSWORD",
+    "from": "billing@example.com",
+    "from_name": "简云"
+  }
+}

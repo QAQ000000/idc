@@ -1,0 +1,5 @@
+[global]
+daemonize = no
+pid = @LOG_DIR@/fpm.pid
+error_log = @LOG_DIR@/fpm-error.log
+include = @OUTPUT@/pool.conf

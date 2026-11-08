@@ -19,6 +19,8 @@
 
 **充值唤醒增量**：原 Worker 每轮先消费一个 Redis 客户提示，复用原代扣服务检查其已有续费单，再处理原 Outbox；无新增 unit 或调度。HTTP 与 Worker 须使用同一 APP_KEY、DB 和 Redis 环境。更新目标环境后按本规程核验归属并重启原 Worker；不用迁移数据库、重置任务或补发已收款通知。Redis 故障会记录 `Renewal wake-up unavailable; scheduled MySQL debit remains active`，当前进程退避 60 秒但继续原 Outbox；信号丢失仍由 15 分钟扫描恢复。该 warning 仅表示提前扫描降级，不表示充值失败或需要重复付款，见 [完整边界](M2_RENEWAL_CONTRACT.md#充值到账后的异步唤醒)。
 
+**本批 M2 已加载（2026-11-08）**：21:11:04（Asia/Shanghai）已核对归属并正常重启原 Worker，PID 819426 → 916250、active/running、NRestarts=0；HTTP／Worker 密钥、DB、Redis 一致，健康接口正常。21:15 自然 timer 的代扣为 0，21:15:15 用户真实充值 ¥0.01 后，原 Worker 同秒代扣 CDN 原续费单 #5，任务 #8 于 21:15:32 观察到 success、关联上游 811257；无须等到 21:30 扫描。用户确认上游手动改过账期并明确授权本地校准，校准审计 #6、历史权益记录及完整资金／防重证据单列在 [本次验收](M2_RENEWAL_CONTRACT.md#m2-运行接入与真实-cdn-验收2026-11-08)。仅现有 M2 接入，无新 unit／迁移或正式环境部署；不复用这次测试校准作为日常调整客户权益的授权。
+
 Worker 被终止后不会清理或重置业务占用；过期 running 租约只允许接管同任务调查，不重发不明结果的续费或付款。普通停止不是上游请求撤销证明；发布重启也须保留原任务。失败人工核验任务重启后继续保留，不自动退款。
 
 ## 配置与安装

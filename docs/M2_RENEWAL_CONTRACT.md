@@ -99,4 +99,24 @@
 
 独立 systemd 另通过 **26 项运行检查**（原 25＋本批 1）：真实守护进程在没有新一轮调度时消费提交后的充值提示，结算原续费单并确认一次协议履约；原分钟触发、出账／代扣、SIGKILL 重启、旧执行令牌拒绝、未知结果只读恢复、日志及人工待办重启保留均通过。systemd 演练使用测试 unit，不接管 M2 或共享服务。
 
-本机日志 `/tmp/jianyun-wakeup-integration.log`。测试只运行一次性 MySQL／Redis／HTTP 协议夹具及独立 systemd 单元，未产生 M2 真实充值、续费或上游请求，未重启 M2／正式环境原 Worker；现有环境加载与真实体验 CDN 验收不算入上述检查。真实启用须按运行规程重启所属 Worker，无需迁移或修改任何原实例账期。
+本机日志 `/tmp/jianyun-wakeup-integration.log`。上述开发与隔离批次只运行一次性 MySQL／Redis／HTTP 协议夹具及独立 systemd 单元，未产生 M2 真实充值、续费或上游请求，未重启 M2／正式环境原 Worker；后续 M2 接入和真实资金证据单列如下，不计入上述检查。常规启用只需按运行规程重启所属 Worker，无需迁移或修改实例账期。
+
+### M2 运行接入与真实 CDN 验收（2026-11-08）
+
+用户另行授权将本批接入现有 M2，并限定商品 391／资源 `host:4250` 验收。21:11:04（Asia/Shanghai）已受控重启 `jianyun-m2-worker.service`，PID 819426 → 916250；停止前无 running／investigating 任务，journal 记录正常停止，无强杀／租约重置。新进程保持 active/running、NRestarts=0。已核对 cwd、PHP 8.4 和 HTTP／Worker 的 APP_KEY、DB、Redis 配置一致，API 与前端代理 `/health` 均正常；无迁移、新 unit 或正式环境变更。基础设施客户提示约 152ms 被新 Worker 消费，仅证明循环已加载，不冒充真实充值证据。
+
+验收前只读查到 CDN 本地到期为 `2027-01-07 15:33:12 UTC`，上游却为 Suspended、`2026-11-07 17:05:24 UTC`。用户确认在上游手动改过账期，并明确授权修改本地时间后测试。仅对实例 1 校准 due_date 至当前上游时间，在持有行锁的同一事务内追加审计 **#6 / acceptance.instance_due_align**，记录授权、调整前后和资源绑定；原实例及历史单据已私有备份，历史已付账单／任务／令牌／价格／资金未重写。这是本次授权的测试数据校准，不是新增自动对账或生产缩短客户权益的规则。原上游账单 811244 的查询返回 406／“账单已支付”，不能由该状态推断未付、删除或退款。
+
+校准后复用原 RenewalService 创建该周期唯一续费单 **#5 / ¥0.01**，钱包为 0，auto_renew=1；创建独立充值单 **#6 / ¥0.01**，由用户在易支付真实付款。过程证据如下（展示时间均为 Asia/Shanghai，账期字段为 UTC）：
+
+| 时点／关联 | 已核实事实 |
+|---|---|
+| 21:15:00 自然 timer | renewals:debit 输出 `Renewal invoices paid: 0`，余额不足时原单继续未付；下一轮兜底为 21:30 |
+| 21:15:15 充值 | 易支付凭证 `H202611082114204160`，收款记录 #5，充值单 #6 paid，新增 wallet recharge 流水 #1／+¥0.01；轮询先观察到充值已提交、原续费单未付、尚无任务 |
+| 同一秒提前代扣 | 原 Worker 结算续费单 #5，余额收款记录 #6，pay_invoice 流水 #2／-¥0.01；实例按校准后的原账期顺延一次至 `2026-12-07 17:05:24 UTC`，只生成 renew 任务 #8 |
+| 21:15:32 履约观察 | 任务 #8 success，execution_token=2，上游续费单 `invoice:811257`；驱动再次只读确认 `succeeded / RENEWED`，资源 Active，上游与本地到期一致 |
+| 重复与扫描 | 对该已验签实收凭证重放两次签名通知，均 HTTP 200／success；再执行原 renewals:debit 输出 0；账单、凭证数、钱包、流水数、任务和到期日均不再变化 |
+
+最终钱包 ¥0.00，消费累计只增加续费 ¥0.01，充值不计消费／佣金。只有两张新账单、两条收款记录、两条钱包流水、一条 renew 任务；没有新实例或充值交付任务。原任务 1–7（含旧待核验任务 3）、历史续费账单 2、其他实例／账户保持，27 表不变。上述真实 M2 接入共核对 **17 项结果断言**，与 856 项隔离业务、26 项独立运行检查分开记录。现有开发 HTTP 仍不是正式部署；本次本地状态原为 active，不作为本地欠费暂停恢复门禁的新验收证据。
+
+私有证据目录 `/root/.local/state/jianyun-m2-acceptance/`：`wakeup-runtime-before.json`、`wakeup-before-authorized-alignment.json`、`wakeup-real-prepared.json`、`wakeup-real-observations.jsonl`、`wakeup-real-confirmed.json`、`wakeup-real-finance.json`、`wakeup-runtime-after.json`、`wakeup-runtime-verification.json` 及重复通知结果；含凭据的原始响应／签名材料仅留受保护本机，不入 Git。Worker／分钟 timer 保留启用，15 分钟 MySQL 扫描继续兜底；不把一次顺利履约承诺为固定秒数或所有故障下的上游完成时限。

@@ -106,6 +106,10 @@ final class NotificationService
                         $settings['site_url'].'/instances/'.$i['id']."\n若已续费，请以控制台最新账期为准；本邮件不证明上游续费已完成。");
                 }
             }
+            // A save may commit after the sender loaded its SMTP document but before claim.
+            // Leave eligible mail pending for a fresh load; never send with a superseded password or switch.
+            $current=$db->query("SELECT value,encrypted_credentials FROM system_settings WHERE `key`='notify.mail' FOR SHARE")->fetch();
+            if($valid && (!$current || !hash_equals($settings['settings_revision']??'',NotificationSettingsService::senderRevision($current)))){return null;}
             $s=$db->prepare("SELECT * FROM notification_deliveries WHERE id=? AND channel='mail' FOR UPDATE");$s->execute([$id]);$d=$s->fetch();
             if (!$d || $d['status']!=='pending') { return null; }
             // The event identity/recipient is immutable after insertion; never retarget an existing claim.

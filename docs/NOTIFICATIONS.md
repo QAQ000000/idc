@@ -15,7 +15,7 @@
 
 ## 2. 渠道插件规范 (`plugins/notifications/`)
 
-完整接口及 DTO 以 [插件手册 §五](PLUGIN_DEV.md#五-通知通道插件开发规范-notificationchannelinterface) 和 `app/Plugins/Notifications/` 为准，本页维护投递业务规则，不复制接口。首个实现为 mail/SMTP，其他渠道与动态后台配置仍属规划。
+完整接口及 DTO 以 [插件手册 §五](PLUGIN_DEV.md#五-通知通道插件开发规范-notificationchannelinterface) 和 `app/Plugins/Notifications/` 为准，本页维护投递业务规则，不复制接口。首个实现为 mail/SMTP，其他渠道仍属规划；现有邮件配置后台见 [配置契约](M2_MAIL_SETTINGS.md)。
 
 ---
 
@@ -168,7 +168,7 @@ php artisan notifications:resolve DELIVERY_ID ADMIN_ID < /受保护目录/review
 {"enabled":true,"task_alerts":true,"due_reminders":false,"site_url":"https://shop.example","admin_ids":[1],"subject_prefix":"","config":{"host":"smtp.example","port":465,"security":"smtps","username":"sender@example.test","password":"PRIVATE_SECRET","from":"sender@example.test","from_name":"站点名称"}}
 ```
 
-SMTP 所有配置整体 AES-256-GCM 加密存入 notify.mail 的 encrypted_credentials；启用开关、场景开关、本站 origin/标题前缀和管理员 ID 放非敏感 value，并同事务审计。配置只允许当前启用 super_admin 本地提交；启用前管理员邮箱须已核准且有效，不能沿用 example.invalid 占位。首版不增加 HTTP 配置接口或通知管理页，不影响现有任务详情权限。客户提醒启用需显式 due_reminders=true，未配置/总开关关闭时不产生或发送新通知；关闭不撤回已在网络中的发送，悬空发送的恢复仍会执行。
+SMTP 所有配置整体 AES-256-GCM 加密存入 notify.mail 的 encrypted_credentials；启用开关、场景开关、本站 origin/标题前缀和管理员 ID 放非敏感 value，并同事务审计。配置只允许当前启用 super_admin 提交，CLI 和后续网页入口复用同一服务；启用前管理员邮箱须已核准且有效，不能沿用 example.invalid 占位。原首批未增加 HTTP 配置接口；后续新增受版本控制的邮件／工单配置页，见 [配置契约](M2_MAIL_SETTINGS.md)，不影响现有任务详情权限。客户提醒启用需显式 due_reminders=true，未配置/总开关关闭时不产生或发送新通知；关闭不撤回已在网络中的发送，悬空发送的恢复仍会执行。
 
 核验输入：`{"status":"success","expected_status":"pending_manual_check","evidence":"SMTP 日志/服务商队列中已接受该 Message-ID 的依据"}`；确认权威拒绝则 status=failed，无法确认保持原状。`notifications:inspect` 只输出编号/指纹/状态/时间及脱敏码，CLI 本身是部署运维信任边界，不输出 SMTP 配置、正文和目标地址。
 
@@ -196,3 +196,7 @@ TicketService在新工单首条消息／客户追加／管理员公开回复的�
 `notify.ticket_mail`独立保存开关、管理员ID、服务端activation与UTC起点，无新表／字段／迁移。默认关闭，`notifications:tickets ADMIN_ID`从私有stdin接受显式开关和管理员列表，当前super_admin／同事务审计；启用需邮件总开关开启。配置提交与消息共享配置锁定义起点，每次配置建立新订阅期，旧排队消息失效，没有历史消息扫描或补发。SMTP总配置不覆盖工单订阅。
 
 认领前重查工单归属、原公开消息／作者、收件启用／原邮箱、指定管理员及当前activation，仍复用pending→sending→结果CAS与未知人工核验。消息和占位同事务是本批针对工单提交的调整；既有任务／临期来源仍用原补扫，金融事务不耦合邮件，其他渠道仍延期。完整锁序、成本和运行前置见[工单邮件契约](M2_TICKET_MAIL.md)。完整1390项业务回归、工单专项65项及26项运行检查通过；本批未开启M2工单邮件或发送真实邮件，证据与边界见上述契约。
+
+## 邮件配置后台增量（2026-11-09）
+
+现有 SMTP／开关／指定管理员在 `/admin/notifications` 维护，只有当前超级管理员读写，原 CLI 保留。密钥默认保留、显式替换，不回显；配置与审计同事务并校验原配置版本。工单独立保存与确认，普通保存不切换订阅期；Sender 在认领前重核 SMTP 配置版本，过期快照不发送。无需新增表或迁移，M2 工单启用仍单独验收，见 [契约](M2_MAIL_SETTINGS.md)。

@@ -126,7 +126,7 @@ tmCheck(tmDelivery($unknown)['status']==='pending_manual_check'&&tmState()['data
 $notifications->sweep();$notifications->runOnce();tmCheck(tmState()['data_attempts']===1,'sweep and sender never resend an unknown ticket mail');
 $notifications->resolve($admin,$unknown,['status'=>'success','expected_status'=>'pending_manual_check','evidence'=>'Local SMTP fixture proves accepted DATA for this Message-ID']);
 tmCheck(tmDelivery($unknown)['status']==='success'&&!$notifications->finish($unknown,new NotificationResult('rejected','LATE_RESULT')),'existing manual resolution fences a late sender without resend');
-$made=$tickets->create($user,tmCreate());$crash=(int)tmDeliveries($made['reply_id'])[0]['id'];tmOnly($crash);tmState('normal');$claim=$notifications->claim($crash,$mail);
+$made=$tickets->create($user,tmCreate());$crash=(int)tmDeliveries($made['reply_id'])[0]['id'];tmOnly($crash);tmState('normal');$claim=$notifications->claim($crash,$settings->load());
 $db->prepare('UPDATE notification_deliveries SET updated_at=DATE_SUB(UTC_TIMESTAMP(),INTERVAL 16 MINUTE) WHERE id=?')->execute([$crash]);
 tmCheck($claim!==null&&$notifications->recover()===1&&tmDelivery($crash)['status']==='pending_manual_check','claimed ticket mail crash is quarantined');
 $notifications->runOnce();tmCheck(tmState()['data_attempts']===0,'crashed ticket claim is never reclaimed');

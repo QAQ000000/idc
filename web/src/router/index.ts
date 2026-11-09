@@ -4,6 +4,7 @@ import { ApiError } from "../api/request";
 const router = createRouter({
   history: createWebHistory(),
   routes: [
+    { path: "/admin/notifications", component: () => import("../views/AdminNotificationSettingsView.vue"), meta: { admin: true } },
     { path: "/admin", redirect: "/admin/tasks" },
     { path: "/admin/login", component: () => import("../views/AdminLoginView.vue") },
     { path: "/admin/customers", component: () => import("../views/AdminDirectoryView.vue"), props: { kind: "customers" }, meta: { admin: true } },

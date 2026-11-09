@@ -24,6 +24,7 @@ const links = computed(() =>
         { to: "/admin/providers", label: "上游接入", mark: "⇄" },
         { to: "/admin/products", label: "商品管理", mark: "◇" },
         { to: "/admin/tickets", label: "客服工单", mark: "✉" },
+        ...(adminAccount.admin?.role === "super_admin" ? [{to:"/admin/notifications", label:"邮件与通知", mark:"⚙"}] : []),
         { to: "/admin/tasks", label: "异常任务", mark: "≡" },
         ...(["super_admin", "finance"].includes(adminAccount.admin?.role || "") ? [{to:"/admin/finance", label:"资金查询", mark:"¥"}] : []),
       ]

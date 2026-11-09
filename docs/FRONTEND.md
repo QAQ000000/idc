@@ -1,5 +1,7 @@
 # JianYun (简云) · 统一单前端架构设计规范 (Frontend Specification)
 
+**邮件配置后台增量**：`/admin/notifications` 仅当前超级管理员读写，复用原配置服务、版本校验、同事务审计和密文存储；密钥默认保留且不回显。工单订阅单独确认／保存，普通配置不切换订阅起点，无新增迁移；M2 工单启用与真实收件仍待单独验收，见[配置契约](M2_MAIL_SETTINGS.md)。
+
 本文档定义了 JianYun 的前端工程架构、技术选型、目录规范、交互模型与权限路由设计。
 
 **充值与资金查询已接入**：沿用公共布局和标准 Element Plus 页面，客户 /wallet 查询余额／本人流水、创建充值单，原 /invoices/:id 支付／取消及确认到账。后台 /admin/finance 与 /admin/finance/invoices/:id 只读关联账单、实收凭证和流水；当前 finance/super_admin 可读，后端重核权限。筛选／页码进 URL，付款返回不触发入账，迟到款与父单状态分开展示；加载、空结果、错误重试及手机单列见 [充值契约](M2_WALLET_FINANCE.md)。

@@ -46,6 +46,10 @@ Route::middleware('client')->group(function (): void {
 });
 Route::post('admin/auth/login', [\App\Http\Controllers\AdminAuthController::class, 'login'])->middleware('captcha:login');
 Route::middleware('admin')->group(function (): void {
+    Route::get('admin/notification-settings', [\App\Http\Controllers\NotificationSettingsController::class, 'show']);
+    Route::patch('admin/notification-settings/mail', [\App\Http\Controllers\NotificationSettingsController::class, 'save']);
+    Route::patch('admin/notification-settings/tickets', [\App\Http\Controllers\NotificationSettingsController::class, 'tickets']);
+
     Route::get('admin/tickets', [\App\Http\Controllers\TicketController::class, 'index']);
     Route::get('admin/tickets/{id}', [\App\Http\Controllers\TicketController::class, 'show']);
     Route::post('admin/tickets/{id}/replies', [\App\Http\Controllers\TicketController::class, 'reply']);

@@ -478,4 +478,8 @@ instance 投影 id/user_id/user_email/product_id/product_name/provider_id/provid
 
 ## 工单邮件接口边界（2026-11-09）
 
-不增加HTTP通知发送／配置／订阅接口。原工单提单／公开回复成功时，若双开关与当前订阅有效，同事务追加原通知表占位；重放仍返回原消息，结单不占位。邮件链接为`/tickets/:id?page=last`或`/admin/tickets/:id?page=last`，必须经原独立客户／管理员登录与归属校验，不包含免登Token。超级管理员本地`notifications:tickets`从stdin显式设置订阅起点及指定管理员；字段与兼容见[工单邮件](M2_TICKET_MAIL.md)。
+原批次不增加 HTTP 接口；后续仅配置／订阅后台入口见 [邮件配置](M2_MAIL_SETTINGS.md)，仍不提供发送／重发接口。原工单提单／公开回复成功时，若双开关与当前订阅有效，同事务追加原通知表占位；重放仍返回原消息，结单不占位。邮件链接为`/tickets/:id?page=last`或`/admin/tickets/:id?page=last`，必须经原独立客户／管理员登录与归属校验，不包含免登Token。超级管理员本地`notifications:tickets`从stdin显式设置订阅起点及指定管理员；字段与兼容见[工单邮件](M2_TICKET_MAIL.md)。
+
+## 邮件配置管理（2026-11-09）
+
+超级管理员独占 `GET /admin/notification-settings`、`PATCH /admin/notification-settings/mail` 和 `PATCH /admin/notification-settings/tickets`。密钥不回显，保存带独立 expected_version；工单另需 confirm_new_period=true。字段、授权、冲突及兼容见 [配置契约](M2_MAIL_SETTINGS.md)。

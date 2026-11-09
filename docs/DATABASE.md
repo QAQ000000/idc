@@ -794,3 +794,7 @@ ticket_replies新增可空request_key／request_hash，以(user_id,request_key)�
 ### 工单邮件上下文与启用边界（2026-11-09）
 
 原notification_deliveries.context增加kind=ticket_update的使用：只存ticket_id／reply_id／customer_id／原作者身份／activation，不复制正文；原user_id或admin_id二选一与target冻结收件人。fingerprint包含原回复ID和收件身份，原channel唯一键继续防重。system_settings.key=notify.ticket_mail仅存显式开关／管理员列表／服务端订阅期／UTC起点，SMTP密文仍唯一存notify.mail。普通消息与占位同事务、结单分支不占位，无历史消息扫描；无新DDL或迁移，仍27表，见[工单邮件契约](M2_TICKET_MAIL.md)。
+
+### 邮件配置后台（2026-11-09）
+
+复用 system_settings 的 notify.mail／notify.ticket_mail 与 admin_audit_logs；版本为原配置及对应审计序号的服务端签名，不加列。SMTP 元数据可由超级管理员读取，password 仅配置标志，整体密文不返回；审计仅记录公开配置、来源及密码保留／替换意图。工单起点仍唯一存在原订阅配置，普通保存不更新。27 表、DDL 及迁移均不变，见 [契约](M2_MAIL_SETTINGS.md)。

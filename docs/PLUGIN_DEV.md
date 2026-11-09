@@ -215,7 +215,7 @@ interface PaymentGatewayInterface
 }
 ```
 
-`checkout` 返回 `{method: POST, action, fields}` 浏览器表单，不包含商户密钥。`PaymentNotification` 包含 `merchantOrder/gatewayTrade/amount/currency`；只有验签且达到成功终态才可返回，签名正确但待付款不得进入收单事务。
+`checkout` 返回 `{method: POST, action, fields}` 浏览器表单，不包含商户密钥；仅作本地生成，不得HTTP请求、写库或触发网关业务，可在配置行锁／支付尝试事务内执行，生成失败整笔回滚。`PaymentNotification` 包含 `merchantOrder/gatewayTrade/amount/currency`；只有验签且达到成功终态才可返回，签名正确但待付款不得进入收单事务。
 
 易支付 checkout 显式发送支付类型（配置 type，默认 alipay；兼容本机网关强制要求 type 的实现）。按 ASCII 键排序排除 sign/sign_type 和空值，原始 `k=v` 连接后追加密钥做 MD5，通知兼容 GET/POST，且要求 PID 一致、`TRADE_SUCCESS`；收单成功才返回小写 `success`。浏览器 return_url 只供展示。回调不存任意原始请求，只存服务端用途及 merchant_order，防止回调覆盖退款上下文或泄漏敏感字段。
 

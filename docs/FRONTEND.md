@@ -1,5 +1,7 @@
 # JianYun (简云) · 统一单前端架构设计规范 (Frontend Specification)
 
+**易支付后台**：`/admin/payments`前置新收银开关、身份摘要及保存／核对，详细参数折叠。沿用通知页实际重复的独立草稿／版本核对算法（useSettingsDraft），保留通知适配器，不建设通用页壳；密钥离区清除，未知不重提，历史身份锁定后的草稿采用原商户身份。见[支付配置契约](M2_PAYMENT_SETTINGS.md)。
+
 **通知设置分区**：`/admin/notifications?section=mail|tickets`支持目标区初次进入，页内切区不改URL；SMTP按需展开、两区独立草稿／版本／核对，不套实体页壳。145项页面检查及密钥／未知结果边界见 [通知页治理](NOTIFICATION_SETTINGS_PAGE.md)。
 
 **客户实例页治理**：按 [客户样板契约](CLIENT_INSTANCE_PAGE_SAMPLE.md) 分为概览／系统维护／账期与续费；默认VNC与电源首屏可达。面板持续挂载、未决意图与任务跟踪不随切区重建；凭据离开查看区域即清并作废在途响应。148项客户侧独立检查通过，公共骨架仍待后续。

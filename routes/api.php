@@ -47,6 +47,8 @@ Route::middleware('client')->group(function (): void {
 });
 Route::post('admin/auth/login', [\App\Http\Controllers\AdminAuthController::class, 'login'])->middleware('captcha:login');
 Route::middleware('admin')->group(function (): void {
+    Route::get('admin/payment-settings/epay', [\App\Http\Controllers\PaymentSettingsController::class, 'show']);
+    Route::patch('admin/payment-settings/epay', [\App\Http\Controllers\PaymentSettingsController::class, 'save']);
     Route::get('admin/auth/security', [\App\Http\Controllers\AdminAccountController::class, 'security']);
     Route::post('admin/auth/password', [\App\Http\Controllers\AdminAccountController::class, 'password']);
     Route::get('admin/accounts', [\App\Http\Controllers\AdminAccountController::class, 'index']);

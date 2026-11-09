@@ -117,7 +117,7 @@ ok($worker->claim('too-soon')===null,'proven nonexecution retry honors backoff')
 // Exercise the production driver over real HTTP, including lost responses and a SIGKILLed Worker.
 $db->exec("UPDATE tasks SET status='success',lease_until=NULL WHERE status IN ('pending','running','investigating')");
 $upstream=getenv('UPSTREAM_TEST_URL');
-$db->exec("DELETE FROM system_settings WHERE `key`='payment.epay'");
+require_once __DIR__.'/reset_payment_fixture.php';resetPaymentFixture();
 $setup=(new \App\Services\ConnectionSetupService())->install([
  'provider'=>['name'=>'isolated-zjmf','driver'=>'zjmf','endpoint'=>$upstream,'credentials'=>['username'=>'test@example.test','password'=>'isolated-api-key']],
  'product'=>['remote_pid'=>391,'name'=>'CDN protocol fixture','type'=>'cdn','monthly_price'=>'0.01'],

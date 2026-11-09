@@ -7,11 +7,10 @@ use PDO;
 
 final class PaymentService
 {
-    private function gateway(string $channel): array
+    private function gateway(string $channel, bool $newCheckout = false): array
     {
-        $s = Database::getInstance()->prepare('SELECT value, encrypted_credentials FROM system_settings WHERE `key` = ?');
-        $s->execute(['payment.' . $channel]); $row = $s->fetch();
-        if (!$row || !($config = json_decode($row['value'] ?? '{}', true)) || !($config['enabled'] ?? false)) { throw new ApiException('Payment channel unavailable', 409, 409); }
+        $row = PaymentSettingsService::row(Database::getInstance(), $channel, $newCheckout);
+        if (!$row || !($config = json_decode($row['value'] ?? '{}', true)) || ($newCheckout && !($config['enabled'] ?? false))) { throw new ApiException('Payment channel unavailable', 409, 409); }
         $secret = Security::decrypt($row['encrypted_credentials'] ?? '');
         if ($secret === null) { throw new \RuntimeException('Payment credentials unavailable'); }
         return [PaymentRegistry::installed()->get($channel), $config + json_decode($secret, true, 32, JSON_THROW_ON_ERROR)];
@@ -19,8 +18,9 @@ final class PaymentService
 
     public function checkout(int $userId, int $invoiceId, string $channel): array
     {
-        [$gateway, $config] = $this->gateway($channel);
-        $p = Database::transaction(static function (PDO $db) use ($userId, $invoiceId, $channel): array {
+        return Database::transaction(function (PDO $db) use ($userId, $invoiceId, $channel): array {
+            // Serialize admission with disable/identity edits. A committed attempt remains valid after disable.
+            [$gateway, $config] = $this->gateway($channel, true);
             $invoice = (new BillingService())->invoice($userId, $invoiceId);
             $recharge = $invoice['type'] === 'recharge' && $invoice['instance_id'] === null;
             $instance = null;
@@ -37,9 +37,8 @@ final class PaymentService
             $p = ['invoice_id' => $invoiceId, 'trade_no' => 'jy_' . bin2hex(random_bytes(20)), 'amount' => Money::positive($inv['total'])];
             $db->prepare("INSERT INTO payment_records (invoice_id, user_id, channel, trade_no, amount, payload) VALUES (?, ?, ?, ?, ?, ?)")
                 ->execute([$invoiceId, $userId, $channel, $p['trade_no'], $p['amount'], json_encode(['merchant_order' => $p['trade_no']], JSON_THROW_ON_ERROR)]);
-            return $p;
-        });
-        return ['checkout' => $gateway->checkout($p, $config)];
+            return ['checkout' => $gateway->checkout($p, $config)];
+        }, 5);
     }
 
     public function notify(string $channel, array $input): void

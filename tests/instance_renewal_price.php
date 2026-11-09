@@ -62,7 +62,7 @@ foreach(['super_admin','finance','support','operator'] as $role){$ids[$role]=$au
 $aid=$ids['super_admin'];$at=$tokens['super_admin'];$service=new InstanceRenewalPriceService();$billing=new BillingService();$renew=new RenewalService();$worker=new OutboxWorker();$pay=new PaymentService();
 $user=(new AuthService())->register(['email'=>'renewal-price@example.test','password'=>'PriceCustomer!2026']);$uid=(int)$user['user']['id'];
 (new \App\Services\DemoService())->recharge($uid,'1000.00','price-initial-wallet');
-$db->exec("DELETE FROM system_settings WHERE `key`='payment.epay'");
+require_once __DIR__.'/reset_payment_fixture.php';resetPaymentFixture();
 $setup=(new ConnectionSetupService())->install([
     'provider'=>['name'=>'price-fixture','driver'=>'zjmf','endpoint'=>getenv('UPSTREAM_TEST_URL'),'credentials'=>['username'=>'fixture','password'=>'fixture-secret']],
     'product'=>['remote_pid'=>391,'name'=>'Renewal price fixture CDN','type'=>'cdn','monthly_price'=>'0.01'],

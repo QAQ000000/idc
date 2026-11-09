@@ -128,6 +128,15 @@ def verify(socket_path, root):
     })
     assert status == 200
     finance_token = finance['data']['token']
+    payment_settings = '/api/v1/admin/payment-settings/epay'
+    status, settings = request(socket_path, root, 'GET', payment_settings, token=admin_token)
+    assert status == 200 and settings['data']['identity_locked'] and 'key' not in settings['data'] and 'encrypted_credentials' not in settings['data']
+    for other in [support_token, finance_token]:
+        assert request(socket_path, root, 'GET', payment_settings, token=other)[0] == 403
+        assert request(socket_path, root, 'PATCH', payment_settings, {'enabled': False}, token=other)[0] == 403
+    assert request(socket_path, root, 'GET', payment_settings, token=client_token)[0] == 401
+    assert request(socket_path, root, 'GET', payment_settings)[0] == 401
+    print('PASS: isolated PHP-FPM payment settings current-role and credential isolation')
     assert request(socket_path, root, 'GET', price_path, token=finance_token)[0] == 200
     assert request(socket_path, root, 'PATCH', price_path, {}, token=finance_token)[0] == 403
     adjustment_path = f'/api/v1/admin/instances/{instance_id}/manual-adjustment'

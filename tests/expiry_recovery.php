@@ -17,7 +17,7 @@ function eh(string $path,?string $token=null,string $method='POST'):array{
 }
 $db->exec("UPDATE tasks SET status='success',lease_until=NULL WHERE status IN ('pending','running','investigating')");
 ef('/__mode?mode=normal');ef('/__power_mode?mode=normal');ef('/__reinstall_mode?mode=normal');
-$db->exec("DELETE FROM system_settings WHERE `key`='payment.epay'");
+require_once __DIR__.'/reset_payment_fixture.php';resetPaymentFixture();
 $setup=(new ConnectionSetupService())->install(['provider'=>['name'=>'expiry-fixture','driver'=>'zjmf','endpoint'=>getenv('UPSTREAM_TEST_URL'),'credentials'=>['username'=>'expiry-fixture','password'=>'NEVER-EXPOSE-SERVICE-KEY']], 'product'=>['remote_pid'=>391,'name'=>'CDN expiry fixture','type'=>'cdn','monthly_price'=>'0.01'], 'payment'=>['driver'=>'epay','endpoint'=>'http://127.0.0.1:82','pid'=>'expiry-fixture','notify_url'=>'http://127.0.0.1/notify','return_url'=>'http://127.0.0.1','credentials'=>['key'=>'expiry-fixture-key']]]);
 $pid=(int)$setup['product_id'];$auth=(new AuthService())->register(['email'=>'expiry@example.test','password'=>'ExpiryFixture!2026']);$uid=(int)$auth['user']['id'];
 $db->prepare('UPDATE users SET balance=10 WHERE id=?')->execute([$uid]);

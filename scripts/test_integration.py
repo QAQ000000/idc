@@ -175,8 +175,9 @@ def main():
             run_checks(php, 'tests/expiry_recovery.php', env, r'Expiry recovery checks: \d+')
             run_checks(php, 'tests/manual_adjustment.php', env, r'Manual adjustment checks: \d+')
             run_checks(php, 'tests/admin_accounts.php', env, r'Admin account checks: \d+')
+            run_checks(php, 'tests/admin_payment_settings.php', env, r'Admin payment settings checks: \d+')
             subprocess.run([php, 'artisan', 'migrate', '--force'], cwd=ROOT, env=env, check=True)
-            subprocess.run([php, 'tests/browser_fixture.php'], cwd=ROOT, env=env, check=True)
+            run_checks(php, 'tests/browser_fixture.php', env, r'Browser fixtures ready\.')
             fpm_socket = directory / 'fpm.sock'
             fpm_config = directory / 'fpm.conf'
             pool_user = pwd.getpwuid(os.getuid()).pw_name

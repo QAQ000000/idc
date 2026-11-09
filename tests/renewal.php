@@ -19,7 +19,7 @@ function apiRenew(string $path,array $body,int $uid,string $method='POST'):array
 fixtureRenew('/__mode?mode=normal');
 $db->exec("UPDATE tasks SET status='success',lease_until=NULL WHERE action IN ('create','renew') AND status IN ('pending','running','investigating')");
 $db->prepare('INSERT INTO users(email,password,balance) VALUES(?,?,100)')->execute(['renewal@example.test',Security::hashPassword('RenewalFixture!2026')]);$user=(int)$db->lastInsertId();
-$db->exec("DELETE FROM system_settings WHERE `key`='payment.epay'");
+require_once __DIR__.'/reset_payment_fixture.php';resetPaymentFixture();
 $setup=(new ConnectionSetupService())->install([
  'provider'=>['name'=>'renewal-fixture','driver'=>'zjmf','endpoint'=>getenv('UPSTREAM_TEST_URL'),'credentials'=>['username'=>'fixture@example.test','password'=>'fixture-key']],
  'product'=>['remote_pid'=>391,'name'=>'CDN renewal fixture','type'=>'cdn','monthly_price'=>'0.01'],

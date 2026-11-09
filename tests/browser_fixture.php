@@ -55,3 +55,4 @@ foreach(['到期但上游仍运行','已确认欠费暂停','暂停原因需核�
     (new App\Services\InstanceServiceStatusService())->reconcile($id);$serviceIds[]=$id;
 }
 echo json_encode(['service_fixture_instances'=>$serviceIds],JSON_THROW_ON_ERROR),PHP_EOL;
+echo "Browser fixtures ready.\n";

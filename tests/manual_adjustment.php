@@ -31,7 +31,7 @@ $auth=new AdminAuthService();$admins=[];$tokens=[];
 foreach(['super_admin','finance','support','operator'] as $role){$admins[$role]=$auth->create(['username'=>'adjust-'.$role,'email'=>'adjust-'.$role.'@example.test','password'=>'AdjustAdmin!2026','role'=>$role]);$tokens[$role]=Security::generateToken(['uid'=>$admins[$role],'sub_type'=>'admin']);}
 $aid=$admins['super_admin'];$at=$tokens['super_admin'];$svc=new ManualAdjustmentService();$billing=new BillingService();$prices=new InstanceRenewalPriceService();$worker=new OutboxWorker();$renew=new RenewalService();
 $user=(new AuthService())->register(['email'=>'manual-adjustment@example.test','password'=>'AdjustCustomer!2026']);$uid=(int)$user['user']['id'];(new App\Services\DemoService())->recharge($uid,'10000.00','adjust-wallet-fixture');
-$db->exec("DELETE FROM system_settings WHERE `key`='payment.epay'");
+require_once __DIR__.'/reset_payment_fixture.php';resetPaymentFixture();
 $setup=(new ConnectionSetupService())->install(['provider'=>['name'=>'adjust-fixture','driver'=>'zjmf','endpoint'=>getenv('UPSTREAM_TEST_URL'),'credentials'=>['username'=>'fixture','password'=>'fixture-secret']],
  'product'=>['remote_pid'=>391,'name'=>'Manual adjustment fixture','type'=>'cdn','monthly_price'=>'0.01'],
  'payment'=>['driver'=>'epay','endpoint'=>'http://127.0.0.1:82','pid'=>'adjust-fixture','notify_url'=>'http://127.0.0.1/notify','return_url'=>'http://127.0.0.1','credentials'=>['key'=>'adjust-secret']]]);$product=$setup['product_id'];

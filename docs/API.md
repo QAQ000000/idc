@@ -522,3 +522,18 @@ service_observation 仅 state、suspension、checked_at、remote_due_date、revi
 | POST /admin/auth/password | 所有启用管理员；current_password、new_password、expected_version；5次／分钟，校验旧密码并事务内重核原hash，返回sessions_revoked |
 
 登录Token增加整数av；缺av只兼容尚无安全变更审计的版本0，非整数或不匹配401。账号写事务重核请求认证版本，等锁期间被调岗／撤销不能继续写。没有公开管理员注册、账号删除、用户名／邮箱编辑或自定义权限接口。最后超管保护及兼容见[账号契约](M2_ADMIN_ACCOUNTS.md)。
+
+
+<a id="admin-payment-settings"></a>
+## 易支付配置后台增量
+
+仅当前启用super_admin可读写；其他管理员403、匿名／客户401，成功响应no-store。
+
+| 请求 | 字段与结果 |
+|---|---|
+| GET /api/v1/admin/payment-settings/epay | enabled、endpoint、pid、type（alipay/wxpay/qqpay）、notify_url、return_url；configured、key_configured、identity_locked、64位version。不返回密钥或密文。 |
+| PATCH /api/v1/admin/payment-settings/epay | 完整六个公开配置字段、expected_version、key_action=keep/replace；replace显式提供key，keep不得带key。返回saved=true，不回显配置或密钥。 |
+
+版本过期或锁定身份变更409；非法输入400；审计失败整体回滚500。首次保存可停用但必须有有效商户密钥。URL禁嵌入账号／口令／query／fragment，正式环境须HTTPS，return_url为本站根地址；网关地址可含部署路径。出现任何epay尝试后endpoint/pid/key锁定，type和本站URL仍可版本化修改；不改旧收银字段。409／丢响应先GET，不自动重提密钥。
+
+原POST /invoices/{id}/pay gateway=epay仅在新收银开启时准入；配置行锁下先提交尝试者有效，停用先提交则409且无新尝试。原GET/POST /payments/epay/notify不以enabled拒绝旧回调，仍验签、核销及独立迟到／额外入钱包，防重及Outbox边界保持。单渠道、人工退款；兼容、锁序与证据见[契约](M2_PAYMENT_SETTINGS.md)。

@@ -9,6 +9,7 @@ import { cycleLabels } from "../api/adminProducts";
 import { message } from "../api/request";
 import AdminRelatedLinks from "../components/AdminRelatedLinks.vue";
 import InstanceServiceStatusPanel from "../components/InstanceServiceStatusPanel.vue";
+import ManualAdjustmentPanel from "../components/ManualAdjustmentPanel.vue";
 import InstanceRenewalPricePanel from "../components/InstanceRenewalPricePanel.vue";
 const route = useRoute(), router = useRouter(), account = useAdmin();
 const data = ref<InstanceDetail>(), busy = ref(false), error = ref("");
@@ -47,6 +48,7 @@ onMounted(load);
 </el-card>
       <InstanceServiceStatusPanel v-if="data.instance.remote_instance_id && data.instance.service_status_supported" admin :instance-id="Number(data.instance.id)" :entitlement="data.instance.entitlement_state" :observation="data.instance.service_observation" @refreshed="load" />
       <InstanceRenewalPricePanel v-if="finance" :instance-id="data.instance.id" @changed="load" />
+      <ManualAdjustmentPanel v-if="finance" :instance-id="data.instance.id" @changed="load" />
       <el-card class="query-results" shadow="never">
 <h2>关联账单</h2><p class="muted">仅展示归属一致的原账单与状态，资金详情继续由财务权限校验。</p>
         <el-table :data="data.invoices.items" empty-text="此实例暂无关联账单" row-key="invoice_id">

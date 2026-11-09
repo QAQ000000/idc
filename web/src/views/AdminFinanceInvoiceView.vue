@@ -8,6 +8,7 @@ import {
   invoiceTypes,
   type FinanceDetail,
 } from "../api/finance";
+import { fulfillmentLabels } from "../api/billing";
 import WalletLedgerTable from "../components/WalletLedgerTable.vue";
 import FinanceReceiptsTable from "../components/FinanceReceiptsTable.vue";
 const route = useRoute(),
@@ -78,11 +79,12 @@ onMounted(load);
             <el-descriptions-item label="状态">
               {{ invoiceLabels[data.invoice.status] || data.invoice.status }}
             </el-descriptions-item>
+            <el-descriptions-item v-if="data.invoice.fulfillment_status" label="履约／结清">{{ fulfillmentLabels[data.invoice.fulfillment_status] || data.invoice.fulfillment_status }}</el-descriptions-item>
             <el-descriptions-item label="应付金额">
               ¥{{ data.invoice.total }}
             </el-descriptions-item>
             <el-descriptions-item label="结算渠道">
-              {{ data.invoice.payment_method || "—" }}
+              {{ data.invoice.payment_method === "manual_zero" ? "零额人工结清" : data.invoice.payment_method || "—" }}
             </el-descriptions-item>
             <el-descriptions-item label="关联实例">
               <RouterLink v-if="data.invoice.instance_id" :to="`/admin/instances/${data.invoice.instance_id}`">#{{ data.invoice.instance_id }}</RouterLink>

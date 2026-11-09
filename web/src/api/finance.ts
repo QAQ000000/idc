@@ -45,6 +45,7 @@ export interface WalletEntry {
   user_email?: string;
 }
 export interface FinanceInvoice {
+  fulfillment_status?: string | null;
   invoice_id: number;
   user_id: number;
   instance_id: number | null;

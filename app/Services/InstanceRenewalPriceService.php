@@ -24,7 +24,7 @@ final class InstanceRenewalPriceService
     private function version(PDO $db,array $i,array $unpaid): string
     {
         // Current read under the instance lock also invalidates an A -> B -> A edit.
-        $s=$db->prepare("SELECT id FROM admin_audit_logs WHERE target_type='instance' AND target_id=? AND action='instance_renewal_price' ORDER BY id DESC LIMIT 1 FOR UPDATE");$s->execute([$i['id']]);
+        $s=$db->prepare("SELECT id FROM admin_audit_logs WHERE target_type='instance' AND target_id=? AND action IN ('instance_renewal_price','instance_manual_adjustment') ORDER BY id DESC LIMIT 1 FOR UPDATE");$s->execute([$i['id']]);
         return Security::requestFingerprint(json_encode([array_intersect_key($i,array_flip(['id','user_id','provider_id','product_id','remote_instance_id','status','suspend_type','billing_cycle','due_date','recurring_price','override_price'])),$unpaid,$s->fetchColumn()?:0],JSON_THROW_ON_ERROR));
     }
 
@@ -50,6 +50,19 @@ final class InstanceRenewalPriceService
     private static function prices(array $i): array
     {
         return ['frozen_price'=>$i['recurring_price'],'override_price'=>$i['override_price'],'effective_price'=>$i['override_price']??$i['recurring_price']];
+    }
+
+    /** Caller holds the instance and original invoices; shared by future repricing and manual settlement. */
+    public static function cancelUnpaid(PDO $db,array $i,array $unpaid): array
+    {
+        if(!$db->inTransaction()){throw new \LogicException('Price changes require a transaction');}
+        $cancelled=[];
+        foreach($unpaid as $v){
+            $s=$db->prepare("UPDATE invoices SET status='cancelled',cycle_marker=NULL WHERE id=? AND instance_id=? AND user_id=? AND type='renew' AND status='unpaid'");$s->execute([$v['id'],$i['id'],$i['user_id']]);
+            if($s->rowCount()!==1){throw new ApiException('Renewal invoice changed; reload and review',409,409);}
+            $cancelled[]=(int)$v['id'];
+        }
+        return $cancelled;
     }
 
     public function detail(int $admin,int $id): array
@@ -79,12 +92,7 @@ final class InstanceRenewalPriceService
             $this->authorize($db,$admin,true,true);
             if($price===$i['override_price']){throw new ApiException('Renewal price is unchanged',409,409);}
             if($price===null){Money::positive($i['recurring_price']);}
-            $cancelled=[];
-            foreach($unpaid as $v){
-                $s=$db->prepare("UPDATE invoices SET status='cancelled',cycle_marker=NULL WHERE id=? AND instance_id=? AND user_id=? AND type='renew' AND status='unpaid'");$s->execute([$v['id'],$id,$i['user_id']]);
-                if($s->rowCount()!==1){throw new ApiException('Renewal invoice changed; reload and review',409,409);}
-                $cancelled[]=(int)$v['id'];
-            }
+            $cancelled=self::cancelUnpaid($db,$i,$unpaid);
             $db->prepare('UPDATE instances SET override_price=? WHERE id=?')->execute([$price,$id]);
             $after=self::prices(array_replace($i,['override_price'=>$price]));
             $context=['evidence'=>$evidence,'before'=>self::prices($i),'after'=>$after,'cancelled_invoice_ids'=>$cancelled];

@@ -257,7 +257,9 @@ onBeforeUnmount(() => {
               {{
                 invoice.payment_method === "balance"
                   ? "账户余额"
-                  : invoice.payment_method || "尚未结算"
+                  : invoice.payment_method === "manual_zero"
+                    ? "零额人工结清"
+                    : invoice.payment_method || "尚未结算"
               }}
             </el-descriptions-item>
             <el-descriptions-item label="创建时间UTC">

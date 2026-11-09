@@ -124,6 +124,16 @@ def verify(socket_path, root):
     finance_token = finance['data']['token']
     assert request(socket_path, root, 'GET', price_path, token=finance_token)[0] == 200
     assert request(socket_path, root, 'PATCH', price_path, {}, token=finance_token)[0] == 403
+    adjustment_path = f'/api/v1/admin/instances/{instance_id}/manual-adjustment'
+    status, adjustment = request(socket_path, root, 'GET', adjustment_path, token=admin_token)
+    assert status == 200 and not adjustment['data']['editable'] and adjustment['data']['blocked_reason']
+    assert request(socket_path, root, 'GET', adjustment_path, token=client_token)[0] == 401
+    assert request(socket_path, root, 'GET', adjustment_path, token=support_token)[0] == 403
+    assert request(socket_path, root, 'GET', adjustment_path, token=finance_token)[0] == 200
+    body = {'new_price': '2.00', 'evidence': 'FPM isolated already completed change'}
+    assert request(socket_path, root, 'POST', adjustment_path + '/preview', body, token=finance_token)[0] == 403
+    assert request(socket_path, root, 'POST', adjustment_path + '/preview', body, token=admin_token)[0] == 409
+    assert request(socket_path, root, 'POST', adjustment_path + '/settle', {}, token=finance_token)[0] == 403
     status, catalog = request(socket_path, root, 'GET', '/api/v1/admin/provider-drivers', token=admin_token)
     assert status == 200 and catalog['data']['items']
     assert request(socket_path, root, 'GET', '/api/v1/admin/provider-connections', token=client_token)[0] == 401
@@ -139,5 +149,6 @@ def verify(socket_path, root):
     print('PASS: isolated PHP-FPM client/admin authentication, anonymous and cross-scope identity isolation')
     print('PASS: isolated PHP-FPM customer/instance navigation and finance role isolation')
     print('PASS: isolated PHP-FPM renewal price read/write permissions and blocked-state projection')
+    print('PASS: isolated PHP-FPM manual adjustment financial roles and operation gates')
 
     print('PASS: isolated PHP-FPM support create/replay/public reply/closure and identity separation')

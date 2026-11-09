@@ -69,6 +69,9 @@ Route::middleware('admin')->group(function (): void {
     Route::post('admin/instances/{id}/service-status', [\App\Http\Controllers\InstanceController::class, 'adminServiceStatus']);
     Route::get('admin/instances/{id}/renewal-price', [\App\Http\Controllers\InstanceRenewalPriceController::class, 'show']);
     Route::patch('admin/instances/{id}/renewal-price', [\App\Http\Controllers\InstanceRenewalPriceController::class, 'update']);
+    Route::get('admin/instances/{id}/manual-adjustment', [\App\Http\Controllers\ManualAdjustmentController::class, 'show']);
+    Route::post('admin/instances/{id}/manual-adjustment/preview', [\App\Http\Controllers\ManualAdjustmentController::class, 'preview']);
+    Route::post('admin/instances/{id}/manual-adjustment/settle', [\App\Http\Controllers\ManualAdjustmentController::class, 'settle']);
     Route::get('admin/finance/invoices/{id}', [\App\Http\Controllers\FinanceController::class, 'show']);
     Route::get('admin/finance/{kind}', [\App\Http\Controllers\FinanceController::class, 'index'])->whereIn('kind',['invoices','receipts','transactions']);
     Route::get('admin/providers', [\App\Http\Controllers\AdminProductController::class, 'providers']);

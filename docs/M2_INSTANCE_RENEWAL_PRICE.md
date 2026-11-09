@@ -35,3 +35,7 @@
 页面路径为：管理员实例详情 → 价格卡 → 修改续费价格 → 确认前后价及原单 → 输入依据 → 提交 → 原详情查看价格与审计；恢复原价复用同一弹窗。截图保存在本机Git忽略目录 `output/playwright/renewal-price/`：`desktop-confirm.png`、`dialog-320.png`、`dialog-390.png`、`dialog-768.png`、`viewport-390.png`、`viewport-768.png`。复核了稳定后的390px和768px弹窗，价格输入、清晰警示及确认／取消按钮可见。测试日志为本机 `/tmp/jianyun-renewal-price-integration-final.log`、`/tmp/jianyun-renewal-price-ui.log` 和 `/tmp/jianyun-renewal-price-errors.log`，不作为发布产物。
 
 真实M2客户价格、账期与资金本批未修改，未产生真实扣款／新上游任务；没有把隔离验证标记为真实改价验收。正式环境另行部署。重装#9结案、供应商字段和真实自动闭环仍按 [重装契约](M2_INSTANCE_REINSTALL.md#m2-运行接入与真实-ubuntu-验收2026-11-09) 单独跟踪，页面能力与结果规则保持。
+
+## 手工补差批的兼容增量（2026-11-09）
+
+仅未来改价的原接口／金额／权限／门禁和历史权益边界保留。已完成手工变配的补差使用[独立入口](M2_MANUAL_ADJUSTMENT.md)，共享原未付续费单CAS取消与周期标记释放；本接口版本现在同时纳入最新人工补差审计，避免补差改价后ABA复用旧版本。无DDL、迁移或历史重写；本批完整1577项检查及补差／代扣双连接竞争、迟到实收与页面验证见新契约，不把原独立改价操作变为自动扣补差。

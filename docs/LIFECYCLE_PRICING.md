@@ -175,6 +175,10 @@ FOR UPDATE;
 
 与付款／代扣共用实例锁：改价先提交，旧单迟到实收按原凭证幂等入钱包，不派旧价renew；付款先提交则保留旧价已购权益，在途任务阻断改价，履约后刷新版本再调整后续价格。最新改价审计ID参与版本以拒绝ABA。无补差、变配、退款或迁移，变更原因、受影响模块及1250项隔离检查／34项页面证据见 [改价契约](M2_INSTANCE_RENEWAL_PRICE.md)。
 
+### 2.5 已完成手工变配的单期余额补差
+
+单独入口在实际变配完成后由超级管理员预览／确认，以当前单个原已付且履约成功账单为依据，不能取当前override_price当本期已付价。原自然周期实际剩余秒数折算、先乘后除、最后舍入至分；同周期既往补差高水位不重收，降价无自动退款。多期预付、首期无法拆分费用、历史改期或旧补差无法证明时明确拒绝。结清、未来override_price、原未付续费单作废／标记释放及审计同事务，资源／账期／冻结价保持，不投upgrade任务。该审计同样参与未来改价ABA版本。详见[人工补差契约](M2_MANUAL_ADJUSTMENT.md)。
+
 ### 当前固定商品续费的实施限制
 
 M2 后续已实现一个原月/年账期、唯一账单、付款与 renew Outbox、提前 7 天出账和每 15 分钟余额代扣。周期请求使用原到期日防重，见 [续费契约](M2_RENEWAL_CONTRACT.md)。当前魔方驱动的收款可能自动解挂，无法可靠保留上游非财务暂停，因此仅支持 active / suspended+billing 的自动准入；§2.3 对其他暂停可按政策续费的能力仍待实现，当前交人工处理，不以付款恢复服务。欠费暂停须上游目标日期和 Active 均确认后才本地恢复；未知只读调查。
@@ -196,7 +200,7 @@ M2 后续已实现一个原月/年账期、唯一账单、付款与 renew Outbox
 ## 4. 报价锁定机制与过期支付处置 (Price Lock & Expired Quotes)
 
 1. **按账单类型区分的报价锁定期 (`quote_expired_at`)**：
-   - **`new`（新购）与 `upgrade`（弹性升级补差）**：客户端下单时，系统执行 Pre-flight 预检，将当时规格明细、基准价、加价与汇率固化入 `invoices.price_snapshot`，并设定 30 分钟报价有效期 `quote_expired_at = UTC_TIMESTAMP() + INTERVAL 30 MINUTE`；超过 30 分钟未支付的账单，由 `invoices:expire` 自动取消并释放预留库存。
+   - **`new`（新购）与规划中的自动 `upgrade`（弹性升级补差）**：客户端下单时，系统执行 Pre-flight 预检，将当时规格明细、基准价、加价与汇率固化入 `invoices.price_snapshot`，并设定 30 分钟报价有效期 `quote_expired_at = UTC_TIMESTAMP() + INTERVAL 30 MINUTE`；超过 30 分钟未支付的账单，由 `invoices:expire` 自动取消并释放预留库存。
    - **`renew`（实例续费）与 `recharge`（钱包充值）**：续费价格取自实例已固化的 `COALESCE(override_price, recurring_price)`，不受上游购物车动态波动影响，因此 **`quote_expired_at` 置为 `NULL`**，支持提前 7 天出账并持续等待客户充值自动代扣（仅在实例发生变配、后台改价或最终逾期销毁时才作废未付续费单）。
 2. **已生成二维码后报价超期的支付处理 (Expired Quote In-Flight)**：
    - 用户在报价过期前打开了支付宝二维码，但在第 35 分钟才扫码扣款成功（此时账单可能已被 `invoices:expire` 置为 `cancelled`，或报价已超期）：

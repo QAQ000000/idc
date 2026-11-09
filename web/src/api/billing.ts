@@ -22,6 +22,7 @@ export const fulfillmentLabels: Record<string, string> = {
   delivered: "本单已交付",
   renewed: "本单续费已确认",
   updated: "本单变更已确认",
+  manual_settled: "人工变配已结清",
 };
 export function fulfillmentTitle(
   invoice: Pick<Invoice, "type" | "fulfillment_status">,
@@ -46,7 +47,7 @@ export function statusTone(
 export function fulfillmentTone(
   status: string,
 ): "success" | "warning" | "danger" | "info" {
-  return ["delivered", "renewed", "updated"].includes(status)
+  return ["delivered", "renewed", "updated", "manual_settled"].includes(status)
     ? "success"
     : status === "needs_review"
       ? "danger"
@@ -69,6 +70,8 @@ export function fulfillmentMessage(invoice: InvoiceRow): string {
       return "本单开通已确认。请进入实例查看连接信息与当前状态，账期从成功交付起算。";
     case "renewed":
       return "本单上游续费已确认。请进入实例核对账期和当前状态。";
+    case "manual_settled":
+      return "管理员已记录实际变配完成并结清本次补差。未创建自动交付任务，原账期保留，后续续费使用新周期价。";
     case "updated":
       return "本单变更已确认，请进入实例查看当前信息。";
     case "investigating":

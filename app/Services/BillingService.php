@@ -37,6 +37,10 @@ final class BillingService
     private static function progressColumns(): string
     {
         return "t.status AS fulfillment_task_status,
+            (v.type='upgrade' AND JSON_UNQUOTE(JSON_EXTRACT(v.price_snapshot,'$.kind'))='manual_adjustment_v1' AND EXISTS(
+                SELECT 1 FROM admin_audit_logs a WHERE a.action='instance_manual_adjustment' AND a.target_type='instance' AND a.target_id=i.id
+                AND a.admin_id=JSON_EXTRACT(v.price_snapshot,'$.admin_id') AND JSON_EXTRACT(a.context,'$.invoice_id')=v.id
+                AND JSON_UNQUOTE(JSON_EXTRACT(a.context,'$.total'))=CAST(v.total AS CHAR))) AS manual_settled,
             COALESCE((SELECT SUM(w.amount) FROM transactions w WHERE w.invoice_id=v.id AND w.user_id=v.user_id AND w.account_type='wallet' AND w.amount>0 AND w.type IN ('recharge','late_payment_credit','refund_to_balance')),0.00) AS wallet_credit_total,
             COALESCE((SELECT SUM(w.amount) FROM transactions w WHERE w.invoice_id=v.id AND w.user_id=v.user_id AND w.account_type='wallet' AND w.amount>0 AND (w.type='late_payment_credit' OR (w.type='refund_to_balance' AND LEFT(w.idempotency_key,16)='late_credit:pay_'))),0.00) AS late_credit_total";
     }
@@ -45,14 +49,14 @@ final class BillingService
     {
         $row['fulfillment_status']=null;
         if ($row['status']==='paid' && in_array($row['type'],['new','renew','upgrade'],true)) {
-            $row['fulfillment_status']=match($row['fulfillment_task_status']) {
+            $row['fulfillment_status']=!empty($row['manual_settled'])?'manual_settled':match($row['fulfillment_task_status']) {
                 'pending','running'=>'provisioning',
                 'investigating'=>'investigating',
                 'success'=>match($row['type']) {'new'=>'delivered','renew'=>'renewed',default=>'updated'},
                 default=>'needs_review',
             };
         }
-        unset($row['fulfillment_task_status']);
+        unset($row['fulfillment_task_status'],$row['manual_settled']);
         return $row;
     }
     public function checkout(int $userId, array $input): array

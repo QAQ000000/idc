@@ -257,7 +257,7 @@
 
 同实例锁下重核版本、任务／资金门禁和管理员身份，覆盖价、全部归属一致的未付续费单CAS作废、释放cycle_marker和审计同事务提交。旧版本／同值／在途任务409；修改依据、前后价和作废账单ID保留。已付账单、已购账期、配置和原资源不变；后续由原服务出账。旧渠道迟到实收沿用凭证唯一键入钱包，不按旧价续费。详见 [改价契约](M2_INSTANCE_RENEWAL_PRICE.md)。
 
-原 `POST /admin/instances/{id}/override-price` 的当期补差／余额划扣仅是未来另行授权的规划，当前没有此路由。本批不提供补差、上游变配或退款。
+原 `POST /admin/instances/{id}/override-price` 没有实现；仅后续改价入口不处理补差。已人工完成变配的独立结清入口见下节，不调用上游或退款。
 
 ### 3. 任务队列监控、【一键重试】与【人工核验回填激活】
 - **请求**：`GET /api/v1/admin/tasks?status=failed`
@@ -496,3 +496,13 @@ instance 投影 id/user_id/user_email/product_id/product_name/provider_id/provid
 service_observation 仅 state、suspension、checked_at、remote_due_date、review_required、code；从未核对为 not_checked／NOT_CHECKED，日期可空，UTC。权益为 valid／expired／not_started／not_applicable。原客户／管理员实例列表及详情补该投影和 service_status_supported，列表不调用上游、不暴露原 config_snapshot。后台 GET /admin/instances 支持 service_review=1，其他非空值400，与原筛选求交、分页不变；全部启用管理员可读，资金权限不变。
 
 原账单可继续查找；新续费核对后出账，已知需核验状态拒绝划扣，迟到实收走原钱包分流。并发／数据保持／M2待验边界见[契约](M2_EXPIRY_RECOVERY.md)。
+
+## 管理员已完成手工变配的补差
+
+所有响应no-store，当前启用finance／super_admin可读，仅super_admin可预览及结清；身份取独立管理员会话，最终事务重查角色。客户不能访问本组接口。
+
+- `GET /api/v1/admin/instances/{id}/manual-adjustment`：原已付周期依据、已覆盖价、未来有效价、editable／blocked_reason和最近20条完成审计（含原账单链接）。依据不足明确阻断，不按当前覆盖价猜算。
+- `POST .../manual-adjustment/preview`：仅 `{new_price:"200.00", evidence:"实际变配完成依据"}`，返回原期、计价时刻／金额、将作废原单及5分钟preview_token。不能提交新规格或上游动作。
+- `POST .../manual-adjustment/settle`：仅 `{preview_token:"…", request_key:"16–48位字母数字_-", confirmed:true}`，返回invoice_id／total／new_price／cancelled_invoice_ids／replayed。原请求重放返回原账单；结果未知只重试原请求或核对原记录，不能更换身份绕过预览。
+
+400为字段／金额／明确确认错误；403为角色；404为实例缺失；409为依据不足、多期预付、未决任务／退款／服务门禁、余额不足、过期／变更预览或重放冲突。原账期／资源／冻结价不变；正额同事务结算、未来改价和审计，无上游任务；旧收银台迟到款按原凭证入钱包。普通pay／checkout不接受此upgrade。客户账单列表／详情及财务详情新增fulfillment_status=manual_settled，仅当原人工快照和完成审计匹配，普通paid无任务继续needs_review。完整规则见[契约](M2_MANUAL_ADJUSTMENT.md)。

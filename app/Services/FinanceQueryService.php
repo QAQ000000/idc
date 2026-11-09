@@ -27,6 +27,7 @@ final class FinanceQueryService
         return Database::transaction(function(PDO $db) use($id,$query):array {
             $s=$db->prepare('SELECT '.self::INVOICE.' FROM invoices v WHERE v.id=?');$s->execute([$id]);$invoice=$s->fetch();
             if (!$invoice) { throw new ApiException('Invoice not found',404,404); }
+            $invoice['fulfillment_status']=(new BillingService())->invoice((int)$invoice['user_id'],$id)['fulfillment_status'];
             $s=$db->prepare('SELECT id,email,balance,status FROM users WHERE id=?');$s->execute([$invoice['user_id']]);
             return ['invoice'=>$invoice,'customer'=>$s->fetch(),
                 'receipts'=>$this->listing('receipts',['invoice_id'=>$id,'page'=>$query['receipts_page']??1]),

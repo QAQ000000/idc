@@ -1,5 +1,7 @@
 # JianYun (简云) · 统一单前端架构设计规范 (Frontend Specification)
 
+**通知设置分区**：`/admin/notifications?section=mail|tickets`支持目标区初次进入，页内切区不改URL；SMTP按需展开、两区独立草稿／版本／核对，不套实体页壳。145项页面检查及密钥／未知结果边界见 [通知页治理](NOTIFICATION_SETTINGS_PAGE.md)。
+
 **客户实例页治理**：按 [客户样板契约](CLIENT_INSTANCE_PAGE_SAMPLE.md) 分为概览／系统维护／账期与续费；默认VNC与电源首屏可达。面板持续挂载、未决意图与任务跟踪不随切区重建；凭据离开查看区域即清并作废在途响应。148项客户侧独立检查通过，公共骨架仍待后续。
 
 **复杂页面治理已接入工程约束**：外部 v2.1.0 定稿已纳入 [页面防膨胀规范](PAGE_BLOAT_GOVERNANCE_AND_ARCHITECTURE_SPEC.md)。首批后台样板：紧凑摘要与异常前移、四分区保持面板挂载；账单分页不重建页壳，续费价与补差独立提交，补差未知按原键恢复。验收后再另批提炼公共骨架及推广，详见 [样板记录](ADMIN_INSTANCE_PAGE_SAMPLE.md)。

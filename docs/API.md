@@ -482,7 +482,7 @@ instance 投影 id/user_id/user_email/product_id/product_name/provider_id/provid
 
 ## 邮件配置管理（2026-11-09）
 
-超级管理员独占 `GET /admin/notification-settings`、`PATCH /admin/notification-settings/mail` 和 `PATCH /admin/notification-settings/tickets`。密钥不回显，保存带独立 expected_version；工单另需 confirm_new_period=true。字段、授权、冲突及兼容见 [配置契约](M2_MAIL_SETTINGS.md)。
+超级管理员独占 `GET /admin/notification-settings`、`PATCH /admin/notification-settings/mail` 和 `PATCH /admin/notification-settings/tickets`。密钥不回显，保存带独立 expected_version；工单另需 confirm_new_period=true。字段、授权、冲突及兼容见 [配置契约](M2_MAIL_SETTINGS.md)。通知页分区／草稿／未知保存恢复见 [页面契约](NOTIFICATION_SETTINGS_PAGE.md)，本批HTTP协议与服务端保持不变。
 
 ## 到期服务状态核对（2026-11-09）
 

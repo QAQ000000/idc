@@ -13,7 +13,7 @@ function mode(string $mode):void{global $upstream;file_get_contents($upstream.'/
 function state():array{global $upstream;return json_decode(file_get_contents($upstream.'/__state'),true,64,JSON_THROW_ON_ERROR);}
 $driver=ProviderRegistry::installed()->get('zjmf');$raw=json_decode(file_get_contents(__DIR__.'/fixtures/zjmf-enum-linkage.json'),true);
 $full=json_decode(file_get_contents(__DIR__.'/fixtures/zjmf-product-563.json'),true);
-reject(fn()=>$driver->describeForm($full),'real full product 563 still rejects quantity fields; no silent omission');
+check(count($driver->describeForm($full))===11,'real full product 563 now parses enums and supported independent quantities');
 $real=$full;$real['config_groups'][0]['options']=array_values(array_filter($real['config_groups'][0]['options'],fn($o)=>in_array($o['option_type'],[1,2,5,6,8,10,12,13],true)));
 $realForm=$driver->describeForm($real);$realDefault=ConfigOptions::defaults($realForm);
 check($realDefault[278142]==='1178980' && $realDefault[278141]==='1178975','actual region/CPU condition is preserved in enum-only extraction');

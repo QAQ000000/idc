@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onBeforeUnmount, ref, watch } from "vue";
-import { configurationComplete } from "../utils/configOptions";
+import { configurationComplete, configurationLabel } from "../utils/configOptions";
 import { useRoute, useRouter } from "vue-router";
 import {
   api,
@@ -111,8 +111,7 @@ const selectionSummary = computed(() =>
   configuration.value.fields.map((field) => ({
     label: field.label,
     value:
-      field.choices.find((choice) => choice.value === selected.value[field.id])
-        ?.label || "待选择",
+      configurationLabel(field, selected.value[field.id]),
   })),
 );
 const summaryProps = computed(() => ({
@@ -178,7 +177,7 @@ async function quote(manual = false) {
   quoting.value = true;
   if (!configurationComplete(configuration.value.fields, selected.value)) {
     quoting.value = false;
-    quoteError.value = "请补全联动后的有效配置，再获取并确认报价。";
+    quoteError.value = "请填写有效的数量和选配，再获取并确认报价。";
     return;
   }
   try {

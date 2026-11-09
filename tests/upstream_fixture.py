@@ -12,6 +12,28 @@ from pathlib import Path
 import copy
 CONFIG_SCHEMA = json.loads((Path(__file__).parent / "fixtures/zjmf-product-14.json").read_text())
 ENUM_SCHEMA = json.loads((Path(__file__).parent / "fixtures/zjmf-enum-linkage.json").read_text())
+FULL_QUANTITY_SCHEMA = json.loads((Path(__file__).parent / "fixtures/zjmf-product-563.json").read_text())
+# Synthetic sale protocol: real 563 quantities plus the existing synthetic enum graph.
+QUANTITY_SCHEMA = copy.deepcopy(ENUM_SCHEMA)
+QUANTITY_SCHEMA["products"]["id"] = 2563
+QUANTITY_SCHEMA["config_groups"][0]["options"].extend(copy.deepcopy([o for g in FULL_QUANTITY_SCHEMA["config_groups"] for o in g["options"] if o["option_type"] in [15, 18]]))
+
+def quantity_quote(params, prefix):
+    opts = {k[len(prefix):-1]: v[0] for k, v in params.items() if k.startswith(prefix)}
+    valid = (len(opts) == 11 and params.get("qty", params.get("cart_data[qty]")) == ["1"] and
+        ((opts.get("278142") == "1178980" and opts.get("278141") == "1178975") or
+         (opts.get("278142") == "1199990" and opts.get("278141") in ["1178976", "1178977"])) and
+        not (opts.get("278141") == "1178976" and opts.get("278143") == "1178981") and
+        opts.get("278144") in ["1", "2", "3", "4"] and
+        bool(re.fullmatch(r"[0-9]+", opts.get("278145", ""))))
+    if not valid:
+        return None
+    bw = int(opts["278145"])
+    if bw < 50 or bw > 1000 or bw % 10:
+        return None
+    # Deliberately synthetic prices, not local replicas of upstream tier pricing.
+    return ("40.00", "35.00") if opts["278144"] != "1" or bw != 50 else ("32.00", "30.00")
+
 from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
@@ -91,7 +113,7 @@ class Handler(BaseHTTPRequestHandler):
             state['hosts'][int(p['hostid'][0])]['power_state'] = p['state'][0]
             r = {'ok': True}
         elif path == '/__state':
-            r = {'creates': state['creates'], 'hosts': len(state['hosts']), 'renew_calls': state['renew_calls'], 'renew_payments': state['renew_payments'], 'last_config': state.get('last_config', {}), 'power_calls': state['power_calls'], 'reinstall_calls': state['reinstall_calls'], 'last_reinstall': state.get('last_reinstall', {})}
+            r = {'creates': state['creates'], 'hosts': len(state['hosts']), 'renew_calls': state['renew_calls'], 'renew_payments': state['renew_payments'], 'last_config': state.get('last_config', {}), 'last_qty': state.get('last_qty'), 'power_calls': state['power_calls'], 'reinstall_calls': state['reinstall_calls'], 'last_reinstall': state.get('last_reinstall', {})}
         elif path == '/__request_counts':
             r = dict(state['request_counts'])
         elif path == '/zjmf_api_login':
@@ -110,6 +132,15 @@ class Handler(BaseHTTPRequestHandler):
                 data = copy.deepcopy(ENUM_SCHEMA)
                 if state['config_mode'] == 'enum_rules':
                     data['advanced'][1]['sub_id']['1178976'] = {'qty_minimum': '0', 'qty_maximum': '0'}
+            if p.get('pid') == ['563']:
+                data = copy.deepcopy(FULL_QUANTITY_SCHEMA)
+            if p.get('pid') == ['2563']:
+                data = copy.deepcopy(QUANTITY_SCHEMA)
+                if state['config_mode'] == 'quantity_step':
+                    data['config_groups'][0]['options'][-1]['qty_stage'] = 20
+                if state['config_mode'] == 'quantity_ranges':
+                    data['config_groups'][0]['options'][-1]['sub'][0]['qty_maximum'] = 60
+                    data['config_groups'][0]['options'][-1]['sub'][1]['qty_minimum'] = 61
             r = {'status': 200, 'data': data}
         elif path == '/cart/get_total':
             total, recurring = '0.01', '0.01'
@@ -134,8 +165,18 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_error(422, 'Invalid linked configuration')
                     return
                 total, recurring = ('16.00', '14.00') if opts['278142'] == '1178980' else ('24.00', '22.00')
-            r = {'status': 200, 'currency': {'code': 'CNY'}, 'products': {'billingcycle': p['billingcycle'][0], 'stock_control': 0, 'qty': 81, 'total': total, 'signal_price': recurring}}
+            if p.get('pid') == ['2563']:
+                prices = quantity_quote(p, 'configoption[')
+                if prices is None:
+                    self.send_error(422, 'Invalid integer quantity or bulk qty')
+                    return
+                total, recurring = prices
+            r = {'status': 200, 'currency': {'code': 'CNY'}, 'products': {'billingcycle': p['billingcycle'][0], 'stock_control': 1 if p.get('pid') == ['563'] else 0, 'qty': 0 if p.get('pid') == ['563'] else 81, 'total': total, 'signal_price': recurring}}
         elif path == '/cart/settle':
+            quantity_prices = quantity_quote(p, 'cart_data[configoptions][') if p.get('cart_data[pid]') == ['2563'] else None
+            if p.get('cart_data[pid]') == ['2563'] and quantity_prices is None:
+                self.send_error(422, 'Invalid delivery quantity or bulk qty')
+                return
             hostname = p['cart_data[host]'][0]
             expected_name = r'ser[0-9]{12}' if p['cart_data[pid]'] == ['14'] else r'[0-9A-Za-z]{8}'
             if not re.fullmatch(expected_name, hostname):
@@ -153,6 +194,9 @@ class Handler(BaseHTTPRequestHandler):
                     total, recurring = ('16.00', '14.00') if state['last_config'].get('276853') == '1173030' else ('24.00', '22.00')
                 if p['cart_data[pid]'] == ['1563']:
                     total, recurring = ('16.00', '14.00') if state['last_config'].get('278142') == '1178980' else ('24.00', '22.00')
+                if quantity_prices:
+                    total, recurring = quantity_prices
+                state['last_qty'] = p.get('cart_data[qty]')
                 state['last_create_total'] = total
                 state['creates'] += 1
                 state['host_counter'] += 1

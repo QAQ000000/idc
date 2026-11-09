@@ -6,6 +6,7 @@ import { adminApi } from "../api/admin";
 import { cycleLabels, salesLabels, type ProductDetail } from "../api/adminProducts";
 import { ApiError, message } from "../api/request";
 import { useAdmin } from "../stores/admin";
+import { configurationLabel } from "../utils/configOptions";
 import AdminSnapshotForm from "../components/AdminSnapshotForm.vue";
 const route = useRoute(), account = useAdmin();
 const detail = ref<ProductDetail>(), busy = ref(false), saving = ref(false), error = ref(""), dialog = ref(false), formError = ref(""), auditPage = ref(1);
@@ -62,7 +63,7 @@ onMounted(() => load());
         </el-table>
         <p class="muted">参考价来自本地快照默认配置，并非实时成交价；首期可能含一次性费用。存量实例以各自冻结价格续费。</p>
         <el-alert v-if="detail.configuration_error" :title="detail.configuration_error" type="warning" :closable="false" />
-        <el-descriptions v-if="detail.fields.length" :column="1" border><el-descriptions-item v-for="f in detail.fields" :key="f.id" :label="f.label">{{ f.choices.find(c => c.value === detail!.defaults[f.id])?.label || '未设置' }}</el-descriptions-item></el-descriptions>
+        <el-descriptions v-if="detail.fields.length" :column="1" border><el-descriptions-item v-for="f in detail.fields" :key="f.id" :label="f.label">{{ configurationLabel(f, detail!.defaults[f.id]) }}</el-descriptions-item></el-descriptions>
         <p v-else class="muted">当前为固定商品或无可展示配置项。</p>
       </el-card>
       <el-card v-if="editable && detail.snapshot_supported">

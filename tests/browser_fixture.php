@@ -57,4 +57,6 @@ foreach(['到期但上游仍运行','已确认欠费暂停','暂停原因需核�
 echo json_encode(['service_fixture_instances'=>$serviceIds],JSON_THROW_ON_ERROR),PHP_EOL;
 $enumProduct=(new App\Services\ProductSnapshotService())->save(['provider_id'=>$provider,'remote_pid'=>1563,'name'=>'枚举联动（合成协议验收）','type'=>'cloud','billing_cycles'=>['monthly']]);
 echo json_encode(['enum_fixture_product'=>$enumProduct['product_id']],JSON_THROW_ON_ERROR),PHP_EOL;
+$quantityProduct=(new App\Services\ProductSnapshotService())->save(['provider_id'=>$provider,'remote_pid'=>2563,'name'=>'整数数量＋枚举（合成协议验收）','type'=>'cloud','billing_cycles'=>['monthly']]);
+echo json_encode(['quantity_fixture_product'=>$quantityProduct['product_id']],JSON_THROW_ON_ERROR),PHP_EOL;
 echo "Browser fixtures ready.\n";

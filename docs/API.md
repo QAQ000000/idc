@@ -1,5 +1,7 @@
 # JianYun (简云) · RESTful API 契约与接口字典 (API Specification)
 
+**整数数量配置增量**：原商品configuration、calculate与管理员preview接口的fields新增type=integer（choices=[]），提供minimum／maximum／step／step_base=0／allow_endpoints／ranges（id／minimum／maximum）；defaults及config_options仍为数字字符串，字段ID作为键，值为数量而非子项ID。原下单／预览确认校验范围、步长和指纹，非法输入400、配置／报价漂移409；configuration摘要value为数量字符串。无新接口，见[契约](M2_INTEGER_QUANTITIES.md)。
+
 **枚举依赖增量**：原商品config与后台preview的fields可带dependencies数组（field、operator=in/not_in、values、effect=allow/exclude、choices，ID均字符串），父字段先于子字段。原calculate／checkout拒绝非法组合，不自动替换配置；schema_hash及quote_token包含规则，改变须重新确认。无新增路由，其他字段与成功请求键恢复保持，见[契约](M2_ENUM_DEPENDENCIES.md)。
 
 ## 验证码策略后台（2026-11-09）
@@ -132,7 +134,7 @@
 
 ### 2. 获取商品配置项表单 (动态渲染)
 - **请求**：`GET /api/v1/products/{id}/config`
-- **说明**：读取本地 JSON 快照，返回 `{fields:[{id,type:"select",label,choices:[{value,label}],default}],defaults,schema_hash}`；不公开原始上游响应，不声称 SWR/性能已实现。当前仅独立枚举。
+- **说明**：读取本地 JSON 快照，返回 `{fields:[{id,type:"select",label,choices:[{value,label}],default}],defaults,schema_hash}`；不公开原始上游响应，不声称 SWR/性能已实现。当前支持独立枚举、单父无环枚举联动和独立整数数量（类型15／18），完整字段见页首增量。
 
 ### 3. 下单前原子算价与预检 (Pre-flight Check)
 - **请求**：`POST /api/v1/products/{id}/calculate`

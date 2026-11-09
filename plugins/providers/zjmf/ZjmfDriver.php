@@ -70,10 +70,14 @@ final class ZjmfDriver implements ConnectionConfigInterface, UpstreamDriverInter
         $label = static fn(string $name): string => str_replace('^', ' / ', explode('|', $name, 2)[1] ?? $name);
         foreach ($snapshot['config_groups'] ?? [] as $group) {
             foreach ($group['options'] ?? [] as $option) {
-                if (!empty($option['hidden']) || !in_array((int)($option['option_type'] ?? 0), [1,2,5,6,8,10,12,13], true)
+                if (!empty($option['hidden']) || !in_array((int)($option['option_type'] ?? 0), [1,2,5,6,8,10,12,13,15,18], true)
                     || !empty($option['linkage_pid']) || !empty($option['linkage_top_pid'])) { throw new \RuntimeException('Unsupported option or linkage'); }
                 $id = (string)($option['id'] ?? '');
                 if (!preg_match('/^[1-9][0-9]{0,9}$/D', $id) || isset($form[$id])) { throw new \RuntimeException('Invalid option identity'); }
+                if (in_array((int)$option['option_type'],[15,18],true)) {
+                    $form[$id]=IntegerQuantity::project($option,$label((string)$option['option_name']));
+                    continue;
+                }
                 $choices = [];
                 foreach ($option['sub'] ?? [] as $sub) {
                     if (!empty($sub['hidden'])) { continue; }
@@ -148,10 +152,12 @@ final class ZjmfDriver implements ConnectionConfigInterface, UpstreamDriverInter
         $recurring = Money::positive((string)($p['signal_price'] ?? $amount));
         // Magic/DCIM provisioning accepts at most 20 bytes, even when settle accepts more.
         // Keep the local 12-byte minimum. This is not the product's generation length.
-        $rules=[];
+        $rules=[]; $quantities=[];
+        foreach($form as $field){if($field['type']==='integer'){$quantities[]=$field;}}
         foreach($form as $field){if(isset($field['dependencies'])){$rules[]=['id'=>$field['id'],'dependencies'=>$field['dependencies']];}}
         return new PreflightResult($amount, $config, context: $this->inputContext($schema['data']??[]) + ['schema_hash'=>ConfigOptions::hash($form)]
-            + ($rules ? ['configuration_rules'=>$rules] : []), recurringAmount: $recurring);
+            + ($rules ? ['configuration_rules'=>$rules] : [])
+            + ($quantities ? ['configuration_quantities'=>$quantities] : []), recurringAmount: $recurring);
     }
     private function hostname(array $o): string
     {

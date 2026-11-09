@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { ConfigField } from "../api/request";
 import { ref } from "vue";
-import { availableChoices } from "../utils/configOptions";
+import { availableChoices, configurationValueValid } from "../utils/configOptions";
 const props = defineProps<{
   fields: ConfigField[];
   modelValue: Record<string, string>;
@@ -15,7 +15,7 @@ function change(id: string, value: string) {
   const next = { ...props.modelValue, [id]: value }, cleared: string[] = [];
   // The server supplies a parent-first form. Clear descendants in one emission before any quote.
   for (const field of props.fields) {
-    if (next[field.id] && !availableChoices(field, next).some((choice) => choice.value === next[field.id])) {
+    if (field.type === "select" && next[field.id] && !configurationValueValid(field, next)) {
       next[field.id] = "";
       cleared.push(field.label);
     }
@@ -27,7 +27,16 @@ function change(id: string, value: string) {
 <template>
   <el-alert v-if="notice" :title="notice" type="warning" :closable="false" role="status" />
   <el-form-item v-for="field in fields" :key="field.id" :label="field.label">
+    <template v-if="field.type === 'integer'">
+      <el-input
+        :model-value="modelValue[field.id]" :aria-label="field.label" :disabled="disabled"
+        inputmode="numeric" :aria-invalid="!configurationValueValid(field, modelValue)"
+        @update:model-value="change(field.id, $event)" />
+      <p class="muted">整数 {{ field.minimum }}–{{ field.maximum }}；步长 {{ field.step }}（填写步长的倍数，上下限均可选）。数量不代表购买台数。</p>
+      <p v-if="!configurationValueValid(field, modelValue)" class="quantity-error" role="alert">请输入范围内且符合步长的整数，补全后重新报价。</p>
+    </template>
     <el-select
+      v-else
       :model-value="modelValue[field.id]"
       :aria-label="field.label"
       :disabled="disabled"
@@ -47,6 +56,7 @@ function change(id: string, value: string) {
   </el-form-item>
 </template>
 <style>
+.quantity-error { color: var(--el-color-danger); }
 .config-option-popper { max-width: calc(100vw - 24px); }
 .config-option-popper .el-select-dropdown__item {
   height: auto;

@@ -23,13 +23,23 @@ final class ConfigOptions
         $expected = [];
         foreach ($form as $field) {
             $id = $field['id']; $expected[] = (int)$id;
-            if (!isset($options[$id]) || !in_array($options[$id], array_column(self::available($field,$options), 'value'), true)) {
+            if (!isset($options[$id]) || !self::valid($field,$options[$id],$options)) {
                 throw new ApiException('Select a valid value for ' . $field['label']);
             }
         }
         sort($expected, SORT_NUMERIC);
         if (array_keys($options) !== $expected) { throw new ApiException('Unexpected configuration option'); }
         return $options;
+    }
+    public static function valid(array $field, string $value, array $options): bool
+    {
+        if ($field['type']!=='integer') { return in_array($value,array_column(self::available($field,$options),'value'),true); }
+        if (!preg_match('/^[0-9]{1,10}$/D',$value)) { return false; }
+        $n=(int)$value;
+        if ($n<$field['minimum'] || $n>$field['maximum'] || (($n-$field['step_base'])%$field['step']!==0
+            && !($field['allow_endpoints'] && in_array($n,[$field['minimum'],$field['maximum']],true)))) { return false; }
+        foreach ($field['ranges'] as $range) { if ($n>=$range['minimum'] && $n<=$range['maximum']) { return true; } }
+        return false;
     }
     /** Active allow rules union together, then active exclusions subtract. No match means unrestricted. */
     public static function available(array $field, array $options): array
@@ -51,6 +61,10 @@ final class ConfigOptions
     {
         $options=[];
         foreach($form as $field){
+            if($field['type']==='integer'){
+                if(!self::valid($field,$field['default'],$options)){throw new ApiException('No valid default for '.$field['label']);}
+                $options[$field['id']]=$field['default'];continue;
+            }
             $choices=self::available($field,$options);
             if(!$choices){throw new ApiException('No valid default for '.$field['label']);}
             $values=array_column($choices,'value');$options[$field['id']]=in_array($field['default'],$values,true)?$field['default']:$values[0];

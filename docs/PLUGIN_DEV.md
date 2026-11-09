@@ -1,5 +1,7 @@
 # JianYun (简云) · 模块化插件与驱动开发手册 (Plugin Development Guide)
 
+**整数数量增量**：魔方IntegerQuantity仅投影独立类型15／18，通用integer字段有minimum／maximum／step／step_base／allow_endpoints／ranges；核心不感知具体类型号。数量按字段ID透传实际整数，枚举透传子项ID；范围／区间身份和步长进入schema_hash与可选configuration_quantities；首期／续费由上游核价，qty=1，不本地计算阶梯价，见[契约](M2_INTEGER_QUANTITIES.md)。
+
 本文档是系统扩展插件（上游云产品驱动、支付网关、消息通知通道、验证码插件）的标准开发规范与 SDK 手册。**任何开发者或 Agent 编写新插件，必须严格遵循本文档约定。**
 
 **已确认框架底座**：当前运行环境为 PHP 8.4 + Laravel 13，M0 已完成现有 MVP 的框架适配。Laravel 容器负责装配契约和注册器，具体插件仍位于 `plugins/`，核心业务不直接引用具体实现。框架认证、加密及后台队列组件不能绕过领域事务、密文兼容和未知结果核验，见 [TECH_STACK.md](TECH_STACK.md)。
@@ -121,7 +123,7 @@ Provider 行固定表示一个上游账户/资源命名空间，不允许原地�
 
 `plugins/providers/zjmf` 使用 `/zjmf_api_login`、`/cart/get_product_config`、`/cart/get_total`、带独立 `cart_data` 的 `/cart/settle`、`/invoice_page`、`/apply_credit`。不清空或修改共享购物车，不默认上游支持请求键幂等。付款前校验远端账单实付与小计均等于冻结金额；结果未知不再支付。
 
-按部署生成的 `order_namespace` 与原任务键生成固定 8 位数字/大小写字母的资源名称（含三类字符，不带前缀或连字符），规则写入 `driver_context.hostname_rule=alnum8` 随订单冻结；已提交的旧订单保留原命名规则用于调查，不因升级改名或重购。未知资源 ID 时，调查 `/host/list` 必须严格匹配冻结名称、PID、账期与首付金额，再用账户范围 `/cart/hostinfo` 核对候选 ID；已由结算/支付响应或上述调查取得的稳定资源 ID，以 ID、PID、账期与首付金额核验，允许上游改名，但不接受接口返回另一个 ID。仅 Active 回填。查无/多匹配均保留调查；一小时仍未知转人工。固定首链兼容保留；新增独立枚举选配支持见 [配置销售契约](M2_CONFIG_SALES.md)，高级联动/自定义字段/数量仍拒绝销售。选配 Schema 变化需刷新快照；付款后执行前成本或 Schema 变化转人工，不重购。上游待付款订单也可能迟后执行，不能因为本地没有 Active 资产就直接退款。
+按部署生成的 `order_namespace` 与原任务键生成固定 8 位数字/大小写字母的资源名称（含三类字符，不带前缀或连字符），规则写入 `driver_context.hostname_rule=alnum8` 随订单冻结；已提交的旧订单保留原命名规则用于调查，不因升级改名或重购。未知资源 ID 时，调查 `/host/list` 必须严格匹配冻结名称、PID、账期与首付金额，再用账户范围 `/cart/hostinfo` 核对候选 ID；已由结算/支付响应或上述调查取得的稳定资源 ID，以 ID、PID、账期与首付金额核验，允许上游改名，但不接受接口返回另一个 ID。仅 Active 回填。查无/多匹配均保留调查；一小时仍未知转人工。固定首链兼容保留；新增独立枚举选配支持见 [配置销售契约](M2_CONFIG_SALES.md)，枚举依赖与独立类型15／18数量增量见页首契约；其他高级规则／自定义字段／数量类型仍拒绝销售。选配 Schema 变化需刷新快照；付款后执行前成本或 Schema 变化转人工，不重购。上游待付款订单也可能迟后执行，不能因为本地没有 Active 资产就直接退款。
 
 ### 可选续费能力（当前已实现）
 
@@ -289,7 +291,7 @@ interface NotificationChannelInterface
 
 ### 可选配置表单能力
 
-`ConfigurableDriverInterface::describeForm(array $snapshot): array` 将原始快照投影为公开枚举字段列表，可选dependencies承载单父、无环依赖（field／operator／values／effect／choices）。魔方advanced仅在插件内解析，通用ConfigOptions与前端按同一允许并集减排除语义校验；数量／自定义／type20或损坏规则拒绝，见[M2_ENUM_DEPENDENCIES.md](M2_ENUM_DEPENDENCIES.md)。核心只识别此接口与 `ConfigOptions` 验证器，驱动负责上游 Schema 语义和不支持能力的拒绝。`PreflightResult.context.schema_hash` 绑定同一安全表单语义；`recurringAmount` 与 `amount` 分别返回周期和首期成本。当前只在魔方实现，不要求其他驱动增加空实现；接口、兼容与验证见 [M2_CONFIG_SALES.md](M2_CONFIG_SALES.md)。
+`ConfigurableDriverInterface::describeForm(array $snapshot): array` 将原始快照投影为公开安全字段列表，可选dependencies承载单父、无环依赖（field／operator／values／effect／choices）。魔方advanced仅在插件内解析，通用ConfigOptions与前端按同一允许并集减排除语义校验；独立类型15／18数量见页首增量；数量联动／其他数量／自定义／type20或损坏规则拒绝，见[M2_ENUM_DEPENDENCIES.md](M2_ENUM_DEPENDENCIES.md)。核心只识别此接口与 `ConfigOptions` 验证器，驱动负责上游 Schema 语义和不支持能力的拒绝。`PreflightResult.context.schema_hash` 绑定同一安全表单语义；`recurringAmount` 与 `amount` 分别返回周期和首期成本。当前只在魔方实现，不要求其他驱动增加空实现；接口、兼容与验证见 [M2_CONFIG_SALES.md](M2_CONFIG_SALES.md)。
 
 输入约束复用可选 `context.password_policy`：min_length/max_length 为 12–72 范围内整数，可选 character_sets（upper/lower/digit/special）及 generation_length。`PasswordPolicy` 校验通用边界与字符集，核心不解析魔方原始规则；未提供时保留原 12–72。魔方自身将 Schema 转为密码生成策略及冻结的 hostname_policy/schema_v1；新执行前比对当前规则，变化在提交前拒绝。历史 alnum8/jy- 身份与 queryOrder 不改写，调查不生成新密码或重发。规则只在原 JSON 快照/context 中保存，无新实体或配置树。具体字符集、真实缺陷与兼容影响见 [配置销售契约](M2_CONFIG_SALES.md#后续一次真实开通与输入规则修正2026-11-08)。
 

@@ -4,7 +4,7 @@ namespace Plugins\providers\zjmf;
 
 use App\Plugins\Providers\ConfigOptions;
 
-/** Only flat enum conditions/results; quantity ranges and hierarchical type 20 remain unsupported. */
+/** Only flat enum conditions/results; independent integer fields can coexist. */
 final class EnumDependencies
 {
     public static function project(array $fields, mixed $advanced): array
@@ -19,7 +19,7 @@ final class EnumDependencies
         foreach($advanced as $row){
             if(!is_array($row)){throw new \RuntimeException('Invalid dependency row');}
             $id=$identity($row['id']??null);$field=$identity($row['config_id']??null);
-            if(isset($rows[$id]) || !isset($fields[$field]) || !in_array($row['type']??null,['condition','result'],true)
+            if(isset($rows[$id]) || !isset($fields[$field]) || $fields[$field]['type']!=='select' || !in_array($row['type']??null,['condition','result'],true)
                 || !in_array($row['relation']??null,['seq','sneq'],true) || !is_array($row['sub_id']??null) || !$row['sub_id']) {
                 throw new \RuntimeException('Unsupported dependency');
             }

@@ -113,10 +113,16 @@ export interface Instance {
 
 export interface ConfigField {
   id: string;
-  type: "select";
+  type: "select" | "integer";
   label: string;
   choices: { value: string; label: string }[];
   default: string;
+  minimum?: number;
+  maximum?: number;
+  step?: number;
+  step_base?: number;
+  allow_endpoints?: boolean;
+  ranges?: { id: string; minimum: number; maximum: number }[];
   dependencies?: {
     field: string;
     operator: "in" | "not_in";

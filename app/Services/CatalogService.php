@@ -52,6 +52,7 @@ final class CatalogService
         $config = ConfigOptions::validate($form,$options);
         $summary = [];
         foreach ($form as $field) {
+            if ($field['type']==='integer') { $summary[]=['label'=>$field['label'],'value'=>$config[$field['id']]]; continue; }
             foreach ($field['choices'] as $choice) {
                 if ($choice['value']===$config[$field['id']]) { $summary[]=['label'=>$field['label'],'value'=>$choice['label']]; break; }
             }

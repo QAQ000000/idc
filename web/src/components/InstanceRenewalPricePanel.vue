@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import { adminApi } from "../api/admin";
 import { ApiError, message } from "../api/request";
@@ -12,11 +12,14 @@ interface PriceDetail extends Prices {
   audit: { id: number; username: string; created_at: string; context: { evidence: string; before: Prices; after: Prices; cancelled_invoice_ids: number[] } }[];
 }
 const props = defineProps<{ instanceId: number }>();
-const emit = defineEmits<{ changed: [] }>();
+const emit = defineEmits<{ changed: []; state: [value: { message: string; saving: boolean }] }>();
 const account = useAdmin(), detail = ref<PriceDetail>(), busy = ref(false), saving = ref(false), error = ref(""), dialog = ref(false), formError = ref("");
 const form = reactive({ mode: "override", price: "", evidence: "", version: "" });
 const superAdmin = computed(() => account.admin?.role === "super_admin");
 const target = computed(() => form.mode === "restore" ? detail.value?.frozen_price : form.price);
+watch(() => [error.value, detail.value?.blocked_reason, saving.value] as const, () => {
+  emit("state", { message: error.value ? `续费价格：${error.value}` : detail.value?.blocked_reason ? `暂不可改价：${detail.value.blocked_reason}` : "", saving: saving.value });
+}, { immediate: true });
 async function load() {
   if (busy.value) return;
   busy.value = true; error.value = ""; detail.value = undefined;
@@ -51,6 +54,7 @@ async function save() {
   } finally { saving.value = false; }
 }
 onMounted(load);
+defineExpose({ reload: load });
 </script>
 <template>
   <el-card shadow="never">

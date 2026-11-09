@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import { adminApi } from "../api/admin";
 import { ApiError, message } from "../api/request";
@@ -8,19 +8,30 @@ import { cycleLabels } from "../api/adminProducts";
 interface Basis { invoice_id: number; period_start: string; period_end: string; original_price: string; covered_price: string; prior_adjustment_ids: number[] }
 interface Detail { effective_price: string; billing_cycle: string; editable: boolean; blocked_reason: string | null; basis: Basis | null; audit: { id: number; invoice_id: number; created_at: string; evidence: string; total: string; new_price: string }[] }
 interface Preview { basis: Basis; total: string; new_price: string; coverage_before: string; coverage_after: string; calculated_at: string; expires_at: string; preview_token: string; cancelled_invoice_ids: number[] }
-const props = defineProps<{ instanceId: number }>(), emit = defineEmits<{ changed: [] }>();
+const props = defineProps<{ instanceId: number }>(), emit = defineEmits<{ changed: []; state: [value: { message: string; saving: boolean }] }>();
 const account = useAdmin(), detail = ref<Detail>(), busy = ref(false), saving = ref(false), dialog = ref(false), error = ref(""), formError = ref(""), preview = ref<Preview>(), requestKey = ref(""), uncertain = ref(false);
 const form = reactive({ price: "", evidence: "", confirmed: false });
 const superAdmin = computed(() => account.admin?.role === "super_admin");
+watch(() => [uncertain.value, error.value, detail.value?.blocked_reason, saving.value] as const, () => {
+  emit("state", { message: uncertain.value ? "补差结算结果未知；请在价格与补差分区恢复原结算，勿另建操作。" : error.value ? `手工补差：${error.value}` : detail.value?.blocked_reason ? `暂不可补差：${detail.value.blocked_reason}` : "", saving: saving.value });
+}, { immediate: true });
 async function load() {
+  if (busy.value) return;
   busy.value = true; error.value = "";
   try { detail.value = await adminApi<Detail>(`/instances/${props.instanceId}/manual-adjustment`); }
   catch (e) { detail.value = undefined; error.value = message(e); }
   finally { busy.value = false; }
 }
 function open() {
+  // Unknown settlement owns its original preview and key until an authoritative result.
+  if (uncertain.value) { dialog.value = true; return; }
   form.price = detail.value?.effective_price || ""; form.evidence = ""; form.confirmed = false;
   formError.value = ""; preview.value = undefined; uncertain.value = false; dialog.value = true;
+}
+function closed() {
+  if (uncertain.value) return;
+  form.price = ""; form.evidence = ""; form.confirmed = false;
+  preview.value = undefined; requestKey.value = ""; formError.value = "";
 }
 async function quote() {
   if (saving.value) return;
@@ -48,18 +59,21 @@ async function settle() {
   } finally { saving.value = false; }
 }
 onMounted(load);
+defineExpose({ reload: load });
 </script>
 <template>
   <el-card shadow="never">
     <div class="actions"><h2>手工变配补差</h2><el-button :loading="busy" :disabled="saving" @click="load">刷新补差记录</el-button></div>
+    <el-alert v-if="uncertain" title="原结算结果未知" description="关闭窗口、切换分区不会放弃原结算。请恢复原键核验，勿创建另一笔补差。" type="warning" :closable="false" />
+    <el-button v-if="uncertain && superAdmin" type="warning" :disabled="saving" @click="open">恢复原补差结算</el-button>
     <p class="muted">仅结算管理员已在上游完成的变配。本入口不执行上游操作，不改变到期日；未来续费按新的周期价出账。</p>
     <el-alert v-if="error" :title="error" type="error" :closable="false" role="alert" />
     <el-skeleton v-if="busy && !detail" :rows="3" animated />
     <template v-if="detail">
       <el-alert v-if="detail.blocked_reason" :title="`暂不可补差：${detail.blocked_reason}`" type="warning" :closable="false" />
       <p v-if="detail.basis" class="muted">本期原账单 #{{ detail.basis.invoice_id }}：¥{{ detail.basis.original_price }}；已覆盖周期价 ¥{{ detail.basis.covered_price }}。未来有效续费价 ¥{{ detail.effective_price }} / {{ cycleLabels[detail.billing_cycle] || detail.billing_cycle }}。</p>
-      <el-button v-if="superAdmin" type="primary" :disabled="!detail.editable || saving" @click="open">预览已完成变配的补差</el-button>
-      <p v-else class="muted">当前仅可查看，结清需超级管理员。</p>
+      <el-button v-if="superAdmin && !uncertain" type="primary" :disabled="!detail.editable || saving" @click="open">预览已完成变配的补差</el-button>
+      <p v-else-if="!superAdmin" class="muted">当前仅可查看，结清需超级管理员。</p>
       <details class="adjustment-audit">
         <summary>近期人工结清记录（最多 20 条）</summary>
         <el-table :data="detail.audit" empty-text="暂无人工补差记录" row-key="id">
@@ -71,7 +85,7 @@ onMounted(load);
       </details>
     </template>
   </el-card>
-  <el-dialog v-model="dialog" class="task-resolution-dialog adjustment-dialog" title="已完成变配：预览与余额结清" width="680px" :close-on-click-modal="false" :close-on-press-escape="!saving" :show-close="!saving" :before-close="(done: () => void) => { if (!saving) done(); }">
+  <el-dialog v-model="dialog" class="task-resolution-dialog adjustment-dialog" title="已完成变配：预览与余额结清" width="680px" :close-on-click-modal="false" :close-on-press-escape="!saving" :show-close="!saving" :before-close="(done: () => void) => { if (!saving) done(); }" @closed="closed">
     <el-alert title="只在上游实际变配完成后操作。正补差立即扣客户余额，零补差只记结清；降价不自动退款。" type="warning" :closable="false" />
     <el-alert v-if="formError" class="adjustment-warning" :title="formError" type="error" :closable="false" role="alert" />
     <el-form v-if="!preview" label-position="top" @submit.prevent="quote">
@@ -88,7 +102,7 @@ onMounted(load);
         <el-descriptions-item label="将作废未付续费单">{{ preview.cancelled_invoice_ids.map(id => `#${id}`).join('、') || '无' }}</el-descriptions-item>
       </el-descriptions>
       <p class="muted">按本期实际剩余秒数折算。原资源、账期与历史记录保留；本次结清不代表系统自动核验上游规格。</p>
-      <el-checkbox v-model="form.confirmed" class="adjustment-confirm" :disabled="saving">我确认实际变配已完成，依据属实，并授权本次余额结清及后续续费改价</el-checkbox>
+      <el-checkbox v-model="form.confirmed" class="adjustment-confirm" :disabled="saving || uncertain">我确认实际变配已完成，依据属实，并授权本次余额结清及后续续费改价</el-checkbox>
     </template>
     <template #footer>
       <el-button :disabled="saving" @click="dialog = false">关闭</el-button>

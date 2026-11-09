@@ -11,6 +11,13 @@ Route::get('products', [ApiController::class, 'products']);
 Route::get('products/{id}/config', [ApiController::class, 'configuration']);
 Route::post('products/{id}/calculate', [ApiController::class, 'calculate']);
 Route::middleware('client')->group(function (): void {
+    Route::get('tickets', [\App\Http\Controllers\TicketController::class, 'index']);
+    Route::get('tickets/instances', [\App\Http\Controllers\TicketController::class, 'instances']);
+    Route::post('tickets', [\App\Http\Controllers\TicketController::class, 'store']);
+    Route::get('tickets/{id}', [\App\Http\Controllers\TicketController::class, 'show']);
+    Route::post('tickets/{id}/replies', [\App\Http\Controllers\TicketController::class, 'reply']);
+    Route::post('tickets/{id}/close', [\App\Http\Controllers\TicketController::class, 'close']);
+
     Route::get('wallet', [\App\Http\Controllers\WalletController::class, 'show']);
     Route::post('wallet/recharges', [\App\Http\Controllers\WalletController::class, 'recharge']);
     Route::get('wallet/transactions', [\App\Http\Controllers\WalletController::class, 'transactions']);
@@ -39,6 +46,11 @@ Route::middleware('client')->group(function (): void {
 });
 Route::post('admin/auth/login', [\App\Http\Controllers\AdminAuthController::class, 'login'])->middleware('captcha:login');
 Route::middleware('admin')->group(function (): void {
+    Route::get('admin/tickets', [\App\Http\Controllers\TicketController::class, 'index']);
+    Route::get('admin/tickets/{id}', [\App\Http\Controllers\TicketController::class, 'show']);
+    Route::post('admin/tickets/{id}/replies', [\App\Http\Controllers\TicketController::class, 'reply']);
+    Route::post('admin/tickets/{id}/close', [\App\Http\Controllers\TicketController::class, 'close']);
+
     Route::get('admin/provider-drivers', [\App\Http\Controllers\AdminProviderController::class, 'drivers']);
     Route::get('admin/provider-connections', [\App\Http\Controllers\AdminProviderController::class, 'index']);
     Route::post('admin/provider-connections', [\App\Http\Controllers\AdminProviderController::class, 'store']);

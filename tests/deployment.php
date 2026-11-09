@@ -22,7 +22,7 @@ function releaseCaptcha(string $scene):array {
 }
 if(($argv[1]??'')==='empty') {
     releaseCheck((int)$db->query('SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE()')->fetchColumn()===27,'empty installation creates 27 tables');
-    releaseCheck((int)$db->query('SELECT COUNT(*) FROM migrations')->fetchColumn()===7,'all seven Laravel migrations recorded');
+    releaseCheck((int)$db->query('SELECT COUNT(*) FROM migrations')->fetchColumn()===8,'all eight Laravel migrations recorded');
     releaseCheck((int)$db->query('SELECT COUNT(*) FROM information_schema.triggers WHERE trigger_schema=DATABASE()')->fetchColumn()===5,'all five business guards installed');
     foreach(['admins','users','providers','products','invoices','instances','tasks','transactions'] as $table){releaseCheck((int)$db->query("SELECT COUNT(*) FROM $table")->fetchColumn()===0,'fresh '.$table.' has no M2 or demo data');}
     try{$db->exec('CREATE DATABASE jianyun_forbidden');throw new RuntimeException('Database isolation absent');}catch(PDOException){releaseCheck(true,'application DB account cannot create another database');}

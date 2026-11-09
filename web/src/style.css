@@ -908,3 +908,15 @@ p {
   .instance-page .page-heading h1 { font-size: 22px; }
   .instance-page .page-heading > .el-button { padding-inline: 10px; }
 }
+
+/* Plain-text support threads share the existing responsive workspace. */
+.ticket-page { min-width: 0; }
+.ticket-page > .el-card, .ticket-page > .el-alert { margin-bottom: 20px; }
+.ticket-page .el-select { width: 100%; }
+.ticket-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 12px; align-items: end; }
+.ticket-title, .ticket-page .el-descriptions__content, .ticket-page .el-table .cell { overflow-wrap: anywhere; }
+.ticket-message { margin: 16px 0; padding: 16px; border: 1px solid var(--el-border-color-light); border-radius: 10px; }
+.ticket-message-admin { background: var(--el-color-primary-light-9); }
+.ticket-message-meta { display: flex; flex-wrap: wrap; gap: 8px 16px; color: var(--el-text-color-secondary); font-size: 13px; }
+.ticket-text { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.8; margin-bottom: 0; }
+@media (max-width: 820px) { .ticket-page .page-heading { flex-wrap: wrap; } }

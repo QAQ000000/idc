@@ -2,6 +2,7 @@
 import json
 import socket
 import struct
+import uuid
 
 
 def record(kind, body=b''):
@@ -95,6 +96,20 @@ def verify(socket_path, root):
     status, task = request(socket_path, root, 'GET', f'/api/v1/admin/tasks/{task_id}', token=support_token)
     assert status == 200 and not task['data']['can_view_finance'] and task['data']['receipts'] == []
     assert request(socket_path, root, 'GET', '/api/v1/admin/finance/invoices', token=support_token)[0] == 403
+    ticket_body = {'title': 'FPM local support request', 'content': '<b>plain text</b>', 'instance_id': instance_id, 'request_key': str(uuid.uuid4())}
+    status, created = request(socket_path, root, 'POST', '/api/v1/tickets', ticket_body, token=client_token)
+    assert status == 200
+    ticket_id = created['data']['ticket_id']
+    status, replayed = request(socket_path, root, 'POST', '/api/v1/tickets', ticket_body, token=client_token)
+    assert status == 200 and replayed['data']['ticket_id'] == ticket_id and replayed['data']['replayed']
+    assert request(socket_path, root, 'GET', '/api/v1/tickets', token=admin_token)[0] == 401
+    assert request(socket_path, root, 'GET', '/api/v1/admin/tickets', token=client_token)[0] == 401
+    reply = {'content': 'FPM public reply', 'request_key': str(uuid.uuid4())}
+    assert request(socket_path, root, 'POST', f'/api/v1/admin/tickets/{ticket_id}/replies', reply, token=support_token)[0] == 200
+    status, thread = request(socket_path, root, 'GET', f'/api/v1/tickets/{ticket_id}', token=client_token)
+    assert status == 200 and thread['data']['replies']['total'] == 2 and thread['data']['ticket']['status'] == 'answered'
+    close_body = {'expected_version': thread['data']['version'], 'request_key': str(uuid.uuid4())}
+    assert request(socket_path, root, 'POST', f'/api/v1/tickets/{ticket_id}/close', close_body, token=client_token)[0] == 200
     price_path = f'/api/v1/admin/instances/{instance_id}/renewal-price'
     status, price = request(socket_path, root, 'GET', price_path, token=admin_token)
     assert status == 200 and not price['data']['editable'] and price['data']['blocked_reason']
@@ -124,3 +139,5 @@ def verify(socket_path, root):
     print('PASS: isolated PHP-FPM client/admin authentication, anonymous and cross-scope identity isolation')
     print('PASS: isolated PHP-FPM customer/instance navigation and finance role isolation')
     print('PASS: isolated PHP-FPM renewal price read/write permissions and blocked-state projection')
+
+    print('PASS: isolated PHP-FPM support create/replay/public reply/closure and identity separation')

@@ -470,3 +470,7 @@ instance 投影 id/user_id/user_email/product_id/product_name/provider_id/provid
 | POST /admin/provider-connections/{id}/verify | remote_pid 正整数、billing_cycle=monthly/annually、expected_version；读取默认配置与报价，返回 verified/remote_pid/billing_cycle/field_count/currency/first_price/recurring_price/verified_at；无上游写操作，不返回原始 Schema 或错误 |
 
 列表／详情只投影 id/name/driver/status/created_at/updated_at/product_count/instance_count/driver_installed/configuration_complete/snapshot_supported/configuration_fields（key/label/configured）。不回显 endpoint、账号、凭据或密文。配置完整仅代表已填写，不代表可认证；失败统一脱敏且记本地验证审计。连接写入版本不因只读验证审计失效。详情审计只投影 evidence/before_name/after_name/remote_pid/billing_cycle/outcome/source，排除 HMAC 操作键／输入指纹与其他原始 JSON。新增实例查询 provider_id 筛选以关联原绑定；原商品导入保持 preview_token、权限、并发门禁及默认下架。兼容和网络信任边界见 [本批契约](M2_PROVIDER_CONNECTIONS.md)。
+
+## 最小客服工单（2026-11-09）
+
+客户 `/tickets` 的GET／POST、`/tickets/instances` 选择器、`/tickets/{id}`详情及其 `/replies`、`/close` 写入口已实现。后台 `/admin/tickets`、`/admin/tickets/{id}`及其 `/replies`、`/close` 向所有当前启用管理员开放，使用独立admin认证；不存在代登录、内部便签、转派或附件写入口。客户始终限本人工单／实例，私密类型不进入公开会话或计数；纯文本、no-store、同键异参409、关闭版本门禁与同事务审计不可绕过。完整请求字段、分页／筛选、返回投影与状态见 [工单契约](M2_SUPPORT_TICKETS.md#api与兼容)。已有库先迁移000009，不执行资金或资源操作。

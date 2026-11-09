@@ -23,6 +23,7 @@ const links = computed(() =>
         { to: "/admin/instances", label: "实例查询", mark: "▦" },
         { to: "/admin/providers", label: "上游接入", mark: "⇄" },
         { to: "/admin/products", label: "商品管理", mark: "◇" },
+        { to: "/admin/tickets", label: "客服工单", mark: "✉" },
         { to: "/admin/tasks", label: "异常任务", mark: "≡" },
         ...(["super_admin", "finance"].includes(adminAccount.admin?.role || "") ? [{to:"/admin/finance", label:"资金查询", mark:"¥"}] : []),
       ]
@@ -30,6 +31,7 @@ const links = computed(() =>
         { to: "/instances", label: "我的实例", mark: "▦" },
         { to: "/invoices", label: "我的账单", mark: "≡" },
         { to: "/wallet", label: "余额与充值", mark: "¥" },
+        { to: "/tickets", label: "我的工单", mark: "✉" },
         { to: "/account/security", label: "账户安全", mark: "◇" },
       ],
 );

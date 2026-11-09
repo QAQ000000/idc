@@ -581,8 +581,12 @@ CREATE TABLE IF NOT EXISTS `ticket_replies` (
     `type` ENUM('reply', 'internal_note', 'transfer_log') NOT NULL DEFAULT 'reply' COMMENT '消息类型: reply客户可见回复 / internal_note内部私有便签 / transfer_log转派流水',
     `transfer_to_admin_id` INT UNSIGNED NULL COMMENT '转派目标管理员ID',
     `content` TEXT NOT NULL,
+    `request_key` CHAR(36) NULL COMMENT '作者作用域的提交UUID，历史行可空',
+    `request_hash` CHAR(64) NULL COMMENT '提交动作与正文指纹',
     `attachments` JSON NULL COMMENT '附件文件路径列表',
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY `uk_ticket_user_request` (`user_id`, `request_key`),
+    UNIQUE KEY `uk_ticket_admin_request` (`admin_id`, `request_key`),
     FOREIGN KEY (`ticket_id`) REFERENCES `tickets` (`id`) ON DELETE CASCADE,
     FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL,
     FOREIGN KEY (`admin_id`) REFERENCES `admins` (`id`) ON DELETE SET NULL,
@@ -781,3 +785,7 @@ CREATE TABLE IF NOT EXISTS `migrations` (
 ### 管理员续费改价 JSON 与事务边界（2026-11-09）
 
 复用 instances.recurring_price（原冻结价）和可空override_price（覆盖价），不追随当前商品价；未付renew账单作废与cycle_marker=NULL、审计同事务。admin_audit_logs.action=instance_renewal_price，context仅存evidence、before／after三种价格及cancelled_invoice_ids，最新审计ID参与版本以拒绝ABA。已付账单、原账期与资源不改写，27表／DDL保持，无迁移，见 [改价契约](M2_INSTANCE_RENEWAL_PRICE.md)。
+
+### 工单提交身份增量（2026-11-09）
+
+ticket_replies新增可空request_key／request_hash，以(user_id,request_key)与(admin_id,request_key)唯一；首条回复标识提单，后续公开回复／关闭也复用原实体，旧NULL行保持。客户与管理员作者二选一，查询只投影归属一致的type=reply；后台回复和结单同事务写ticket.reply／ticket.close审计（reply_id及前后状态，无正文副本）。无需新增表或单独幂等表；旧库先迁移000009，27表保持，见 [工单契约](M2_SUPPORT_TICKETS.md)。

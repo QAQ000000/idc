@@ -50,6 +50,33 @@ final class NotificationSettingsService
         if (!$s->fetchColumn()) { throw new ApiException('Active super_admin required',403,403); }
     }
 
+    /** An explicit commit starts a new subscription period; never sweep historical ticket messages. */
+    public function configureTickets(int $admin,array $input): array
+    {
+        if(array_diff(array_keys($input),['enabled','admin_ids']) || !is_bool($input['enabled']??null)
+            || Validator::make($input,['admin_ids'=>'present|array|max:20','admin_ids.*'=>'required|integer|min:1|distinct'])->fails()
+            || ($input['enabled'] && !$input['admin_ids'])){throw new ApiException('Explicit ticket mail switch and administrator recipients required');}
+        $recipients=array_map('intval',array_values($input['admin_ids']));sort($recipients);
+        return Database::transaction(static function(PDO $db)use($admin,$input,$recipients):array{
+            self::authorize($db,$admin);
+            foreach($recipients as $id){
+                $s=$db->prepare("SELECT email FROM admins WHERE id=? AND status='active' FOR UPDATE");$s->execute([$id]);
+                if(!filter_var($s->fetchColumn(),FILTER_VALIDATE_EMAIL)){throw new ApiException('Ticket recipient must be an active administrator');}
+            }
+            $s=$db->query("SELECT value FROM system_settings WHERE `key`='notify.mail' FOR UPDATE");$row=$s->fetchColumn();
+            if($input['enabled'] && (!$row || (json_decode($row,true,32,JSON_THROW_ON_ERROR)['enabled']??false)!==true)){
+                throw new ApiException('Configure and enable the mail channel before ticket subscriptions');
+            }
+            $value=['enabled'=>$input['enabled'],'admin_ids'=>$recipients,'activation'=>bin2hex(random_bytes(16)),
+                'activated_at'=>$db->query('SELECT UTC_TIMESTAMP()')->fetchColumn()];
+            $db->prepare("INSERT INTO system_settings(`key`,`group`,value,updated_by) VALUES('notify.ticket_mail','notification',?,?)
+                ON DUPLICATE KEY UPDATE value=VALUES(value),updated_by=VALUES(updated_by)")->execute([json_encode($value,JSON_THROW_ON_ERROR),$admin]);
+            $db->prepare("INSERT INTO admin_audit_logs(admin_id,action,target_type,target_id,context,ip) VALUES(?,'ticket_notification_configure','notification',0,?,?)")
+                ->execute([$admin,json_encode($value,JSON_THROW_ON_ERROR),Security::getClientIp()]);
+            return $value;
+        },3);
+    }
+
     public function load(): ?array
     {
         $s=Database::getInstance()->query("SELECT value,encrypted_credentials FROM system_settings WHERE `key`='notify.mail'");$row=$s->fetch();

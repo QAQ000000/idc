@@ -1,6 +1,6 @@
 # JianYun (简云) · 模块化多渠道通知中心设计文档 (Notification Center)
 
-本文档维护通知占位、一次发送认领和未知结果核验规则。当前只实现单邮件的管理员人工核验告警、客户临期提醒与客户主动申请的密码重置；其余渠道、广播与 Web Push 是未来规划。
+本文档维护通知占位、一次发送认领和未知结果核验规则。当前只实现单邮件的管理员人工核验告警、客户临期提醒、客户主动申请的密码重置与工单更新；其余渠道、广播与 Web Push 是未来规划。
 
 ---
 
@@ -29,7 +29,7 @@
 | **管理员人工核验告警** | `task:{id}:manual:{execution_token}:admin:{admin_id}` | `task:3:manual:2:admin:1` | 同一任务核验轮次、同一管理员只认领一次 |
 | **实例自动开通成功** | `host:{host_id}:provision_success` | `host:10024:provision_success` | 开通成功通知每渠道至多发送一次 |
 | **账单支付成功** | `invoice:{invoice_id}:paid` | `invoice:80921:paid` | 该账单支付成功通知仅发一次 |
-| **工单新回复** | `ticket:{ticket_id}:reply:{reply_id}` | `ticket:332:reply:1502` | 每条新回复仅通知一次 |
+| **工单更新** | `ticket:{ticket_id}:reply:{reply_id}:admin:{admin_id}` 或 `…:user:{user_id}` | `ticket:332:reply:1502:admin:1` | 普通消息按收件身份及渠道防重；结单不入队 |
 
 ---
 
@@ -187,3 +187,12 @@ SMTP 所有配置整体 AES-256-GCM 加密存入 notify.mail 的 encrypted_crede
 ### 客户主动密码重置邮件（2026-11-08）
 
 复用同一 mail Worker 和通知表，第三个已实现场景为 `context.kind=password_reset`；指纹 `user:{id}:password_reset:{random_nonce}`。每次明确申请是独立事件，60 秒冷却和 IP/邮箱上限防滥用，不自动更换指纹重试未知发送。无需开启 due_reminders，但要求邮件总开关启用。重置 JWT 只以 AES-GCM 密文暂存在 pending context，认领/失效/终态/悬空恢复清 encrypted_token；发送前重查用户启用、原邮箱、认证版本及 15 分钟期限。邮件链接使用本站 fragment；不含账户密码/上游信息，不可当作主会话。改密后排队旧邮件跳过，已发邮件的旧链接失效。未知结果仍停发转核验，用户可在冷却后主动新申请。详见 [客户自助](M2_CUSTOMER_SELF_SERVICE.md)。
+
+
+## 8. 工单邮件增量（2026-11-09）
+
+TicketService在新工单首条消息／客户追加／管理员公开回复的原本地事务内写notification_deliveries，重放及结单分支不写占位；不匹配中文内容、不调用SMTP。来源不采用历史回复补扫，避免启用时补发旧会话。新工单和客户追加发给指定管理员，后台公开回复发给原客户；邮件只含更新提示、编号和需独立登录的工单链接，不含原主题／正文／凭据。
+
+`notify.ticket_mail`独立保存开关、管理员ID、服务端activation与UTC起点，无新表／字段／迁移。默认关闭，`notifications:tickets ADMIN_ID`从私有stdin接受显式开关和管理员列表，当前super_admin／同事务审计；启用需邮件总开关开启。配置提交与消息共享配置锁定义起点，每次配置建立新订阅期，旧排队消息失效，没有历史消息扫描或补发。SMTP总配置不覆盖工单订阅。
+
+认领前重查工单归属、原公开消息／作者、收件启用／原邮箱、指定管理员及当前activation，仍复用pending→sending→结果CAS与未知人工核验。消息和占位同事务是本批针对工单提交的调整；既有任务／临期来源仍用原补扫，金融事务不耦合邮件，其他渠道仍延期。完整锁序、成本和运行前置见[工单邮件契约](M2_TICKET_MAIL.md)。完整1390项业务回归、工单专项65项及26项运行检查通过；本批未开启M2工单邮件或发送真实邮件，证据与边界见上述契约。

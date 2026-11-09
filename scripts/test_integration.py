@@ -170,6 +170,7 @@ def main():
             run_checks(php, 'tests/admin_providers.php', env, r'Admin provider checks: \d+')
             run_checks(php, 'tests/instance_renewal_price.php', env, r'Instance renewal price checks: \d+')
             run_checks(php, 'tests/tickets.php', env, r'Ticket checks: \d+')
+            run_checks(php, 'tests/ticket_mail.php', env, r'Ticket mail checks: \d+')
             subprocess.run([php, 'artisan', 'migrate', '--force'], cwd=ROOT, env=env, check=True)
             subprocess.run([php, 'tests/browser_fixture.php'], cwd=ROOT, env=env, check=True)
             fpm_socket = directory / 'fpm.sock'

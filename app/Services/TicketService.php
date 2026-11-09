@@ -119,6 +119,7 @@ final class TicketService
             $this->actor($db,$user,false,true);if($r=$this->replay($db,$user,false,$key,$hash)){return $r;}
             if($instance!==null){$s=$db->prepare('SELECT id FROM instances WHERE id=? AND user_id=?');$s->execute([$instance,$user]);if(!$s->fetchColumn()){throw new ApiException('Instance not found',404,404);}}
             $db->prepare('INSERT INTO tickets(user_id,instance_id,title) VALUES(?,?,?)')->execute([$user,$instance,$title]);$id=(int)$db->lastInsertId();$reply=$this->record($db,$user,false,$id,$content,$key,$hash);
+            (new TicketNotificationService())->enqueue($db,$id,$reply,$user,null);
             return ['ticket_id'=>$id,'reply_id'=>$reply,'replayed'=>false];
         },3);
     }
@@ -137,6 +138,7 @@ final class TicketService
             $reply=$this->record($db,$actor,$admin,$id,$content,$key,$hash);$status=$close?'closed':($admin?'answered':'customer_replied');
             $db->prepare('UPDATE tickets SET status=?,closed_at='.($close?'UTC_TIMESTAMP()':'NULL').',updated_at=UTC_TIMESTAMP() WHERE id=?')->execute([$status,$id]);
             if($admin){$db->prepare('INSERT INTO admin_audit_logs(admin_id,action,target_type,target_id,context,ip) VALUES(?,?,?,?,?,?)')->execute([$actor,$close?'ticket.close':'ticket.reply','ticket',$id,json_encode(['reply_id'=>$reply,'before_status'=>$t['status'],'after_status'=>$status],JSON_THROW_ON_ERROR),Security::getClientIp()]);}
+            if(!$close){(new TicketNotificationService())->enqueue($db,$id,$reply,(int)$t['user_id'],$admin?$actor:null);}
             return ['ticket_id'=>$id,'reply_id'=>$reply,'replayed'=>false];
         },3);
     }

@@ -789,3 +789,8 @@ CREATE TABLE IF NOT EXISTS `migrations` (
 ### 工单提交身份增量（2026-11-09）
 
 ticket_replies新增可空request_key／request_hash，以(user_id,request_key)与(admin_id,request_key)唯一；首条回复标识提单，后续公开回复／关闭也复用原实体，旧NULL行保持。客户与管理员作者二选一，查询只投影归属一致的type=reply；后台回复和结单同事务写ticket.reply／ticket.close审计（reply_id及前后状态，无正文副本）。无需新增表或单独幂等表；旧库先迁移000009，27表保持，见 [工单契约](M2_SUPPORT_TICKETS.md)。
+
+
+### 工单邮件上下文与启用边界（2026-11-09）
+
+原notification_deliveries.context增加kind=ticket_update的使用：只存ticket_id／reply_id／customer_id／原作者身份／activation，不复制正文；原user_id或admin_id二选一与target冻结收件人。fingerprint包含原回复ID和收件身份，原channel唯一键继续防重。system_settings.key=notify.ticket_mail仅存显式开关／管理员列表／服务端订阅期／UTC起点，SMTP密文仍唯一存notify.mail。普通消息与占位同事务、结单分支不占位，无历史消息扫描；无新DDL或迁移，仍27表，见[工单邮件契约](M2_TICKET_MAIL.md)。

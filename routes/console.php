@@ -95,6 +95,10 @@ Artisan::command('notifications:configure {admin}', function():void {
     app(\App\Services\NotificationSettingsService::class)->configure(Request::id($this->argument('admin')),$input);
     $this->info('Mail settings encrypted and audited.');
 })->purpose('Configure the single mail channel from private stdin; no message is sent');
+Artisan::command('notifications:tickets {admin}', function():void {
+    $input=json_decode(stream_get_contents(STDIN,8192),true,32,JSON_THROW_ON_ERROR);
+    $this->line(json_encode(app(\App\Services\NotificationSettingsService::class)->configureTickets(Request::id($this->argument('admin')),$input),JSON_THROW_ON_ERROR));
+})->purpose('Start or disable ticket mail from this configuration commit; never backfill old messages');
 Artisan::command('notifications:dispatch', function():void {
     $this->line(json_encode(app(\App\Services\NotificationService::class)->dispatch(),JSON_THROW_ON_ERROR));
 })->purpose('Sweep manual task alerts and due reminders, then send each unclaimed mail at most once');

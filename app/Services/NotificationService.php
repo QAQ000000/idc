@@ -66,12 +66,14 @@ final class NotificationService
             if (!$preview) { return null; }
             $c=json_decode($preview['context']??'{}',true,32,JSON_THROW_ON_ERROR);
             $i=null;
-            if (($c['kind']??null)!=='password_reset') {
+            if (!in_array($c['kind']??null,['password_reset','ticket_update'],true)) {
                 $s=$db->prepare('SELECT *,due_date>UTC_TIMESTAMP() AND due_date<=DATE_ADD(UTC_TIMESTAMP(),INTERVAL 7 DAY) AS due_now FROM instances WHERE id=? FOR UPDATE');
                 $s->execute([$c['instance_id']??0]);$i=$s->fetch();
             }
             $valid=false;$message=null;
-            if (($c['kind']??null)==='password_reset' && $preview['admin_id']===null && $preview['user_id']!==null) {
+            if (($c['kind']??null)==='ticket_update') {
+                $message=(new TicketNotificationService())->message($db,$preview,$c);$valid=$message!==null;
+            } elseif (($c['kind']??null)==='password_reset' && $preview['admin_id']===null && $preview['user_id']!==null) {
                 $s=$db->prepare('SELECT id,email,status,auth_version FROM users WHERE id=? FOR UPDATE');$s->execute([$preview['user_id']]);$u=$s->fetch();
                 $token=Security::decrypt($c['encrypted_token']??'');$p=$token===null?null:PasswordService::resetClaims($token);
                 $valid=$u && $p && $u['status']==='active' && $u['email']===$preview['target'] && (int)$u['id']===$p['uid']
@@ -113,7 +115,7 @@ final class NotificationService
             $s=$db->prepare("UPDATE notification_deliveries SET status=?,error_message=?,context=JSON_REMOVE(context,'$.encrypted_token'),updated_at=UTC_TIMESTAMP() WHERE id=? AND status='pending'");
             $s->execute([$valid?'sending':'failed',$valid?null:'STALE_BUSINESS_CONTEXT',$id]);
             return $valid ? ['id'=>$id,'target'=>$d['target'],'message'=>$message] : null;
-        });
+        },3);
     }
 
     public function finish(int $id,NotificationResult $result): bool

@@ -210,4 +210,7 @@ sequenceDiagram
 
 **管理员续费改价增量**：InstanceRenewalPriceService 只读写原实例override_price、受影响未付续费单和追加审计；先锁实例、重核版本与任务／资金门禁，价格／账单取消／cycle_marker释放／审计同事务。无驱动调用或新价格实体；既有收款服务处理旧单迟到实收入钱包，已付权益不变，无迁移，见 [改价契约](M2_INSTANCE_RENEWAL_PRICE.md)。
 
-**最小客服沟通增量**：TicketService仅操作原tickets／ticket_replies与追加管理员审计；按作者行→工单行加锁，创建／回复／关闭通过同一回复实体的提交键防重，关闭使用持工单锁后的当前公开会话版本。无金融、实例状态、任务或具体插件调用，不建设工单事件总线／通知副本；已有库迁移000009，仍27表。权限、并发和验收见 [工单契约](M2_SUPPORT_TICKETS.md)。
+**最小客服沟通增量**：TicketService操作原tickets／ticket_replies与追加管理员审计，普通新消息可同事务占位原通知表；按作者行→工单行加锁，创建／回复／关闭通过同一回复实体的提交键防重，关闭使用持工单锁后的当前公开会话版本。无金融、实例状态、任务或具体插件调用，不建设工单事件总线／正文通知副本；已有库迁移000009，仍27表。权限、并发和验收见 [工单契约](M2_SUPPORT_TICKETS.md)。
+
+
+**工单邮件增量**：TicketNotificationService仅为新提交普通消息按回复ID／收件身份同事务占位原notification_deliveries，结单／重放不占位；无消息提交后回调窗口、额外事件表或历史消息扫描。notify.ticket_mail在原system_settings中保存显式订阅起点与管理员，默认关闭；原独立mail Worker重核来源／归属／收件人与配置后发送最小登录链接，未知结果沿用核验。27表／DDL保持，无新迁移；金融Worker与驱动层不变，见[工单邮件](M2_TICKET_MAIL.md)。

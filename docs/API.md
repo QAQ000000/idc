@@ -474,3 +474,8 @@ instance 投影 id/user_id/user_email/product_id/product_name/provider_id/provid
 ## 最小客服工单（2026-11-09）
 
 客户 `/tickets` 的GET／POST、`/tickets/instances` 选择器、`/tickets/{id}`详情及其 `/replies`、`/close` 写入口已实现。后台 `/admin/tickets`、`/admin/tickets/{id}`及其 `/replies`、`/close` 向所有当前启用管理员开放，使用独立admin认证；不存在代登录、内部便签、转派或附件写入口。客户始终限本人工单／实例，私密类型不进入公开会话或计数；纯文本、no-store、同键异参409、关闭版本门禁与同事务审计不可绕过。完整请求字段、分页／筛选、返回投影与状态见 [工单契约](M2_SUPPORT_TICKETS.md#api与兼容)。已有库先迁移000009，不执行资金或资源操作。
+
+
+## 工单邮件接口边界（2026-11-09）
+
+不增加HTTP通知发送／配置／订阅接口。原工单提单／公开回复成功时，若双开关与当前订阅有效，同事务追加原通知表占位；重放仍返回原消息，结单不占位。邮件链接为`/tickets/:id?page=last`或`/admin/tickets/:id?page=last`，必须经原独立客户／管理员登录与归属校验，不包含免登Token。超级管理员本地`notifications:tickets`从stdin显式设置订阅起点及指定管理员；字段与兼容见[工单邮件](M2_TICKET_MAIL.md)。

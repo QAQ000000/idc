@@ -65,7 +65,7 @@ final class ZjmfDriver implements ConnectionConfigInterface, UpstreamDriverInter
     }
     public function describeForm(array $snapshot): array
     {
-        if (!empty($snapshot['customfields']) || !empty($snapshot['advanced'])) { throw new \RuntimeException('Custom fields and advanced linkage are not supported'); }
+        if (!empty($snapshot['customfields'])) { throw new \RuntimeException('Custom fields are not supported'); }
         $form = [];
         $label = static fn(string $name): string => str_replace('^', ' / ', explode('|', $name, 2)[1] ?? $name);
         foreach ($snapshot['config_groups'] ?? [] as $group) {
@@ -86,7 +86,7 @@ final class ZjmfDriver implements ConnectionConfigInterface, UpstreamDriverInter
             }
         }
         if (count($form)>100) { throw new \RuntimeException('Too many configuration options'); }
-        return array_values($form);
+        return EnumDependencies::project($form, $snapshot['advanced'] ?? []);
     }
     /** Product JSON uses generation flags, not merely optional password complexity hints. */
     private function inputContext(array $schema): array
@@ -148,7 +148,10 @@ final class ZjmfDriver implements ConnectionConfigInterface, UpstreamDriverInter
         $recurring = Money::positive((string)($p['signal_price'] ?? $amount));
         // Magic/DCIM provisioning accepts at most 20 bytes, even when settle accepts more.
         // Keep the local 12-byte minimum. This is not the product's generation length.
-        return new PreflightResult($amount, $config, context: $this->inputContext($schema['data']??[]) + ['schema_hash'=>ConfigOptions::hash($form)], recurringAmount: $recurring);
+        $rules=[];
+        foreach($form as $field){if(isset($field['dependencies'])){$rules[]=['id'=>$field['id'],'dependencies'=>$field['dependencies']];}}
+        return new PreflightResult($amount, $config, context: $this->inputContext($schema['data']??[]) + ['schema_hash'=>ConfigOptions::hash($form)]
+            + ($rules ? ['configuration_rules'=>$rules] : []), recurringAmount: $recurring);
     }
     private function hostname(array $o): string
     {

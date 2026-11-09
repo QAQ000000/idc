@@ -34,7 +34,7 @@ final class ProductSnapshotService
             [$driver,$credentials]=(new ProviderService())->resolve($providerId);
             if (!$driver instanceof ConfigurableDriverInterface) { throw new ApiException('Driver does not support schema snapshots',409,409); }
             $schema=$driver->getFormSchema($remotePid,$credentials); $form=$driver->describeForm($schema);
-            $defaults=[]; foreach ($form as $f) { $defaults[$f['id']]=$f['default']; }
+            $defaults=ConfigOptions::defaults($form);
             $config=ConfigOptions::validate($form,$input['config_options']??$defaults);
             $prices=[]; $recurring=[]; $costs=[];
             foreach ($cycles as $cycle) {

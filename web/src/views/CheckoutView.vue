@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onBeforeUnmount, ref, watch } from "vue";
+import { configurationComplete } from "../utils/configOptions";
 import { useRoute, useRouter } from "vue-router";
 import {
   api,
@@ -175,6 +176,11 @@ async function quote(manual = false) {
   quoteError.value = "";
   quoteNotice.value = "";
   quoting.value = true;
+  if (!configurationComplete(configuration.value.fields, selected.value)) {
+    quoting.value = false;
+    quoteError.value = "请补全联动后的有效配置，再获取并确认报价。";
+    return;
+  }
   try {
     const result = await api<Quote>(
       "/products/" + route.params.id + "/calculate",

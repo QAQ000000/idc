@@ -11,6 +11,7 @@ from urllib.parse import urlencode
 from pathlib import Path
 import copy
 CONFIG_SCHEMA = json.loads((Path(__file__).parent / "fixtures/zjmf-product-14.json").read_text())
+ENUM_SCHEMA = json.loads((Path(__file__).parent / "fixtures/zjmf-enum-linkage.json").read_text())
 from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
@@ -105,6 +106,10 @@ class Handler(BaseHTTPRequestHandler):
                     data['config_groups'][0]['options'][0]['sub'][0]['option_name'] += ' changed'
                 if state['config_mode'] == 'input_rules':
                     data['products']['password']['rule']['len_num'] = 16
+            if p.get('pid') == ['1563']:
+                data = copy.deepcopy(ENUM_SCHEMA)
+                if state['config_mode'] == 'enum_rules':
+                    data['advanced'][1]['sub_id']['1178976'] = {'qty_minimum': '0', 'qty_maximum': '0'}
             r = {'status': 200, 'data': data}
         elif path == '/cart/get_total':
             total, recurring = '0.01', '0.01'
@@ -118,6 +123,17 @@ class Handler(BaseHTTPRequestHandler):
                 total, recurring = ('16.00', '14.00') if opts['276853'] == '1173030' else ('24.00', '22.00')
                 if state['config_mode'] == 'price': total = '17.00'
                 if state['config_mode'] == 'recurring': recurring = '15.00'
+            if p.get('pid') == ['1563']:
+                opts = {k[13:-1]: v[0] for k, v in p.items() if k.startswith('configoption[')}
+                # Independent fixture oracle: never accepts a forbidden combination by silently fixing it.
+                valid = (len(opts) == 9 and
+                    ((opts.get('278142') == '1178980' and opts.get('278141') == '1178975') or
+                     (opts.get('278142') == '1199990' and opts.get('278141') in ['1178976', '1178977'])) and
+                    not (opts.get('278141') == '1178976' and opts.get('278143') == '1178981'))
+                if not valid:
+                    self.send_error(422, 'Invalid linked configuration')
+                    return
+                total, recurring = ('16.00', '14.00') if opts['278142'] == '1178980' else ('24.00', '22.00')
             r = {'status': 200, 'currency': {'code': 'CNY'}, 'products': {'billingcycle': p['billingcycle'][0], 'stock_control': 0, 'qty': 81, 'total': total, 'signal_price': recurring}}
         elif path == '/cart/settle':
             hostname = p['cart_data[host]'][0]
@@ -135,6 +151,8 @@ class Handler(BaseHTTPRequestHandler):
                 total, recurring = ('0.01', '0.01')
                 if p['cart_data[pid]'] == ['14']:
                     total, recurring = ('16.00', '14.00') if state['last_config'].get('276853') == '1173030' else ('24.00', '22.00')
+                if p['cart_data[pid]'] == ['1563']:
+                    total, recurring = ('16.00', '14.00') if state['last_config'].get('278142') == '1178980' else ('24.00', '22.00')
                 state['last_create_total'] = total
                 state['creates'] += 1
                 state['host_counter'] += 1

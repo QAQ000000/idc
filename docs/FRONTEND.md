@@ -1,5 +1,7 @@
 # JianYun (简云) · 统一单前端架构设计规范 (Frontend Specification)
 
+**枚举联动增量**：原ConfigOptionRenderer按通用dependencies过滤选择，父变化一次清除失效后代并列明提示；未补全不报价／不下单，补全重新核价，原序号拒绝迟到报价。后台仍原预览／导入，参数变化失效确认并标识上次预览，配置未补全阻止预览；长选项菜单限输入框宽并换行；手机／平板沿用原结账布局，见[契约](M2_ENUM_DEPENDENCIES.md)。
+
 **验证码策略独立页**：`/admin/captcha`三个紧凑场景卡片，独立草稿／版本／保存／核对，login影响客户和管理员的提示前置。复用useSettingsDraft；409／丢响应不自动重提，未知同版本继续阻断。CaptchaWidget刷新／换场景／卸载令旧响应失效，读取失败或非法挑战阻止提交；旧页面按服务端当前策略执行，收到422重新取挑战。手机／竖屏平板按单列，见[契约与验收](M2_CAPTCHA_SETTINGS.md)。
 
 **站点基础配置页**：`/admin/site`独立表单，摘要、站名／Logo和保存／核对前置，公司／版权／备案按需展开。复用useSettingsDraft；409／丢响应先GET，未知不自动重提。统一site store驱动导航、商品页站名、页脚和标题；匿名读取无Token、4秒超时、不阻塞业务，空值／失败默认，Logo失败回退。见[契约与验收](M2_SITE_SETTINGS.md)。

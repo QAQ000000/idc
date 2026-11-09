@@ -37,4 +37,4 @@ GET返回 `scenes`，每场景有 `enabled:boolean,driver,mode,configured:boolea
 
 脚本、结果及截图仅保存在Git忽略的[验收目录](../output/playwright/captcha-settings/settings-results.txt)，另有[认证结果](../output/playwright/captcha-settings/auth-results.txt)。代表截图：[桌面](../output/playwright/captcha-settings/desktop.png)、[390手机](../output/playwright/captcha-settings/phone390.png)、[768平板](../output/playwright/captcha-settings/tablet768.png)、[旧页面策略变更](../output/playwright/captcha-settings/stale-page-enabled.png)、[普通管理员拒绝](../output/playwright/captcha-settings/support-denied.png)。完整日志 `/tmp/jianyun-captcha-settings-integration.log`，构建日志 `/tmp/jianyun-captcha-settings-build.log`。
 
-**M2运行接入及实际策略变更仍待验**。未修改M2配置／业务数据，未迁移、重启Worker、联系上游或发送真实邮件。本批不新增前端轮询、策略缓存、挑战撤销实体或通用风控引擎；运行接入只需加载新版HTTP／前端并核对GD／Redis及可信代理配置，沿用默认开启或现有合法策略。
+**用户已确认M2基础手测通过（2026-11-09）**。以下为开发批次的操作边界，本轮未再次执行M2配置变更、故障或并发演练：未修改M2配置／业务数据，未迁移、重启Worker、联系上游或发送真实邮件。本批不新增前端轮询、策略缓存、挑战撤销实体或通用风控引擎；运行接入只需加载新版HTTP／前端并核对GD／Redis及可信代理配置，沿用默认开启或现有合法策略。

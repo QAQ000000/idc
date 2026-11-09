@@ -6,6 +6,7 @@ import { adminApi } from "../api/admin";
 import { cycleLabels, type ProductDetail, type Provider, type SnapshotPreview } from "../api/adminProducts";
 import { message } from "../api/request";
 import ConfigOptionRenderer from "./ConfigOptionRenderer.vue";
+import { configurationComplete } from "../utils/configOptions";
 const props = defineProps<{ product?: ProductDetail }>();
 const emit = defineEmits<{ saved: [] }>();
 const route = useRoute(), router = useRouter(), providers = ref<Provider[]>([]);
@@ -14,10 +15,11 @@ const options = ref<Record<string, string> | null>(props.product?.defaults || nu
 const payload = computed(() => props.product ? { expected_version: props.product.version, billing_cycles: form.billing_cycles, ...(options.value ? { config_options: options.value } : {}) } : { ...form, provider_id: Number(form.provider_id), remote_pid: Number(form.remote_pid), ...(options.value ? { config_options: options.value } : {}) });
 const confirmation = ref<{ token: string; input: object }>();
 watch(payload, () => { confirmation.value = undefined; }, { deep: true });
-const canPreview = computed(() => form.billing_cycles.length > 0 && (props.product || (form.provider_id && form.remote_pid && form.name.trim())));
+const canPreview = computed(() => form.billing_cycles.length > 0 && (props.product || (form.provider_id && form.remote_pid && form.name.trim()))
+  && (!preview.value || !options.value || configurationComplete(preview.value.fields, options.value)));
 onMounted(async () => { if (!props.product) { try { providers.value = await adminApi<Provider[]>("/providers"); } catch (e) { error.value = message(e); } } });
 async function fetchPreview() {
-  if (busy.value || saving.value) return;
+  if (busy.value || saving.value || !canPreview.value) return;
   error.value = ""; busy.value = true; confirmation.value = undefined;
   try {
     const result = await adminApi<SnapshotPreview>(props.product ? `/products/${props.product.id}/snapshot/preview` : "/products/preview", { method: "POST", body: payload.value });
@@ -59,7 +61,7 @@ async function save() {
     <div class="actions"><el-button native-type="submit" type="primary" :loading="busy" :disabled="!canPreview">读取并预览配置与报价</el-button><el-button @click="resetDefaults">使用上游默认配置</el-button></div>
   </el-form>
   <template v-if="preview">
-    <h3>所选配置参考报价</h3>
+    <h3>{{ confirmation ? '所选配置参考报价' : '上次预览参考报价（请重新预览确认）' }}</h3>
     <el-table :data="preview.billing_cycles.map(c => ({ cycle: c, first: preview!.prices[c], recurring: preview!.recurring_prices[c] }))">
       <el-table-column label="账期"><template #default="{ row }">{{ cycleLabels[row.cycle] }}</template></el-table-column><el-table-column prop="first" label="首期售价 (¥)" /><el-table-column prop="recurring" label="新购续费参考价 (¥)" />
     </el-table>

@@ -1,5 +1,7 @@
 # JianYun (简云) · RESTful API 契约与接口字典 (API Specification)
 
+**枚举依赖增量**：原商品config与后台preview的fields可带dependencies数组（field、operator=in/not_in、values、effect=allow/exclude、choices，ID均字符串），父字段先于子字段。原calculate／checkout拒绝非法组合，不自动替换配置；schema_hash及quote_token包含规则，改变须重新确认。无新增路由，其他字段与成功请求键恢复保持，见[契约](M2_ENUM_DEPENDENCIES.md)。
+
 ## 验证码策略后台（2026-11-09）
 
 - `GET /api/v1/admin/captcha-settings`：仅当前启用super_admin，返回`scenes`三场景对象；每场景`enabled:boolean,driver,mode,configured:boolean,version:string`。

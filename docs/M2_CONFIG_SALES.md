@@ -4,7 +4,7 @@
 
 ## 配置与边界
 
-可选 `ConfigurableDriverInterface::describeForm(array $snapshot): array` 只负责将原始 JSON 投影为公开字段：`id/type/label/choices/default`。核心通过接口取得表单，不认识魔方字段或具体插件类；原始快照不直接公开。当前支持魔方 `option_type` 1、2、5、6、8、10、12、13 的独立枚举，统一用 Element Plus select 展示；选项值仍为上游子项 ID。高级联动、自定义字段、数量/滑块和隐藏配置不支持时拒绝导入/销售，不能静默忽略。
+可选 `ConfigurableDriverInterface::describeForm(array $snapshot): array` 只负责将原始 JSON 投影为公开字段：`id/type/label/choices/default`。核心通过接口取得表单，不认识魔方字段或具体插件类；原始快照不直接公开。当前支持魔方 `option_type` 1、2、5、6、8、10、12、13 的独立枚举，统一用 Element Plus select 展示；选项值仍为上游子项 ID。后续已增加单父无环枚举依赖（见[枚举联动增量](M2_ENUM_DEPENDENCIES.md)）；其余高级规则、自定义字段、数量/滑块和隐藏配置仍拒绝导入/销售，不能静默忽略。
 
 选项必须完整，每个 ID 只能选择其自身允许的子项；额外键、嵌套值、其他字段的子项被拒绝。服务端将键排序、ID/值规范为整数 ID 与十进制字符串，消除 JSON 键顺序和整数/字符串表达差异造成的重复购买意图。仍保留原 checkout_key 的用户范围唯一约束与同用户事务串行化。
 

@@ -1,6 +1,8 @@
 # JianYun (简云) · Agent 协同开发指南与工程宪法
 
-**验证码策略后台**：`/admin/captcha`仅当前超级管理员分别保存login／register／password_reset，内置图片和always模式；login同时影响客户与管理员。复用原JSON行、场景独立版本和同事务审计；409／丢响应先只读核对。客户HTTP登录10次／60秒、注册5次／60秒／可信IP，关闭验证码仍限流；损坏配置、驱动或Redis异常拒绝，不降级放行。27表无迁移／Worker变更，M2接入待验，见[契约](docs/M2_CAPTCHA_SETTINGS.md)。
+**枚举联动增量**：魔方advanced只在插件内投影为通用dependencies，单父无环枚举支持允许集合并集减排除；父变化清除失效后代并重新报价，服务端严格拒绝非法组合。规则进入原快照／报价指纹／Outbox，原请求键及未知调查保持。真实563等样本仍含数量项／库存或规则问题，不计为完整可售验收；无新表／迁移，见[契约](docs/M2_ENUM_DEPENDENCIES.md)。
+
+**验证码策略后台**：`/admin/captcha`仅当前超级管理员分别保存login／register／password_reset，内置图片和always模式；login同时影响客户与管理员。复用原JSON行、场景独立版本和同事务审计；409／丢响应先只读核对。客户HTTP登录10次／60秒、注册5次／60秒／可信IP，关闭验证码仍限流；损坏配置、驱动或Redis异常拒绝，不降级放行。27表无迁移／Worker变更，M2用户基础手测通过，见[契约](docs/M2_CAPTCHA_SETTINGS.md)。
 
 **站点基础配置**：`/admin/site`独立管理站名、本站静态Logo、公司／版权／备案；仅当前超级管理员版本化保存，配置与审计同事务，未知先只读核对。公开`GET /api/v1/site`只读固定`site.basic`并逐字段输出五项资料，不枚举设置／解密凭据；前端异步加载、失败默认，不阻塞业务。27表无迁移，验证码策略独立交付，见[契约](docs/M2_SITE_SETTINGS.md)。
 

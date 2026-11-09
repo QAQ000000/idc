@@ -1,5 +1,7 @@
 # JianYun (简云) · 数据库设计字典 (Database Schema)
 
+**枚举依赖增量**：products.config_cache.schema保留原规则JSON，公开投影不回传原数据；invoices.price_snapshot／instances.config_snapshot和tasks.payload的driver_context增加可选configuration_rules（目标字段与通用dependencies），原schema_hash绑定语义。无依赖旧快照／旧hash保持，无新列／表／DDL／迁移，仍27表，见[契约](M2_ENUM_DEPENDENCIES.md)。
+
 **验证码策略增量**：原`system_settings`的key=captcha_scenes、group=captcha，value为三场景对象；原`admin_audit_logs`的action=captcha_configure、target_type=captcha_scene，target_id依login／register／password_reset映射1／2／3，context仅scene／before／after。各场景原记录与本场景最新审计ID计算HMAC版本，同值更新仍推进；单行锁合并避免跨场景覆盖。不加版本列／表／DDL／迁移，仍27表；限流计数仅在Redis，见[契约](M2_CAPTCHA_SETTINGS.md)。
 
 **站点基础资料增量**：复用`system_settings`的`key=site.basic`、group=site，value仅为site_name／logo_path／company_name／copyright_text／icp_number；不存密钥。`admin_audit_logs`的action=site_configure、target_type=site、target_id=0，context为before／after公开字段；最新审计ID参与HMAC版本，不加版本列。27表／DDL／迁移保持，见[契约](M2_SITE_SETTINGS.md)。

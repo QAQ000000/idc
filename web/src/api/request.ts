@@ -117,6 +117,13 @@ export interface ConfigField {
   label: string;
   choices: { value: string; label: string }[];
   default: string;
+  dependencies?: {
+    field: string;
+    operator: "in" | "not_in";
+    values: string[];
+    effect: "allow" | "exclude";
+    choices: string[];
+  }[];
 }
 export interface ProductConfiguration {
   fields: ConfigField[];

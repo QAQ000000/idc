@@ -1,5 +1,7 @@
 # JianYun (简云) · 系统全景架构设计文档
 
+**枚举依赖增量**：具体上游advanced解析留在魔方插件，核心ConfigOptions只消费通用dependencies；不增接口层、表或同步副本。依赖只进入原商品JSON、schema_hash及driver_context，继续原报价确认／请求键／Outbox和未知调查。单父无环子集与真实样本限制见[契约](M2_ENUM_DEPENDENCIES.md)。
+
 **验证码策略管理增量**：CaptchaSettingsService复用原captcha_scenes JSON行和不可改审计，按场景独立CAS，锁定管理员后重核会话／权限，更新与审计同事务；核心仍只依赖CaptchaDriverRegistry。公开客户HTTP认证新增独立Redis原子限流，先限流后验证码，关闭验证仍计数、依赖故障拒绝；不参与资金／资源事实。无新表、驱动或迁移，见[契约](M2_CAPTCHA_SETTINGS.md)。
 
 **站点展示配置**：独立SiteSettingsService只读写`system_settings.site.basic`，超级管理员保存与`site_configure`审计同事务，HMAC版本含最新审计以拒绝ABA；公开投影只读value的五个固定字段，不触及支付、SMTP或上游凭据。前端display-only状态异步加载和失败默认，不参与业务决策。无新表、驱动耦合或迁移，见[契约](M2_SITE_SETTINGS.md)。

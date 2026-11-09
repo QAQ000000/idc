@@ -1,5 +1,7 @@
 # JianYun (简云) · 系统全景架构设计文档
 
+**站点展示配置**：独立SiteSettingsService只读写`system_settings.site.basic`，超级管理员保存与`site_configure`审计同事务，HMAC版本含最新审计以拒绝ABA；公开投影只读value的五个固定字段，不触及支付、SMTP或上游凭据。前端display-only状态异步加载和失败默认，不参与业务决策。无新表、驱动耦合或迁移，见[契约](M2_SITE_SETTINGS.md)。
+
 **客户账号运营增量**：CustomerAccountService只写原客户账号和不可改审计，复用auth_version撤销旧登录／找回链接；CustomerAccessService在关键主动操作最终提交时检查当前状态与原请求认证版本。后台按管理员→客户行锁复核，原金融顺序仍实例→账单→钱包；已付任务、回调结算不经过主动操作门禁。27表无迁移，详见[契约](M2_CUSTOMER_ACCOUNTS.md)。
 
 **到期核对与欠费恢复**：魔方负责实际停机／解挂／释放，简云只读核对；本地权益、上游服务与电源分别展示。仅结构化 `due` 允许欠费续费，未知／非财务暂停保留核验；原续费确认目标账期与 Active 后才恢复。27表无迁移；M2 原Worker已加载，体验CDN真实due暂停→充值／原单代扣→上游目标日期及Active→本地恢复已验，见[契约](M2_EXPIRY_RECOVERY.md)。

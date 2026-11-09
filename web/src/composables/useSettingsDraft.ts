@@ -3,7 +3,7 @@ import { ApiError, message } from "../api/request";
 
 export const copySettingsDraft = <T>(value: T): T => value === undefined ? value : JSON.parse(JSON.stringify(value));
 
-// Shared by independently versioned mail, ticket and payment forms; no persistent or global draft.
+// Shared by independently versioned settings forms; no persistent or global draft.
 export function useSettingsDraft<T extends { version: string }, O = undefined>(
   fields: (value: T) => Record<string, unknown>,
   transport: { read: () => Promise<{ value: T; options: O }>; write: (body: Record<string, unknown>) => Promise<{ saved: boolean }>; adopt?: (next: T, draft: T) => T },

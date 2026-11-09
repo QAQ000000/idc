@@ -177,6 +177,7 @@ def main():
             run_checks(php, 'tests/admin_accounts.php', env, r'Admin account checks: \d+')
             run_checks(php, 'tests/admin_payment_settings.php', env, r'Admin payment settings checks: \d+')
             run_checks(php, 'tests/customer_accounts.php', env, r'Customer account checks: \d+')
+            run_checks(php, 'tests/site_settings.php', env, r'Site settings checks: \d+')
             subprocess.run([php, 'artisan', 'migrate', '--force'], cwd=ROOT, env=env, check=True)
             run_checks(php, 'tests/browser_fixture.php', env, r'Browser fixtures ready\.')
             fpm_socket = directory / 'fpm.sock'

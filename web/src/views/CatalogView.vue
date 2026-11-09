@@ -2,6 +2,8 @@
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { api, message, type Product } from "../api/request";
+import { useSite } from "../stores/site";
+const site = useSite();
 const router = useRouter();
 const products = ref<Product[]>([]),
   loading = ref(true),
@@ -61,7 +63,7 @@ onMounted(load);
   <section class="catalog-page" aria-labelledby="catalog-title">
     <div class="catalog-hero">
       <div class="hero-copy">
-        <p class="eyebrow">简云 · 云产品选购</p>
+        <p class="eyebrow">{{ site.config.site_name }} · 云产品选购</p>
         <h1 id="catalog-title">
           你的下一份云资源，
           <br>

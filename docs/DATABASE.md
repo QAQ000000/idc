@@ -1,5 +1,7 @@
 # JianYun (简云) · 数据库设计字典 (Database Schema)
 
+**站点基础资料增量**：复用`system_settings`的`key=site.basic`、group=site，value仅为site_name／logo_path／company_name／copyright_text／icp_number；不存密钥。`admin_audit_logs`的action=site_configure、target_type=site、target_id=0，context为before／after公开字段；最新审计ID参与HMAC版本，不加版本列。27表／DDL／迁移保持，见[契约](M2_SITE_SETTINGS.md)。
+
 **客户账号运营增量**：复用users.status及auth_version，启停／管理员重置递增认证版本；账号版本只对id/email/status/auth_version计算HMAC，不受钱包和登录时间变化影响。原admin_audit_logs的target_type=user，customer_status_update／customer_password_reset记录依据及request_key、启停前后状态，不含密码或哈希；不增请求表／字段／DDL／迁移，仍27表，见[契约](M2_CUSTOMER_ACCOUNTS.md)。
 
 本系统全面丢弃旧魔方 178 张表的臃肿设计，收敛为高内聚、模块化的生产数据架构（全系统共 27 张物理表：8 张核心业务表 + 18 张支撑/配置/审计/下载表 + 1 张框架版本登记表）。全表基于 **MySQL 8.0+ InnoDB** 引擎，字符集为 `utf8mb4_unicode_ci`，金额统一使用 `DECIMAL(10,2)`。

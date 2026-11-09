@@ -1,5 +1,13 @@
 # JianYun (简云) · RESTful API 契约与接口字典 (API Specification)
 
+## 站点基础配置（2026-11-09）
+
+- `GET /api/v1/site`：匿名、no-store，仅返回`site_name,logo_path,company_name,copyright_text,icp_number`五项字符串，绝不返回其他设置、密文、版本或审计。
+- `GET /api/v1/admin/site-settings`：仅当前启用super_admin，五项资料＋`configured:boolean,version:string`。
+- `PATCH /api/v1/admin/site-settings`：同权限，五项完整字符串＋`expected_version`；响应`{saved:true}`，400拒绝非法／未知字段，401／403拒绝失效身份／角色，409拒绝旧版本。站名80／Logo255／公司120／版权200／备案80个Unicode字符；UTF-8单行文本，去除首尾空格，允许空值。Logo只接受文档约束的本站静态路径。
+
+配置与脱敏审计同事务，版本包含审计序号；丢响应只读核对，不自动重发。字段默认值、路径规则、兼容与验收见[站点契约](M2_SITE_SETTINGS.md)。验证码策略及其他配置保持独立。
+
 本文档定义了 JianYun 系统客户端门户（Client Portal）与管理控制台（Admin Console）的全部 RESTful API 契约。
 
 > 本字典同时包含规划接口；实际交付状态以 [ROADMAP.md](ROADMAP.md) 与 README 的当前实现说明为准。下述快照、变配确认及分散式人工裁决规划路径尚未实现，规划条目不代表运行验收。已交付的统一 resolve 与管理员查询接口及验证范围见文末。

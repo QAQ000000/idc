@@ -2,6 +2,7 @@
 use App\Http\Controllers\ApiController;
 use Illuminate\Support\Facades\Route;
 
+Route::get('site', [\App\Http\Controllers\SiteSettingsController::class, 'publicConfig']);
 Route::get('captcha/config', [ApiController::class, 'captcha']);
 Route::post('auth/register', [ApiController::class, 'register'])->middleware('captcha:register');
 Route::post('auth/login', [ApiController::class, 'login'])->middleware('captcha:login');
@@ -47,6 +48,8 @@ Route::middleware('client')->group(function (): void {
 });
 Route::post('admin/auth/login', [\App\Http\Controllers\AdminAuthController::class, 'login'])->middleware('captcha:login');
 Route::middleware('admin')->group(function (): void {
+    Route::get('admin/site-settings', [\App\Http\Controllers\SiteSettingsController::class, 'show']);
+    Route::patch('admin/site-settings', [\App\Http\Controllers\SiteSettingsController::class, 'save']);
     Route::get('admin/payment-settings/epay', [\App\Http\Controllers\PaymentSettingsController::class, 'show']);
     Route::patch('admin/payment-settings/epay', [\App\Http\Controllers\PaymentSettingsController::class, 'save']);
     Route::get('admin/auth/security', [\App\Http\Controllers\AdminAccountController::class, 'security']);

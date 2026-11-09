@@ -90,6 +90,21 @@ def verify(socket_path, root):
     })
     assert status == 200
     support_token = support['data']['token']
+    site_path = '/api/v1/admin/site-settings'
+    status, site = request(socket_path, root, 'GET', site_path, token=admin_token)
+    assert status == 200 and len(site['data']) == 7
+    fields = ['site_name', 'logo_path', 'company_name', 'copyright_text', 'icp_number']
+    site_body = {k: site['data'][k] for k in fields} | {'expected_version': site['data']['version']}
+    assert request(socket_path, root, 'PATCH', site_path, site_body, token=admin_token)[0] == 200
+    assert request(socket_path, root, 'PATCH', site_path, site_body, token=admin_token)[0] == 409
+    assert request(socket_path, root, 'GET', site_path, token=support_token)[0] == 403
+    assert request(socket_path, root, 'PATCH', site_path, site_body, token=support_token)[0] == 403
+    assert request(socket_path, root, 'GET', site_path, token=client_token)[0] == 401
+    assert request(socket_path, root, 'GET', site_path)[0] == 401
+    status, public_site = request(socket_path, root, 'GET', '/api/v1/site')
+    assert status == 200 and set(public_site['data']) == set(fields)
+    assert public_site['data'] == {k: site['data'][k] for k in fields}
+    print('PASS: isolated PHP-FPM site whitelist, audited save, CAS and per-request permissions')
     assert request(socket_path, root, 'GET', '/api/v1/admin/accounts', token=admin_token)[0] == 200
     assert request(socket_path, root, 'GET', '/api/v1/admin/accounts', token=support_token)[0] == 403
     assert request(socket_path, root, 'GET', '/api/v1/admin/accounts', token=client_token)[0] == 401

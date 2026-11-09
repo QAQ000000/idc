@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useUser } from "./stores/user";
 import { useAdmin } from "./stores/admin";
 import { message } from "./api/request";
+import { useSite } from "./stores/site";
+const site = useSite(), logoFailed = ref(false);
 const account = useUser(),
   adminAccount = useAdmin();
 const router = useRouter(),
@@ -26,6 +28,7 @@ const links = computed(() =>
         { to: "/admin/tickets", label: "客服工单", mark: "✉" },
         ...(adminAccount.admin?.role === "super_admin" ? [{to:"/admin/notifications", label:"邮件与通知", mark:"⚙"}] : []),
         ...(adminAccount.admin?.role === "super_admin" ? [{to:"/admin/payments", label:"易支付配置", mark:"¥"}] : []),
+        ...(adminAccount.admin?.role === "super_admin" ? [{to:"/admin/site", label:"站点基础配置", mark:"⚙"}] : []),
         ...(adminAccount.admin?.role === "super_admin" ? [{to:"/admin/accounts", label:"管理员账号", mark:"♙"}] : []),
         {to:"/admin/account/security", label:"账户安全", mark:"◇"},
         { to: "/admin/tasks", label: "异常任务", mark: "≡" },
@@ -61,6 +64,14 @@ async function loadAccount() {
   }
 }
 onMounted(loadAccount);
+watch(() => [site.config.site_name, adminArea.value], () => {
+  document.title = `${site.config.site_name} · ${adminArea.value ? "管理后台" : "云产品"}`;
+}, { immediate: true });
+watch(() => site.config.logo_path, () => { logoFailed.value = false; });
+watch(() => route.path, () => { void site.load(); });
+function refreshSite() { void site.load(); }
+onMounted(() => { refreshSite(); window.addEventListener("focus", refreshSite); });
+onUnmounted(() => { window.removeEventListener("focus", refreshSite); });
 function logout() {
   accountError.value = "";
   account.logout();
@@ -85,9 +96,10 @@ function adminLogout() {
         >
           ☰
         </el-button>
-        <RouterLink class="brand" to="/" aria-label="简云首页">
-          <span class="brand-symbol" aria-hidden="true">J</span>
-          简云
+        <RouterLink class="brand" to="/" :aria-label="site.config.site_name + '首页'">
+          <img v-if="site.config.logo_path && !logoFailed" class="brand-logo" :src="site.config.logo_path" alt="" @error="logoFailed = true">
+          <span v-else class="brand-symbol" aria-hidden="true">J</span>
+          <span class="brand-name" :title="site.config.site_name">{{ site.config.site_name }}</span>
           <span class="brand-caption">
             {{ adminArea ? "管理后台" : "云产品服务" }}
           </span>
@@ -167,8 +179,10 @@ function adminLogout() {
           />
         </main>
         <footer class="site-footer">
-          <span>简云 · 云产品服务</span>
-          <span>让云资源管理更简单</span>
+          <span>{{ site.config.site_name }} · 云产品服务</span>
+          <span v-if="site.config.company_name">{{ site.config.company_name }}</span>
+          <span>{{ site.config.copyright_text }}</span>
+          <span v-if="site.config.icp_number">{{ site.config.icp_number }}</span>
         </footer>
       </div>
     </div>

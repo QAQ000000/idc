@@ -2,6 +2,7 @@
 import { onMounted, onUnmounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { api, message, type Instance, type Invoice } from "../api/request";
+import InstanceServiceStatusPanel from "../components/InstanceServiceStatusPanel.vue";
 import InstancePowerPanel from "../components/InstancePowerPanel.vue";
 import InstanceReinstallPanel from "../components/InstanceReinstallPanel.vue";
 const powerBlocked = ref(false), reinstallBlocked = ref(false), powerRefreshVersion = ref(0);
@@ -105,7 +106,7 @@ async function setAutomatic(enabled: boolean) {
 }
 const statusLabels: Record<string, string> = {
   pending: "待交付",
-  active: "服务有效",
+  active: "已交付",
   suspended: "已暂停",
   terminated: "已销毁",
   cancelled: "已取消",
@@ -178,8 +179,8 @@ onUnmounted(() => {
         v-if="
           instance.status === 'suspended' && instance.suspend_type !== 'billing'
         "
-        title="当前实例为合规、安全或人工暂停"
-        description="请联系客服核验；付款不能解除此类暂停。"
+        title="当前实例暂停原因需要核验"
+        description="请联系客服核验；付款不能直接解除此暂停。"
         type="warning"
         :closable="false"
       />
@@ -200,7 +201,7 @@ onUnmounted(() => {
       />
       <div class="instance-summary">
         <div>
-          <span class="field-label">服务状态</span>
+          <span class="field-label">本地服务记录</span>
           <el-tag
             :type="
               instance.status === 'active'
@@ -221,7 +222,7 @@ onUnmounted(() => {
         </div>
         <div>
           <span class="field-label">IP 地址</span>
-          <strong class="mono">{{ instance.ip_address || "等待交付" }}</strong>
+          <strong class="mono">{{ instance.ip_address || (instance.delivery_status === "delivered" ? "上游未提供" : "等待交付") }}</strong>
         </div>
         <div>
           <span class="field-label">到期时间（UTC）</span>
@@ -230,7 +231,7 @@ onUnmounted(() => {
       </div>
       <div class="instance-quick-actions actions">
         <el-button
-          v-if="instance.status === 'active' && instance.remote_instance_id"
+          v-if="instance.status === 'active' && instance.remote_instance_id && instance.entitlement_state !== 'expired'"
           type="primary"
           @click="router.push(`/instances/${instance.id}/console`)"
         >
@@ -253,6 +254,7 @@ VNC 控制台 ↗
               实例交付完成且服务有效后，可查询实际运行状态和可用操作。
             </p>
           </el-card>
+          <InstanceServiceStatusPanel v-if="instance.remote_instance_id && instance.service_status_supported" :instance-id="Number(instance.id)" :entitlement="instance.entitlement_state" :observation="instance.service_observation" @refreshed="load" />
           <el-card shadow="never">
             <template #header><h2>系统登录凭据</h2></template>
             <p class="muted">

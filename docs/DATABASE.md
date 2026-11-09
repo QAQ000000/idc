@@ -9,6 +9,8 @@
 
 修改 schema 后运行 `python3 scripts/sync_schema_docs.py --write` 同步摘录；运行 `python3 scripts/sync_schema_docs.py --check` 检查完整 DDL（含 SQL 注释）、表名及重复/缺失表。省略参数同样只检查，不写文件。同步器仅替换各表 SQL 语句，保留正文说明；这些命令不连接数据库，也不执行迁移。
 
+**到期核对运营观察**：`instances.config_snapshot.service_status` 新增可变白名单观察（state／suspension／remote_due_date／checked_at／review_required／code）。不复制原始响应／凭据；销售配置和历史账单／任务快照不改。权益按原 due_date 即时计算；无新表、列、索引或迁移，仍27表。并发及保留边界见[本批契约](M2_EXPIRY_RECOVERY.md)。
+
 **状态查询优化（2026-11-09）**：重装 `view=tasks` 只投影现有 tasks 并读取原门禁；页面轮询窗口仅存在浏览器内存，不持久化运行状态或新建同步副本。27表／DDL／迁移保持，Worker 终态与凭据同步规则不变，见 [重装契约](M2_INSTANCE_REINSTALL.md)。
 
 **Laravel 13 适配边界**：M0 已使用框架同连接事务和标准迁移运行器；新增 `migrations` 仅承载升级版本元数据，审查记录见 [TECH_STACK.md §7](TECH_STACK.md#7-m0-实施中的-schema-边界审查)。不安装默认 users/sessions/cache/jobs 表。`invoices.checkout_key/checkout_hash` 是原账单实体的幂等属性；可空兼容旧数据，摘要为 HMAC，唯一键按用户隔离。schema.sql 是空库完整结构，版本 PHP 迁移是已有库增量升级记录，禁止双份手写完整模型。

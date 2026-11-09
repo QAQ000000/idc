@@ -37,6 +37,7 @@ Route::middleware('client')->group(function (): void {
     Route::get('instances/{id}/credentials', [\App\Http\Controllers\InstanceController::class, 'credentials']);
     Route::post('instances/{id}/console/check', [\App\Http\Controllers\InstanceController::class, 'consoleCheck']);
     Route::post('instances/{id}/console', [\App\Http\Controllers\InstanceController::class, 'console']);
+    Route::post('instances/{id}/service-status', [\App\Http\Controllers\InstanceController::class, 'serviceStatus']);
     Route::get('instances/{id}/runtime', [\App\Http\Controllers\InstanceController::class, 'runtime']);
     Route::get('instances/{id}/reinstall', [\App\Http\Controllers\InstanceController::class, 'reinstallOptions']);
     Route::post('instances/{id}/reinstall', [\App\Http\Controllers\InstanceController::class, 'reinstall']);
@@ -65,6 +66,7 @@ Route::middleware('admin')->group(function (): void {
     Route::get('admin/customers/{id}', [\App\Http\Controllers\AdminQueryController::class, 'customer']);
     Route::get('admin/instances', [\App\Http\Controllers\AdminQueryController::class, 'instances']);
     Route::get('admin/instances/{id}', [\App\Http\Controllers\AdminQueryController::class, 'instance']);
+    Route::post('admin/instances/{id}/service-status', [\App\Http\Controllers\InstanceController::class, 'adminServiceStatus']);
     Route::get('admin/instances/{id}/renewal-price', [\App\Http\Controllers\InstanceRenewalPriceController::class, 'show']);
     Route::patch('admin/instances/{id}/renewal-price', [\App\Http\Controllers\InstanceRenewalPriceController::class, 'update']);
     Route::get('admin/finance/invoices/{id}', [\App\Http\Controllers\FinanceController::class, 'show']);

@@ -281,3 +281,7 @@ Worker 成功只说明命令接受，不改实例状态/资金/日期；丢响�
 action=reinstall、invoice_id=NULL、max_retries=0，唯一键 instance_reinstall:{instance_id}:{request_key}；payload 冻结原资源／账期／请求客户、镜像和重装能力，不含密码。pending reinstall 与 pending power 同样占用业务门禁；提交还拒绝所有其他 pending，支付／续费／电源／VNC 继续调用统一 TaskGate。认领无支付前置，但须资源归属和服务有效，接管只读。Worker 保存 reinstall_accepted／reinstall_monitor_version 和 reinstall_execution_observed；正常受理每 15 秒只读跟踪，不立即转人工。空闲预检、明确受理、以结构化任务类型观察重装后恢复空闲、原资源凭据及再次空闲齐备才记录 execution_ended（魔方仅认 process + task_type=reinstall，缺失或中文提示不代替执行证据） 并原子结束占用；不证明系统重装成功。未知、漏观察、旧任务和查询失败继续调查，最长一小时后转原持久人工告警。
 
 确认成功仅更新 delivery 的已核实用户名／镜像和 encrypted_password；execution_ended 自动分支仅同步 upstream_reported 凭据、清除旧已确认镜像，并同事务记录原任务结果；人工完成要求原令牌、归属、证据、新凭据及确认，和管理员审计同事务。close_unexecuted 不改凭据，任何未知结果禁止通用重试／取消／资金动作；旧令牌不能覆盖终态。迁移与完整边界见 [重装契约](M2_INSTANCE_REINSTALL.md)。
+
+## 后续到期只读核对（2026-11-09）
+
+原常驻outbox:work仅在充值唤醒和原履约均无工作时核对一个临期／暂停资源；不伪造suspend／unsuspend任务或解除未知任务占用。扫描观察不改原任务令牌；在途本地版本变化使查询结果失效。原--once行为保持、不追加状态核对，任务表／租约协议不变，见[契约](M2_EXPIRY_RECOVERY.md)。

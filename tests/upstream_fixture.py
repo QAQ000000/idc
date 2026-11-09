@@ -16,7 +16,7 @@ from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 
 state = {'mode': 'normal', 'creates': 0, 'hosts': {}, 'host_counter': 700, 'wrong_host_id': False,
-         'renew_mode': 'normal', 'renew_calls': 0, 'renew_payments': 0, 'renew_invoices': {}, 'config_mode': 'normal', 'last_create_total': '0.01', 'power_mode': 'normal', 'power_calls': 0, 'reinstall_mode': 'normal', 'reinstall_calls': 0, 'request_counts': {}}
+         'renew_mode': 'normal', 'renew_calls': 0, 'renew_payments': 0, 'renew_invoices': {}, 'config_mode': 'normal', 'last_create_total': '0.01', 'power_mode': 'normal', 'power_calls': 0, 'reinstall_mode': 'normal', 'reinstall_calls': 0, 'request_counts': {}, 'service_mode': 'normal'}
 lock = threading.Lock()
 
 def next_due(stamp, cycle):
@@ -50,7 +50,17 @@ class Handler(BaseHTTPRequestHandler):
             state['renew_mode'] = p['mode'][0]
             r = {'ok': True}
         elif path == '/__suspend':
-            state['hosts'][int(p['hostid'][0])]['domainstatus'] = 'Suspended'
+            state['hosts'][int(p['hostid'][0])].update(domainstatus='Suspended', suspendreason_type=p.get('reason', ['due'])[0])
+            r = {'ok': True}
+        elif path == '/__service':
+            with lock:
+                h = state['hosts'][int(p['hostid'][0])]
+                for query, field in [('status', 'domainstatus'), ('reason', 'suspendreason_type'), ('power', 'power_state')]:
+                    if query in p: h[field] = p[query][0]
+                if 'due' in p: h['nextduedate'] = int(p['due'][0])
+            r = {'ok': True}
+        elif path == '/__service_mode':
+            state['service_mode'] = p['mode'][0]
             r = {'ok': True}
         elif path == '/__cycle':
             state['hosts'][int(p['hostid'][0])]['billingcycle'] = p['cycle'][0]
@@ -179,10 +189,16 @@ class Handler(BaseHTTPRequestHandler):
             r = {'status': 200, 'data': {'sum': len(rows), 'list': rows}}
         elif path == '/host/header':
             h = dict(state['hosts'][int(p['host_id'][0])])
+            if state['service_mode'] == 'wrong_header': h['id'] += 1
+            if state['service_mode'] == 'header_due': h['nextduedate'] += 1
+            if state['service_mode'] == 'header_product': h['productid'] += 1
+            if state['service_mode'] == 'header_cycle': h['billingcycle'] = 'invalid'
+            if state['service_mode'] == 'header_state': h['domainstatus'] = 'Active'
+            if state['service_mode'] == 'header_type': h['suspendreason_type'] = ['due']
             if state['power_mode'] == 'wrong_header' or state['reinstall_mode'] == 'wrong_header': h['id'] += 1
             if state['reinstall_mode'] == 'missing_credentials': h['password'] = ''
             h['type'] = 'dcimcloud' if state['reinstall_mode'] != 'unsupported' else 'dcim'
-            if state['reinstall_mode'] == 'unavailable':
+            if state['reinstall_mode'] == 'unavailable' or state['service_mode'] == 'header_unavailable':
                 self.send_error(503)
                 return
             r = {'status': 200, 'data': {'host_data': h, 'module_power_status': state['power_mode'] != 'unsupported',
@@ -246,7 +262,11 @@ class Handler(BaseHTTPRequestHandler):
                 if state['power_mode'] == 'hold': time.sleep(10)
                 r = {'status': 406 if state['power_mode'] == 'business_error' else 200, 'msg': 'NEVER-EXPOSE-OPERATION-SECRET'}
         elif path == '/cart/hostinfo':
+            if state['service_mode'] == 'unavailable':
+                self.send_error(503, 'NEVER-EXPOSE-SERVICE-SECRET')
+                return
             hosts = [dict(h) for h in state['hosts'].values() if str(h['id']) in p.get('hostid[0]', [])]
+            if state['service_mode'] == 'delay_read': time.sleep(2)
             if state['wrong_host_id']:
                 for h in hosts:
                     h['id'] += 1000

@@ -1,3 +1,4 @@
+import type { ServiceObservation } from "./serviceStatus";
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -84,6 +85,9 @@ export interface Captcha {
 }
 
 export interface Instance {
+  service_status_supported: boolean;
+  entitlement_state: string;
+  service_observation: ServiceObservation;
   id: number;
   name: string;
   product_name: string;

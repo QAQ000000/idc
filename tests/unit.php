@@ -36,6 +36,14 @@ try {
     ipCase('invalid proxy config fails closed', '127.0.0.1/33,invalid,::1/129', '127.0.0.1', '203.0.113.1', '', '127.0.0.1');
     ipCase('invalid peer returns valid placeholder IP', '127.0.0.1', 'not-an-ip', '203.0.113.1', '', '0.0.0.0');
     ipCase('array header falls back safely', '127.0.0.1', '127.0.0.1', ['203.0.113.1'], '', '127.0.0.1');
+    foreach ([
+        [['remote_instance_id'=>'host:sample','billing_cycle'=>'onetime'],'not_applicable','one-time delivered service has no expiring entitlement'],
+        [['due_date'=>'2020-01-01 00:00:00'],'not_started','unbound resource never claims delivered entitlement'],
+        [['remote_instance_id'=>'host:sample','status'=>'suspended','due_date'=>gmdate('Y-m-d H:i:s',time()+86400)],'valid','local entitlement is independent of service suspension'],
+    ] as [$instance,$expected,$label]) {
+        if (\App\Services\InstanceServiceStatusService::summary($instance)['entitlement_state']!==$expected) { throw new RuntimeException('FAIL: '.$label); }
+        $checks++;echo "PASS: {$label}\n";
+    }
     echo "{$checks} unit checks passed.\n";
 } finally {
     $_SERVER = $server;

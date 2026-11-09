@@ -18,7 +18,7 @@ final class InstanceService
         $s=$db->prepare("SELECT status,last_error FROM tasks WHERE instance_id=? AND action='create' ORDER BY id DESC LIMIT 1");$s->execute([$id]);$task=$s->fetch();
         $i['invoice_id']=$invoice ? (int)$invoice['id'] : null;
         $i['delivery_status']=match(true) {
-            $i['status']==='active'=>'delivered',
+            in_array($i['status'],['active','suspended'],true) && $i['remote_instance_id']!==null=>'delivered',
             $invoice && $invoice['status']==='refunded'=>'compensated',
             $i['status']==='terminated'=>'cancelled',
             $invoice && $invoice['status']==='unpaid'=>'awaiting_payment',
@@ -34,10 +34,11 @@ final class InstanceService
             $s=$db->prepare("SELECT status FROM tasks WHERE invoice_id=? AND action='renew' ORDER BY id DESC LIMIT 1");$s->execute([$renewal['id']]);$status=$s->fetchColumn();
             $i['renewal_status']=match($status){'success'=>'renewed','investigating'=>'investigating','failed'=>'needs_review',default=>'provisioning'};
         }
-        try{$supported=\App\Plugins\Providers\ProviderRegistry::installed()->get($i['driver']) instanceof \App\Plugins\Providers\RenewalDriverInterface;}
-        catch(\Throwable){$supported=false;}
+        try{$driver=\App\Plugins\Providers\ProviderRegistry::installed()->get($i['driver']);$supported=$driver instanceof \App\Plugins\Providers\RenewalDriverInterface;$i['service_status_supported']=$driver instanceof \App\Plugins\Providers\ServiceStatusDriverInterface;}
+        catch(\Throwable){$supported=false;$i['service_status_supported']=false;}
         $i['renewal_eligible']=$supported && (int)$i['provider_status']===1 && in_array($i['status'],['active','suspended'],true)
-            && ($i['status']!=='suspended' || $i['suspend_type']==='billing') && $i['due_date']!==null;
+            && ($i['status']!=='suspended' || $i['suspend_type']==='billing') && $i['due_date']!==null && !InstanceServiceStatusService::renewalBlocked($i);
+        $i+=InstanceServiceStatusService::summary($i);
         $snapshot=json_decode($i['config_snapshot']??'{}',true,64,JSON_THROW_ON_ERROR);
         $i['configuration']=$snapshot['configuration']??[];
         $i['reinstalled_image']=$snapshot['delivery']['reinstalled_image']??null;

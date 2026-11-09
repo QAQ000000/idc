@@ -101,6 +101,8 @@ foreach([['evidence'=>'short'],['expected_version'=>'bad'],['override_price'=>'2
 $in=rpInput($id);unset($in['override_price']);rpReject(fn()=>$service->update($aid,$id,$in),400,'omitted override is not interpreted as restore');
 rpReject(fn()=>$service->update($aid,$id,rpInput($id,null)),409,'restore with no override is a no-op');
 $inv=rpInvoice($id);$notice=rpNotice($inv,'price-old-cashier');$input=rpInput($id);$before=rpFacts();$counts=rpFixture('/__request_counts');
+// Quote reconciliation may add an operational observation; capture immediately before the pricing edit.
+$old=rpRow('instances',$id);
 [$status,$r]=rpHttp($path,$at,'PATCH',$input);rpCheck($status===200&&$r['data']['cancelled_invoice_ids']===[$inv]&&$r['data']['effective_price']==='2.50','HTTP price edit cancels exactly the affected unpaid renewal');
 rpCheck(rpRow('invoices',$inv)['status']==='cancelled'&&rpRow('invoices',$inv)['cycle_marker']===null,'cancellation and marker release commit together');
 $i=rpRow('instances',$id);$copy=$i;foreach(['override_price','updated_at'] as $key){unset($copy[$key],$old[$key]);}rpCheck($copy===$old,'resource binding, original frozen price, period, config and service state preserved');

@@ -41,6 +41,10 @@ Artisan::command('renewals:debit', function():void {
 Schedule::command('renewals:generate')->hourly()->after($scheduledOutput)->onFailure($scheduledFailure('renewals:generate'));
 Schedule::command('renewals:debit')->everyFifteenMinutes()->after($scheduledOutput)->onFailure($scheduledFailure('renewals:debit'));
 
+Artisan::command('instances:reconcile-status {instance}',function():void {
+    $this->line(json_encode(app(\App\Services\InstanceServiceStatusService::class)->reconcile(Request::id($this->argument('instance'))),JSON_THROW_ON_ERROR));
+})->purpose('Read upstream-managed service status for an existing instance; no stop/release commands');
+
 Artisan::command('outbox:work {--once}', function (): void {
     $worker = 'worker:' . bin2hex(random_bytes(12));
     do {
@@ -48,6 +52,7 @@ Artisan::command('outbox:work {--once}', function (): void {
             $woken = app(\App\Services\RenewalWakeupService::class)->runOnce();
             $delivered = app(\App\Services\OutboxWorker::class)->runOnce($worker);
             $worked = $woken || $delivered;
+            if(!$worked && !$this->option('once')){$worked=app(\App\Services\InstanceServiceStatusService::class)->runOnce();}
         }
         catch (Throwable) {
             logger()->error('Outbox scan failed'); $worked = false;

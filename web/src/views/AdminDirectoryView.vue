@@ -10,21 +10,22 @@ const route = useRoute(), router = useRouter();
 const customers = computed(() => props.kind === "customers");
 const fields = computed(() => customers.value ? { user_id: "客户 ID", email: "客户邮箱（精确）" } : { instance_id: "实例 ID", name: "实例名称（包含）", ip_address: "IP 地址（精确）", remote_instance_id: "上游资源编号（精确）", provider_id: "上游连接 ID", user_id: "客户 ID" });
 const filters = reactive(Object.fromEntries(Object.keys(fields.value).map(key => [key, typeof route.query[key] === "string" ? route.query[key] : ""])) as Record<string, string>);
+const serviceReview=ref(route.query.service_review === "1");
 const page = ref(String(route.query.page || "1")), size = String(route.query.per_page || "20");
 const data = ref<Page<Customer | AdminInstance>>(), busy = ref(false), error = ref("");
 async function load() {
   if (busy.value) return;
   busy.value = true; error.value = ""; data.value = undefined;
-  try { data.value = await adminApi<Page<Customer | AdminInstance>>(`/${props.kind}?` + new URLSearchParams({ ...filters, page: page.value, per_page: size })); }
+  try { data.value = await adminApi<Page<Customer | AdminInstance>>(`/${props.kind}?` + new URLSearchParams({ ...filters, ...(!customers.value ? {service_review:serviceReview.value ? "1" : ""} : {}), page: page.value, per_page: size })); }
   catch (e) { error.value = message(e); }
   finally { busy.value = false; }
 }
 async function search(next = 1) {
-  const target = { path: `/admin/${props.kind}`, query: { ...filters, page: String(next), per_page: size } };
+  const target = { path: `/admin/${props.kind}`, query: { ...filters, ...(!customers.value ? {service_review:serviceReview.value ? "1" : ""} : {}), page: String(next), per_page: size } };
   if (router.resolve(target).fullPath === route.fullPath) await load();
   else await router.push(target);
 }
-function clear() { for (const key of Object.keys(filters)) filters[key] = ""; void search(); }
+function clear() { serviceReview.value=false; for (const key of Object.keys(filters)) filters[key] = ""; void search(); }
 onMounted(load);
 </script>
 <template>
@@ -34,6 +35,7 @@ onMounted(load);
     <el-card shadow="never">
       <el-form class="task-filters" label-position="top" @submit.prevent="search()">
         <el-form-item v-for="(label, key) in fields" :key="key" :label="label"><el-input v-model="filters[key]" :aria-label="label" :maxlength="key === 'ip_address' ? 45 : 100" :inputmode="key.endsWith('_id') && key !== 'remote_instance_id' ? 'numeric' : 'text'" /></el-form-item>
+        <el-form-item v-if="!customers" label="服务核对"><el-checkbox v-model="serviceReview">仅需核验服务状态</el-checkbox></el-form-item>
         <el-form-item label="操作"><el-button native-type="submit" type="primary" :disabled="busy">查询</el-button><el-button :disabled="busy" @click="clear">清空</el-button></el-form-item>
       </el-form>
     </el-card>

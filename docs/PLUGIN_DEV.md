@@ -138,6 +138,20 @@ interface RenewalDriverInterface
 
 魔方实现用账户范围 `/cart/hostinfo` 与 `/host/renewpage` 校验身份、账期、金额及单周期 duration，上游 initiative_renew 必须关闭。执行一次 `POST /host/renew`，核对 `/invoice_page` 后一次 `/apply_credit`，再观察原 ID 的目标到期日和 Active。未知后只读调查，绝不补发 renew/支付/解挂；没有原路退款或不可查询取消的保证。魔方可能在收款后自行解除暂停，故当前核心仅准入 active 或 billing 暂停，其他暂停转人工。已购买权益的日期顺延、退款/销毁门禁与人工裁决见 [续费契约](M2_RENEWAL_CONTRACT.md)。
 
+### 可选上游服务状态（当前魔方已实现）
+
+```php
+interface ServiceStatusDriverInterface
+{
+    public function inspectServiceStatus(array $instance, array $credentials): ServiceStatus;
+}
+// ServiceStatus: state, suspension='unknown', dueDate=null, code='SERVICE_QUERY_UNAVAILABLE'
+```
+
+契约与 readonly DTO 位于 `app/Plugins/Providers`；state 仅 active/suspended/terminated/cancelled/pending/unknown，suspension 仅 billing/nonbilling/unknown，dueDate 为 UTC 秒精度或 null，code 为规范脱敏码。仅提供当前账号范围的只读证据，不支持停机、销毁或解挂。上下文复用原资源 provider_id／remote_instance_id／remote_pid／billing_cycle，不由浏览器传入远端绑定。
+
+魔方查询 `/cart/hostinfo`，Suspended 时另查 `/host/header`，严格比对 id／productid／billingcycle／nextduedate／状态；仅 suspendreason_type=due 为 billing，flow/uncertifi/self 为 nonbilling，其余为 unknown。查询失败返回 unknown，不返回异常正文、凭据或原始 header；续费预检及实际提交前同样核对原因。当前真实供应商字段仍需运行验收；其他驱动不被强制实现此接口。业务映射与责任见[契约](M2_EXPIRY_RECOVERY.md)。
+
 ### 1.1 可选快照与备份能力 (`SnapshotDriverInterface`)
 
 以下为尚未实现的 M3 扩展设计；当前运行接口不包含这些能力，落地时需复审能力声明与接口装配。

@@ -2,11 +2,11 @@
 declare(strict_types=1);
 namespace Plugins\providers\zjmf;
 use App\Core\Money;
-use App\Plugins\Providers\ConnectionConfigInterface;
+use App\Plugins\Providers\{ConnectionConfigInterface, ServiceStatusDriverInterface, ServiceStatus};
 use App\Plugins\Providers\{UpstreamDriverInterface, RenewalDriverInterface, DriverExecutionResult as R, PreflightResult, ConfigurableDriverInterface, ConfigOptions, PasswordPolicy, PowerDriverInterface, PowerState, ConsoleDriverInterface, ConsoleTarget, ReinstallDriverInterface, ReinstallOptions};
 
 /** Magic Finance agent API. Stateless cart_data avoids clearing or sharing the upstream account's cart. */
-final class ZjmfDriver implements ConnectionConfigInterface, UpstreamDriverInterface, RenewalDriverInterface, ConfigurableDriverInterface, PowerDriverInterface, ConsoleDriverInterface, ReinstallDriverInterface
+final class ZjmfDriver implements ConnectionConfigInterface, UpstreamDriverInterface, RenewalDriverInterface, ConfigurableDriverInterface, PowerDriverInterface, ConsoleDriverInterface, ReinstallDriverInterface, ServiceStatusDriverInterface
 {
     public function connectionFields(): array
     {
@@ -258,10 +258,45 @@ final class ZjmfDriver implements ConnectionConfigInterface, UpstreamDriverInter
         return $hosts[0];
     }
 
+    private function suspensionKind(array $host,array $order,array $credentials,string $token): string
+    {
+        $r=$this->request($credentials,'/host/header',['host_id'=>$host['id']],token:$token);$h=$r['data']['host_data']??[];
+        if(($r['status']??0)!==200 || (string)($h['id']??'')!==(string)$host['id']
+            || (int)($h['productid']??0)!==(int)$order['remote_pid'] || ($h['billingcycle']??null)!==$host['billingcycle']
+            || (string)($h['nextduedate']??'')!==(string)$host['nextduedate'] || ($h['domainstatus']??null)!=='Suspended'){
+            throw new \RuntimeException('Suspension evidence identity or state changed');
+        }
+        // Magic Finance Cron::host uses reason_type=due. Never infer it from expiry or translated text.
+        return match($h['suspendreason_type']??null){'due'=>'billing','flow','uncertifi','self'=>'nonbilling',default=>'unknown'};
+    }
+
+    private function assertRenewableHost(array $host,array $order,array $credentials,string $token): void
+    {
+        if(($host['domainstatus']??null)==='Active'){return;}
+        if(($host['domainstatus']??null)!=='Suspended' || $this->suspensionKind($host,$order,$credentials,$token)!=='billing'){
+            throw new \RuntimeException('Only explicitly confirmed billing suspension may renew');
+        }
+    }
+
+    public function inspectServiceStatus(array $instance,array $credentials): ServiceStatus
+    {
+        try{
+            $token=$this->token($credentials);$host=$this->renewalHost($instance,$credentials,$token);
+            $state=match($host['domainstatus']??null){'Active'=>'active','Suspended'=>'suspended','Terminated'=>'terminated','Cancelled'=>'cancelled','Pending'=>'pending',default=>'unknown'};
+            $kind=$state==='suspended'?$this->suspensionKind($host,$instance,$credentials,$token):'unknown';
+            return new ServiceStatus($state,$kind,gmdate('Y-m-d H:i:s',(int)$host['nextduedate']),match(true){
+                $state==='suspended' && $kind==='billing'=>'BILLING_DUE',
+                $state==='suspended' && $kind==='nonbilling'=>'NONBILLING_SUSPENSION',
+                $state==='suspended'=>'SUSPENSION_REASON_UNKNOWN',
+                $state==='active'=>'SERVICE_ACTIVE',default=>'REMOTE_SERVICE_REQUIRES_REVIEW',
+            });
+        }catch(\Throwable){return new ServiceStatus('unknown');}
+    }
+
     public function preflightRenewal(array $instance, array $credentials): PreflightResult
     {
         $token=$this->token($credentials);$host=$this->renewalHost($instance,$credentials,$token);
-        if (!in_array($host['domainstatus']??'', ['Active','Suspended'],true)) { throw new \RuntimeException('Resource cannot renew'); }
+        $this->assertRenewableHost($host,$instance,$credentials,$token);
         if ((int)($host['initiative_renew']??0)!==0) { throw new \RuntimeException('Upstream automatic renewal must be disabled before local orchestration'); }
         $r=$this->request($credentials,'/host/renewpage',['hostid'=>$host['id'],'billingcycles'=>$instance['billing_cycle']],token:$token);
         $data=$r['data']??[];$h=$data['host']??[];
@@ -294,6 +329,7 @@ final class ZjmfDriver implements ConnectionConfigInterface, UpstreamDriverInter
         try {
             $token=$this->token($credentials);$h=$this->renewalHost($order,$credentials,$token);$context=$order['renewal_context']??[];
             if ((int)$h['nextduedate']===($context['remote_target_due']??null)) { return $this->inspectRenewal($order,$credentials,$token,null); }
+            if(($h['domainstatus']??null)==='Suspended' && $this->suspensionKind($h,$order,$credentials,$token)!=='billing'){return new R('rejected',code:'SUSPENSION_REQUIRES_REVIEW');}
             $quote=$this->preflightRenewal($order,$credentials);
             if ($quote->context!==$context || bccomp($quote->amount,$order['upstream_total'],2)!==0) { return new R('rejected',code:'RENEWAL_QUOTE_CHANGED'); }
             // No second submission/payment after timeout, including a lost invoice creation response.

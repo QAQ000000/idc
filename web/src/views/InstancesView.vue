@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
 import { api, message, type Instance } from "../api/request";
+import { entitlementLabels, upstreamServiceLabels } from "../api/serviceStatus";
 const rows = ref<Instance[]>([]),
   busy = ref(false),
   error = ref(""),
@@ -67,6 +68,7 @@ onMounted(load);
 </template>
 </el-table-column
       >
+      <el-table-column label="权益与服务核对" min-width="200"><template #default="{ row }"><p>{{ entitlementLabels[row.entitlement_state] }}</p><p class="muted">{{ upstreamServiceLabels[row.service_observation.state] }}</p><el-tag v-if="row.service_observation.review_required" type="warning">需核验</el-tag></template></el-table-column>
       <el-table-column label="到期时间（UTC）" min-width="180"
         >
 <template #default="{ row }">

@@ -11,7 +11,7 @@ final class RenewalService
     private static function eligible(array $i): void
     {
         if (!in_array($i['status'], ['active', 'suspended'], true) || !$i['due_date'] || !$i['remote_instance_id']
-            || ($i['status'] === 'suspended' && $i['suspend_type'] !== 'billing')) {
+            || ($i['status'] === 'suspended' && $i['suspend_type'] !== 'billing') || InstanceServiceStatusService::renewalBlocked($i)) {
             throw new ApiException('Renewal requires a delivered resource; nonbilling suspension requires operator review', 409, 409);
         }
     }
@@ -46,6 +46,10 @@ final class RenewalService
         // An existing fixed invoice is usable even while the upstream quote endpoint is unavailable.
         $s = $db->prepare('SELECT id FROM invoices WHERE cycle_marker=? AND user_id=?'); $s->execute([$marker,$user]);
         if ($existing = $s->fetchColumn()) { return (new BillingService())->invoice($user,(int)$existing); }
+        // Reconcile before a new quote. Returning an existing invoice remains local and never calls upstream.
+        (new InstanceServiceStatusService())->reconcile($id,$user);
+        $s=$db->prepare('SELECT * FROM instances WHERE id=? AND user_id=?');$s->execute([$id,$user]);$i=$s->fetch();
+        if(!$i){throw new ApiException('Instance not found',404,404);}
         self::eligible($i);
         if($expectedDue!==null && $expectedDue!==$i['due_date']){throw new ApiException('Billing period changed; refresh the instance',409,409);}
         $snapshot = json_decode($i['config_snapshot'] ?? '{}',true,32,JSON_THROW_ON_ERROR);
@@ -130,9 +134,15 @@ final class RenewalService
         if (!$i || $i['status']==='terminated' || $i['remote_instance_id']!==($p['remote_instance_id']??null) || $i['due_date']!==($p['target_due_date']??null)) {
             throw new ApiException('Renewal delivery identity or entitlement conflict',409,409);
         }
+        if($i['status']==='suspended'&&$i['suspend_type']!=='billing'){throw new ApiException('A nonbilling hold requires operator review',409,409);}
         if (($p['needs_unsuspend']??false) && $i['status']==='suspended' && $i['suspend_type']==='billing') {
             $db->prepare("UPDATE instances SET status='active',suspend_reason=NULL WHERE id=?")->execute([$i['id']]);
         }
+        $snapshot=json_decode($i['config_snapshot']??'{}',true,64,JSON_THROW_ON_ERROR);
+        $remoteTarget=$p['renewal_context']['remote_target_due']??null;
+        $snapshot['service_status']=['state'=>'active','suspension'=>'unknown','checked_at'=>gmdate('Y-m-d H:i:s'),
+            'remote_due_date'=>is_int($remoteTarget)?gmdate('Y-m-d H:i:s',$remoteTarget):null,'review_required'=>false,'code'=>'RENEWAL_CONFIRMED'];
+        $db->prepare('UPDATE instances SET config_snapshot=? WHERE id=?')->execute([json_encode($snapshot,JSON_THROW_ON_ERROR),$i['id']]);
     }
 
     public function setAutomatic(int $user, int $id, bool $enabled): void

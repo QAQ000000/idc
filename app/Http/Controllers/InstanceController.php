@@ -21,6 +21,13 @@ final class InstanceController
     }
     public function runtime(string $id, \App\Services\InstancePowerService $s): \Illuminate\Http\JsonResponse
     { return ApiResponse::success($s->runtime((int)AuthMiddleware::user()['id'],Request::id($id))); }
+    public function serviceStatus(string $id, \App\Services\InstanceServiceStatusService $s): \Illuminate\Http\JsonResponse
+    { return ApiResponse::success($s->reconcile(Request::id($id),(int)AuthMiddleware::user()['id']))->header('Cache-Control','no-store'); }
+    public function adminServiceStatus(string $id, \App\Services\InstanceServiceStatusService $s): \Illuminate\Http\JsonResponse
+    {
+        $admin=(int)\App\Middlewares\AdminAuthMiddleware::admin()['id'];
+        return ApiResponse::success($s->reconcile(Request::id($id),null,$admin))->header('Cache-Control','no-store');
+    }
     public function power(string $id, \App\Services\InstancePowerService $s): \Illuminate\Http\JsonResponse
     { return ApiResponse::success($s->submit((int)AuthMiddleware::user()['id'],Request::id($id),Request::body())); }
     public function reinstallOptions(string $id, \App\Services\InstanceReinstallService $s): \Illuminate\Http\JsonResponse

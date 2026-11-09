@@ -41,3 +41,17 @@ $pid=(new App\Services\ProductSnapshotService())->save(['provider_id'=>$provider
 $invoice=$billing->checkout((int)$reinstallOwner['user']['id'],['product_id'=>$pid,'hostname'=>'BrowserReinstall','password'=>'BrowserRoot!2026','billing_cycle'=>'monthly','use_balance'=>true]);
 (new App\Services\OutboxWorker())->runOnce('browser-reinstall-create');
 echo json_encode(['reinstall_fixture_instance'=>$invoice['instance_id']],JSON_THROW_ON_ERROR),PHP_EOL;
+
+// Read-only lifecycle page acceptance: synthetic active, billing-paused and unknown-paused resources.
+$serviceOwner=(new App\Services\AuthService())->register(['email'=>'browser-service@example.test','password'=>'BrowserService!2026']);
+$demo->recharge((int)$serviceOwner['user']['id'],'1.00','browser-service-fixture');
+$serviceIds=[];
+foreach(['到期但上游仍运行','已确认欠费暂停','暂停原因需核验'] as $n=>$label){
+    $v=$billing->checkout((int)$serviceOwner['user']['id'],['product_id'=>$pid,'hostname'=>'BrowserService','password'=>'BrowserRoot!2026','billing_cycle'=>'monthly','use_balance'=>true]);
+    (new App\Services\OutboxWorker())->runOnce('browser-service-create');$id=(int)$v['instance_id'];
+    $q=$db->prepare('SELECT remote_instance_id FROM instances WHERE id=?');$q->execute([$id]);$remote=substr($q->fetchColumn(),5);
+    $db->prepare('UPDATE instances SET name=?,due_date=DATE_SUB(UTC_TIMESTAMP(),INTERVAL 1 DAY) WHERE id=?')->execute([$label,$id]);
+    if($n>0){file_get_contents(getenv('UPSTREAM_TEST_URL').'/__service?'.http_build_query(['hostid'=>$remote,'status'=>'Suspended','reason'=>$n===1?'due':'unknown']));}
+    (new App\Services\InstanceServiceStatusService())->reconcile($id);$serviceIds[]=$id;
+}
+echo json_encode(['service_fixture_instances'=>$serviceIds],JSON_THROW_ON_ERROR),PHP_EOL;

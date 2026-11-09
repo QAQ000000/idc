@@ -1,6 +1,9 @@
+import type { ServiceObservation } from "./serviceStatus";
 import type { Page } from "./admin";
 export interface Customer { id: number; email: string; status: string; created_at: string }
 export interface AdminInstance {
+  service_status_supported: boolean;
+  entitlement_state: string; service_observation: ServiceObservation;
   id: number; user_id: number; user_email: string; product_id: number; product_name: string;
   provider_id: number; provider_name: string; name: string; status: string;
   remote_instance_id: string | null; ip_address: string | null; billing_cycle: string;

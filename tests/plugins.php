@@ -174,4 +174,10 @@ pluginCheck(!$options->matches(['data_disk'=>'no_format_requested','password_mod
 pluginRejects(static fn()=>new \App\Plugins\Providers\ReinstallOptions([['id'=>'1','name'=>'Debian'],['id'=>'1','name'=>'Ubuntu']]), 'ambiguous duplicate image ids fail closed');
 pluginRejects(static fn()=>new \App\Plugins\Providers\ReinstallOptions([['id'=>'1','name'=>'<script>image</script>']]), 'unsafe image labels fail closed');
 pluginRejects(static fn()=>new \App\Plugins\Providers\ReinstallOptions([],dataDisk:'format_all'), 'unproven destructive data disk modes are rejected');
+pluginCheck($driver instanceof \App\Plugins\Providers\ServiceStatusDriverInterface
+    && !(\App\Plugins\Providers\ProviderRegistry::installed()->get('manual') instanceof \App\Plugins\Providers\ServiceStatusDriverInterface), 'service observation is an explicit optional driver capability');
+pluginRejects(static fn()=>new \App\Plugins\Providers\ServiceStatus('powered_off'), 'power state cannot masquerade as service lifecycle');
+pluginRejects(static fn()=>new \App\Plugins\Providers\ServiceStatus('suspended','overdue'), 'suspension category uses a finite trusted vocabulary');
+pluginRejects(static fn()=>new \App\Plugins\Providers\ServiceStatus('active',dueDate:'2026-02-30 00:00:00'), 'invalid upstream expiry is not persisted');
+pluginRejects(static fn()=>new \App\Plugins\Providers\ServiceStatus('unknown',code:'raw secret response'), 'raw upstream text cannot be a status code');
 echo "{$checks} plugin checks passed.\n";

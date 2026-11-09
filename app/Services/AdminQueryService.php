@@ -9,9 +9,14 @@ use PDO;
 final class AdminQueryService
 {
     private const CUSTOMER = 'u.id,u.email,u.status,u.created_at';
-    private const INSTANCE = 'i.id,i.user_id,u.email AS user_email,i.product_id,p.name AS product_name,i.provider_id,r.name AS provider_name,i.name,i.status,i.remote_instance_id,i.ip_address,i.billing_cycle,i.start_date,i.due_date,i.suspend_type,i.auto_renew,i.created_at';
+    private const INSTANCE = 'i.id,i.user_id,u.email AS user_email,i.product_id,p.name AS product_name,i.provider_id,r.name AS provider_name,i.name,i.status,i.remote_instance_id,i.ip_address,i.billing_cycle,i.start_date,i.due_date,i.suspend_type,i.auto_renew,i.created_at,i.config_snapshot,r.driver AS status_driver';
     private const JOINS = ' FROM instances i JOIN users u ON u.id=i.user_id JOIN products p ON p.id=i.product_id JOIN providers r ON r.id=i.provider_id';
 
+    private function statusSupported(string $driver): bool
+    {
+        try{return \App\Plugins\Providers\ProviderRegistry::installed()->get($driver) instanceof \App\Plugins\Providers\ServiceStatusDriverInterface;}
+        catch(\Throwable){return false;}
+    }
     private function authorize(int $admin): void
     {
         $s=Database::getInstance()->prepare("SELECT role FROM admins WHERE id=? AND status='active'");$s->execute([$admin]);
@@ -68,7 +73,12 @@ final class AdminQueryService
         if (isset($q['name']) && $q['name']!=='') {
             $where[]="i.name LIKE ? ESCAPE '!'";$args[]='%'.str_replace(['!','%','_'],['!!','!%','!_'],Request::text($q,'name',1,100)).'%';
         }
-        return $this->listing(self::INSTANCE,self::JOINS.($where?' WHERE '.implode(' AND ',$where):''),$args,$q,'i.id');
+        if(isset($q['service_review'])&&$q['service_review']!==''){
+            if($q['service_review']!=='1'){throw new ApiException('Invalid service review filter');}
+            $where[]="JSON_EXTRACT(i.config_snapshot,'$.service_status.review_required')=true";
+        }
+        $result=$this->listing(self::INSTANCE,self::JOINS.($where?' WHERE '.implode(' AND ',$where):''),$args,$q,'i.id');
+        foreach($result['items'] as &$row){$row+=InstanceServiceStatusService::summary($row);$row['service_status_supported']=$this->statusSupported($row['status_driver']);unset($row['config_snapshot'],$row['status_driver']);}unset($row);return $result;
     }
 
     public function instance(int $admin,int $id,array $q): array
@@ -79,6 +89,7 @@ final class AdminQueryService
             if (!$instance) { throw new ApiException('Instance not found',404,404); }
             $invoices=$this->listing('v.id AS invoice_id,v.type,v.status,v.created_at,v.paid_at',
                 ' FROM invoices v WHERE v.instance_id=? AND v.user_id=?',[$id,$instance['user_id']],$q,'v.id');
+            $instance+=InstanceServiceStatusService::summary($instance);$instance['service_status_supported']=$this->statusSupported($instance['status_driver']);unset($instance['config_snapshot'],$instance['status_driver']);
             return ['instance'=>$instance,'invoices'=>$invoices];
         });
     }

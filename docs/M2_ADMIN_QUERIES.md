@@ -38,3 +38,7 @@ Chromium 独立夹具已走通邮箱→客户→实例→原账单资金详情�
 原 M2 只做既有 m2-admin 身份的服务只读冒烟：2 个客户、客户 1 的 3 个实例、实例 1 原账单及 host:4250 绑定可查；查询前后 users／instances／invoices／transactions／payment_records／tasks／admin_audit_logs 内容摘要相同，原 HTTP／前端代理健康。没有付款、改期、修改账号、上游请求或裁决任务；无迁移，也无需重启金融／邮件 Worker。此为现有 M2 接入，不代表正式环境部署。
 
 本机记录：`/tmp/jianyun-admin-query-integration.log`、`/tmp/jianyun-admin-query-browser.js`、`/tmp/jianyun-admin-query-browser.log`、前端检查日志及 `output/playwright/admin-queries/` 截图；M2 只读结果保存在受保护状态目录的 `admin-query-readonly-verification.json`，均不入 Git。隔离服务验收结束后清理，现有 M2 原服务保留。
+
+## 后续到期核对增量（2026-11-09）
+
+原GET查询继续只读本地事实；列表／详情补安全权益与上游观察，实例列表增加service_review=1筛选。客户／超级管理员主动核对由独立InstanceServiceStatusService及POST路径承接，权限与网络前后版本门禁不进入AdminQueryService。M2新Worker接入／真实暂停恢复仍待验，见[到期契约](M2_EXPIRY_RECOVERY.md)。

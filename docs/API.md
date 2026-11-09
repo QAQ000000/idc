@@ -483,3 +483,16 @@ instance 投影 id/user_id/user_email/product_id/product_name/provider_id/provid
 ## 邮件配置管理（2026-11-09）
 
 超级管理员独占 `GET /admin/notification-settings`、`PATCH /admin/notification-settings/mail` 和 `PATCH /admin/notification-settings/tickets`。密钥不回显，保存带独立 expected_version；工单另需 confirm_new_period=true。字段、授权、冲突及兼容见 [配置契约](M2_MAIL_SETTINGS.md)。
+
+## 到期服务状态核对（2026-11-09）
+
+| 方法／路径（前缀 /api/v1） | 权限／行为 |
+|---|---|
+| POST /instances/:id/service-status | 客户本人；归属不符404，管理员Token不可代用 |
+| POST /admin/instances/:id/service-status | 当前启用super_admin，网络前后重核权限 |
+
+无请求业务参数；只读取上游并保存规范观察，不发停机／解挂。成功响应 no-store，data 为 applied、outcome、local_status、suspend_type、entitlement_state、service_observation。outcome 为 OBSERVED／NOT_DELIVERED／OPERATION_BLOCKED／LOCAL_STATE_CHANGED／UNSUPPORTED；查询失败可 applied=true 并保存 unknown／review_required，不得解读为上游正常。
+
+service_observation 仅 state、suspension、checked_at、remote_due_date、review_required、code；从未核对为 not_checked／NOT_CHECKED，日期可空，UTC。权益为 valid／expired／not_started／not_applicable。原客户／管理员实例列表及详情补该投影和 service_status_supported，列表不调用上游、不暴露原 config_snapshot。后台 GET /admin/instances 支持 service_review=1，其他非空值400，与原筛选求交、分页不变；全部启用管理员可读，资金权限不变。
+
+原账单可继续查找；新续费核对后出账，已知需核验状态拒绝划扣，迟到实收走原钱包分流。并发／数据保持／M2待验边界见[契约](M2_EXPIRY_RECOVERY.md)。

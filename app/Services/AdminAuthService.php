@@ -33,25 +33,20 @@ final class AdminAuthService
             if ($newHash !== null) { $db->prepare('UPDATE admins SET password = ? WHERE id = ?')->execute([$newHash,$admin['id']]); }
             $db->prepare('UPDATE admins SET last_login_at = UTC_TIMESTAMP(),last_login_ip = ? WHERE id = ?')->execute([Security::getClientIp(),$admin['id']]);
             unset($admin['password'], $admin['two_factor_secret']);
-            return ['token'=>Security::generateToken(['uid'=>(int)$admin['id'],'sub_type'=>'admin']), 'admin'=>$admin];
+            return ['token'=>Security::generateToken(['uid'=>(int)$admin['id'],'sub_type'=>'admin','av'=>self::sessionVersion($db,(int)$admin['id'],true)]), 'admin'=>$admin];
         });
     }
 
-    /** Local operator provisioning only; never exposed as registration or an account reset endpoint. */
+    /** Immutable account-security audits are the revocation source; legacy provisioning stays version zero. */
+    public static function sessionVersion(PDO $db,int $id,bool $lock=false): int
+    {
+        $s=$db->prepare("SELECT id FROM admin_audit_logs WHERE target_type='admin' AND target_id=? AND action IN ('admin_account_create','admin_account_update','admin_password_change','admin_password_reset') ORDER BY id DESC LIMIT 1".($lock?' FOR UPDATE':''));
+        $s->execute([$id]);return (int)($s->fetchColumn()?:0);
+    }
+
+    /** Local provisioning shares validation, account locks and mandatory audit with the web service. */
     public function create(array $input): int
     {
-        $username = Request::text($input, 'username', 1, 50);
-        $email = strtolower(trim(Request::text($input, 'email', 3, 100)));
-        $role = Request::text($input, 'role', 1, 20);
-        if ($username !== trim($username) || !filter_var($email, FILTER_VALIDATE_EMAIL)
-            || !in_array($role, ['super_admin','finance','support','operator'], true)) { throw new ApiException('Invalid administrator'); }
-        $hash = Security::hashPassword(Request::text($input, 'password', 12, 72));
-        return Database::transaction(static function (PDO $db) use ($username,$email,$role,$hash): int {
-            $db->prepare('INSERT INTO admins(username,email,password,role) VALUES(?,?,?,?)')->execute([$username,$email,$hash,$role]);
-            $id = (int)$db->lastInsertId();
-            $db->prepare("INSERT INTO admin_audit_logs(admin_id,action,target_type,target_id,context,ip) VALUES(?,'admin_provision','admin',?,?,?)")
-                ->execute([$id,$id,json_encode(['source'=>'local_cli']),Security::getClientIp()]);
-            return $id;
-        });
+        return (new AdminAccountService())->createLocal($input);
     }
 }

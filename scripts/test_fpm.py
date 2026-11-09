@@ -90,6 +90,12 @@ def verify(socket_path, root):
     })
     assert status == 200
     support_token = support['data']['token']
+    assert request(socket_path, root, 'GET', '/api/v1/admin/accounts', token=admin_token)[0] == 200
+    assert request(socket_path, root, 'GET', '/api/v1/admin/accounts', token=support_token)[0] == 403
+    assert request(socket_path, root, 'GET', '/api/v1/admin/accounts', token=client_token)[0] == 401
+    assert request(socket_path, root, 'POST', '/api/v1/admin/accounts', {}, token=support_token)[0] == 403
+    assert request(socket_path, root, 'GET', '/api/v1/admin/auth/security', token=support_token)[0] == 200
+    assert request(socket_path, root, 'GET', '/api/v1/admin/auth/security')[0] == 401
     status, tasks = request(socket_path, root, 'GET', f'/api/v1/admin/tasks?user_id={customer_id}', token=support_token)
     assert status == 200 and all(t['total'] is None for t in tasks['data']['items'])
     task_id = tasks['data']['items'][0]['id']
@@ -150,5 +156,6 @@ def verify(socket_path, root):
     print('PASS: isolated PHP-FPM customer/instance navigation and finance role isolation')
     print('PASS: isolated PHP-FPM renewal price read/write permissions and blocked-state projection')
     print('PASS: isolated PHP-FPM manual adjustment financial roles and operation gates')
+    print('PASS: isolated PHP-FPM admin account permissions and own security, without cross-request identity leakage')
 
     print('PASS: isolated PHP-FPM support create/replay/public reply/closure and identity separation')

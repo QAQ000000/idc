@@ -181,6 +181,8 @@ sequenceDiagram
 
 ## 运营后台最小增量（2026-11-08）
 
+管理员账号运营由独立 AdminAccountService 承接，控制器不直接写admins。仅super_admin管理现有固定角色；四种角色可验证旧密码改密。复用不可改admin_audit_logs的目标索引与安全动作ID作为会话版本，认证每次重核，不新增撤销表／Redis同步。低频写按ID锁定admins原行集，事务内重核身份／请求会话／目标版本、最后可登录超管，再写变更与审计；密码校验／哈希在事务外。无资金、实例或Outbox变化，无迁移，详见[账号契约](M2_ADMIN_ACCOUNTS.md)。
+
 为将既有命令行核验变为日常网页运营，单 Vue 应用增加管理员路由，Laravel 增加独立 admin 登录与只读任务投影。复用 admins 当前角色/启用状态：所有启用角色可查任务上下文，只有 super_admin 可裁决；客户与管理员 Token 作用域、前端存储及失效处理分离。无需 RBAC 新表、第二后端或任务处置副本。
 
 人工写操作统一调用原 TaskResolutionService，保留实例优先行锁、资金/归属门禁、旧 execution_token、同事务审计与 Worker Fencing。查询 allowed_actions 只供展示，不构成授权。任意过期页面提交必须拒绝后重新核验。退款继续人工处理，显式新购钱包补偿的既有行为保留，续费不复用取消。具体安全投影、登录及操作边界见 [API](API.md#admin-operations)；无 schema 迁移，不改变插件物理边界。

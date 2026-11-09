@@ -47,6 +47,8 @@
 
 ## 1. 全库表 DDL（8 张核心业务表 + 18 张支撑业务表 + 1 张框架版本登记表）
 
+**管理员账号运营增量（2026-11-09）**：复用admins现有字段及不可改admin_audit_logs，DDL／27表不变，无迁移。target_type=admin、target_id=账号ID下最新admin_account_create／admin_account_update／admin_password_change／admin_password_reset审计ID即认证版本；历史admin_provision保持版本0。审计既为安全事实也为撤销依据，不能清理或旁路变更。账号变更／审计同事务，密码及哈希不进context；详情版本用固定资料与审计ID的HMAC，透明哈希升级不改版本。最后超管检查锁定原admins行集，不增加锁表，见[契约](M2_ADMIN_ACCOUNTS.md)。
+
 <a id="table-admins"></a>
 
 ### 1.1 `admins`（系统管理与运维员工档案）

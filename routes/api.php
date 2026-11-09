@@ -47,6 +47,13 @@ Route::middleware('client')->group(function (): void {
 });
 Route::post('admin/auth/login', [\App\Http\Controllers\AdminAuthController::class, 'login'])->middleware('captcha:login');
 Route::middleware('admin')->group(function (): void {
+    Route::get('admin/auth/security', [\App\Http\Controllers\AdminAccountController::class, 'security']);
+    Route::post('admin/auth/password', [\App\Http\Controllers\AdminAccountController::class, 'password']);
+    Route::get('admin/accounts', [\App\Http\Controllers\AdminAccountController::class, 'index']);
+    Route::post('admin/accounts', [\App\Http\Controllers\AdminAccountController::class, 'store']);
+    Route::get('admin/accounts/{id}', [\App\Http\Controllers\AdminAccountController::class, 'show']);
+    Route::patch('admin/accounts/{id}', [\App\Http\Controllers\AdminAccountController::class, 'update']);
+    Route::post('admin/accounts/{id}/password', [\App\Http\Controllers\AdminAccountController::class, 'reset']);
     Route::get('admin/notification-settings', [\App\Http\Controllers\NotificationSettingsController::class, 'show']);
     Route::patch('admin/notification-settings/mail', [\App\Http\Controllers\NotificationSettingsController::class, 'save']);
     Route::patch('admin/notification-settings/tickets', [\App\Http\Controllers\NotificationSettingsController::class, 'tickets']);

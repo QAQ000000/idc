@@ -12,10 +12,10 @@ final class AdminAuthController
 {
     public function login(AdminAuthService $service): JsonResponse
     {
-        return ApiResponse::success($service->login(Request::body()));
+        return ApiResponse::success($service->login(Request::body()))->header('Cache-Control','no-store');
     }
     public function me(): JsonResponse
     {
-        return ApiResponse::success(AdminAuthMiddleware::admin());
+        return ApiResponse::success(AdminAuthMiddleware::admin())->header('Cache-Control','no-store');
     }
 }

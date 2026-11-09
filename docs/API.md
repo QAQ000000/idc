@@ -506,3 +506,19 @@ service_observation 仅 state、suspension、checked_at、remote_due_date、revi
 - `POST .../manual-adjustment/settle`：仅 `{preview_token:"…", request_key:"16–48位字母数字_-", confirmed:true}`，返回invoice_id／total／new_price／cancelled_invoice_ids／replayed。原请求重放返回原账单；结果未知只重试原请求或核对原记录，不能更换身份绕过预览。
 
 400为字段／金额／明确确认错误；403为角色；404为实例缺失；409为依据不足、多期预付、未决任务／退款／服务门禁、余额不足、过期／变更预览或重放冲突。原账期／资源／冻结价不变；正额同事务结算、未来改价和审计，无上游任务；旧收银台迟到款按原凭证入钱包。普通pay／checkout不接受此upgrade。客户账单列表／详情及财务详情新增fulfillment_status=manual_settled，仅当原人工快照和完成审计匹配，普通paid无任务继续needs_review。完整规则见[契约](M2_MANUAL_ADJUSTMENT.md)。
+
+## 管理员账号管理（2026-11-09）
+
+前缀`/api/v1`，原admin中间件、no-store；客户／匿名401，停用403，撤销会话401，非super_admin管理账号403，字段错误400、缺失404、版本／最后超管／唯一账号冲突409。密码12–72字节且拒绝NUL，无返回／日志／审计明文或哈希。四固定角色super_admin／finance／support／operator，状态active／disabled。
+
+| 方法与路径 | 权限、输入与结果 |
+|---|---|
+| GET /admin/accounts | super_admin；q（用户名／邮箱包含、最长100字节，转义通配符）、role/status（默认all）、page（1–100000）、per_page（1–100，默认20）；items/total/page/per_page |
+| POST /admin/accounts | super_admin；username（1–50）、email（3–100）、role、status（可省略，默认active）、password；返回admin_id，唯一用户名／邮箱防重复，响应未知先查询 |
+| GET /admin/accounts/{id} | super_admin；account安全白名单＋version、second_factor_configured、login_supported；最近20条安全audit，密码／2FA密文不返回 |
+| PATCH /admin/accounts/{id} | super_admin；role、status、expected_version（64位HMAC）、evidence（trim后10–1000字节）；同事务变更／审计，返回admin_id/sessions_revoked/self_changed，无变化409 |
+| POST /admin/accounts/{id}/password | super_admin且目标非本人；new_password、expected_version、evidence、confirmed=true；显式重置，返回admin_id/sessions_revoked |
+| GET /admin/auth/security | 所有启用管理员，仅本人安全投影与目标version |
+| POST /admin/auth/password | 所有启用管理员；current_password、new_password、expected_version；5次／分钟，校验旧密码并事务内重核原hash，返回sessions_revoked |
+
+登录Token增加整数av；缺av只兼容尚无安全变更审计的版本0，非整数或不匹配401。账号写事务重核请求认证版本，等锁期间被调岗／撤销不能继续写。没有公开管理员注册、账号删除、用户名／邮箱编辑或自定义权限接口。最后超管保护及兼容见[账号契约](M2_ADMIN_ACCOUNTS.md)。

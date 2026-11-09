@@ -5,14 +5,19 @@ namespace App\Middlewares;
 use App\Core\ApiException;
 use App\Core\Security;
 use App\Core\Database;
+use App\Services\AdminAuthService;
 
 class AdminAuthMiddleware
 {
     private static ?array $currentAdmin = null;
 
+    private static int $authVersion = 0;
+    public static function authVersion(): int { return self::$authVersion; }
+
     public static function reset(): void
     {
         self::$currentAdmin = null;
+        self::$authVersion = 0;
     }
 
     public function handle(): bool
@@ -30,7 +35,7 @@ class AdminAuthMiddleware
         }
 
         $db = Database::getInstance();
-        $stmt = $db->prepare("SELECT id, username, email, role, status FROM admins WHERE id = ?");
+        $stmt = $db->prepare("SELECT id, username, email, role, status, (two_factor_secret IS NOT NULL AND two_factor_secret<>'') AS second_factor_configured FROM admins WHERE id = ?");
         $stmt->execute([$payload['uid']]);
         $admin = $stmt->fetch();
 
@@ -42,6 +47,12 @@ class AdminAuthMiddleware
             throw new ApiException('Admin account disabled', 403, 403);
         }
 
+        $version = array_key_exists('av',$payload) ? $payload['av'] : 0;
+        if ($admin['second_factor_configured'] || !is_int($version) || $version !== AdminAuthService::sessionVersion($db,(int)$admin['id'])) {
+            throw new ApiException('Administrator session revoked; log in again',401,401);
+        }
+        unset($admin['second_factor_configured']);
+        self::$authVersion = $version;
         self::$currentAdmin = $admin;
         return true;
     }

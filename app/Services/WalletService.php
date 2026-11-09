@@ -24,8 +24,7 @@ final class WalletService
         $hash=Security::requestFingerprint(json_encode(['recharge',$amount],JSON_THROW_ON_ERROR));
         return Database::transaction(function(PDO $db) use($user,$amount,$key,$hash):array {
             // Only the user and a new invoice are locked; replay never locks an old invoice behind the wallet.
-            $s=$db->prepare('SELECT status FROM users WHERE id=? FOR UPDATE');$s->execute([$user]);
-            if ($s->fetchColumn()!=='active') { throw new ApiException('Account unavailable',403,403); }
+            CustomerAccessService::assertActive($db,$user);
             $s=$db->prepare('SELECT id,checkout_hash FROM invoices WHERE user_id=? AND checkout_key=?');$s->execute([$user,$key]);
             if ($existing=$s->fetch()) {
                 if (!hash_equals($existing['checkout_hash'],$hash)) { throw new ApiException('Recharge key already used with a different amount',409,409); }

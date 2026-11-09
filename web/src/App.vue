@@ -162,7 +162,7 @@ function adminLogout() {
           </el-alert>
           <RouterView
             :key="
-              $route.path === '/reset-password' ? $route.path : $route.fullPath
+              $route.path === '/reset-password' || /^\/admin\/customers\/[1-9]\d*$/.test($route.path) ? $route.path : $route.fullPath
             "
           />
         </main>

@@ -1,5 +1,7 @@
 # JianYun (简云) · Agent 协同开发指南与工程宪法
 
+**客户账号管理**：原客户详情顶部账号弹窗仅当前启用super_admin可操作；启停／显式重置密码携带版本、依据和操作编号，同事务递增users.auth_version并写审计。停用阻止登录／主动操作／新余额代扣，不停资源、不取消已付任务、不拦旧款；启用不复活旧Token／找回链接，保留auto_renew并提示续费影响。未知先按操作编号只读核对，不自动重发；27表无迁移，见[契约](docs/M2_CUSTOMER_ACCOUNTS.md)。
+
 **易支付配置后台**：`/admin/payments`仅当前启用super_admin读写，配置版本、密文及同事务审计保持。新收银与配置保存共享行锁；停用不阻断历史回调验签、核销及迟到／额外入钱包。任一易支付尝试后锁定网关／商户号／密钥，CLI首次安装不覆盖。单渠道、人工退款、27表不变，见[配置契约](docs/M2_PAYMENT_SETTINGS.md)。
 
 **复杂页面治理约束**：实施详情页／长表单调整前阅读 [页面防膨胀规范](docs/PAGE_BLOAT_GOVERNANCE_AND_ARCHITECTURE_SPEC.md)。后台实例页与 [客户实例页样板](docs/CLIENT_INSTANCE_PAGE_SAMPLE.md) 已分别独立验收；公共骨架留待后续按两个样板的实际共性提炼；稳定页壳、未决操作、凭据失效、独立保存及原键恢复不得因分区丢失。外部草案定稿与仓库接入分别记录，不新增空能力或强制所有页面套壳。
@@ -106,7 +108,7 @@
 
 **充值与资金查询已实现**：客户 /wallet 及原账单页复用易支付，正常充值以凭证唯一身份、账单 CAS、余额和流水同事务结算；迟到／额外实收独立入钱包。纯充值不建实例、不投 Outbox、不计消费／佣金，余额不可给自身充值。后台 /admin/finance 仅当前启用 finance/super_admin 可读，按原账单／凭证／wallet 流水关联，不增同步副本或改账入口。27 表与 DDL 保持，历史只追加流水不重写；退款人工；正常 recharge 流水提交后通过 Redis 客户提示，由原 Worker 复用代扣服务提前处理本人原单，提示丢失仍由 15 分钟扫描恢复，无迁移，运行时需重启原 Worker。迟到／额外入款和补偿不触发本批提示；详见 [充值唤醒](docs/M2_RENEWAL_CONTRACT.md#充值到账后的异步唤醒) 与 [充值与资金查询](docs/M2_WALLET_FINANCE.md)。
 
-**管理员客户／实例只读查询**：同一 Vue `/admin/customers`、`/admin/instances` 及详情只读原事实，四种启用管理员可读，无驱动调用或写动作。关联账单仅投影编号／类型／状态／时间，金额／收款／钱包继续限 finance/super_admin；旧任务投影亦裁剪非财务角色的结构化财务字段。筛选与分页、当前身份重核、原账单／实例归属、敏感字段白名单与 no-store 不可绕过，27 表／DDL 保持，见 [查询契约](docs/M2_ADMIN_QUERIES.md)。
+**管理员客户／实例查询**：同一 Vue `/admin/customers`、`/admin/instances` 及详情的查询只读原事实，四种启用管理员可读，无驱动调用或查询侧写入；客户账号操作由独立超级管理员入口承接，见上方契约。关联账单仅投影编号／类型／状态／时间，金额／收款／钱包继续限 finance/super_admin；旧任务投影亦裁剪非财务角色的结构化财务字段。筛选与分页、当前身份重核、原账单／实例归属、敏感字段白名单与 no-store 不可绕过，27 表／DDL 保持，见 [查询契约](docs/M2_ADMIN_QUERIES.md)。
 
 **上游接入管理**：同一 Vue `/admin/providers` 提供安全列表／详情、超级管理员新增连接、版本校验改名及只读配置／报价验证；已保存账号／地址／驱动不可替换，换账号新建连接。原 CLI 与网页复用 ProviderConnectionService，参数规则只在插件可选 ConnectionConfigInterface 中维护，凭据加密且不回显，连接写入与审计同事务。原 `/admin/providers` API 选择数组兼容，商品导入仍默认下架，无迁移，见 [接入契约](docs/M2_PROVIDER_CONNECTIONS.md)。
 

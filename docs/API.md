@@ -537,3 +537,18 @@ service_observation 仅 state、suspension、checked_at、remote_due_date、revi
 版本过期或锁定身份变更409；非法输入400；审计失败整体回滚500。首次保存可停用但必须有有效商户密钥。URL禁嵌入账号／口令／query／fragment，正式环境须HTTPS，return_url为本站根地址；网关地址可含部署路径。出现任何epay尝试后endpoint/pid/key锁定，type和本站URL仍可版本化修改；不改旧收银字段。409／丢响应先GET，不自动重提密钥。
 
 原POST /invoices/{id}/pay gateway=epay仅在新收银开启时准入；配置行锁下先提交尝试者有效，停用先提交则409且无新尝试。原GET/POST /payments/epay/notify不以enabled拒绝旧回调，仍验签、核销及独立迟到／额外入钱包，防重及Outbox边界保持。单渠道、人工退款；兼容、锁序与证据见[契约](M2_PAYMENT_SETTINGS.md)。
+
+
+## 管理员客户账号管理
+
+原客户详情与列表查询权限保持，新增接口仅当前启用super_admin，响应no-store。
+
+| 方法 | 路径（前缀 /api/v1） | 用途 |
+| --- | --- | --- |
+| GET | /admin/customers/{id}/account | 安全账号资料、version、最近20条审计；可选request_key精确核对本人原操作 |
+| PATCH | /admin/customers/{id}/status | status=active/suspended，启停并撤销旧认证 |
+| POST | /admin/customers/{id}/password | new_password（12–72字节，无NUL），显式重置并撤销旧认证 |
+
+两个写接口均要求expected_version（64位HMAC）、request_key（UUID v4）、evidence（10–1000字节）及confirmed=true；未知字段400、旧版本／空状态变更／已用操作编号409、非超管403、登录认证已撤销401。返回customer_id、request_key、sessions_revoked=true，不返回密码／哈希／auth_version／余额。账号变更与审计同事务。
+
+GET返回account={id,email,status,version}、audit=[{id,admin_id,username,action,context,created_at}]、operation（按本超管原request_key命中的审计或null）；context仅evidence/request_key/before_status/after_status/sessions_revoked白名单。即使操作不在最近20条内也可独立查到。丢响应不自动重提；同版本且未查到审计仍为未知，不能仅凭当前状态判断成功。停用的资金、资源与续费边界见[完整契约](M2_CUSTOMER_ACCOUNTS.md)。

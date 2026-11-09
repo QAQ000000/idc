@@ -97,9 +97,7 @@ final class BillingService
         return Database::transaction(function (PDO $db) use ($userId, $productId, $cycle, $hostname, $password, $options, $input, $checkoutKey, $requestHash, $preflight): array {
             // 串行化同用户的新购。此处只锁用户及本次新行，不锁已有实例/账单。
             // 已有付款仍遵循实例→账单→钱包；重放只读已有订单，避免反向持锁。
-            $stmt = $db->prepare('SELECT status FROM users WHERE id = ? FOR UPDATE');
-            $stmt->execute([$userId]);
-            if ($stmt->fetchColumn() !== 'active') { throw new ApiException('Account unavailable', 403, 403); }
+            CustomerAccessService::assertActive($db,$userId);
             if ($checkoutKey !== null) {
                 $stmt = $db->prepare('SELECT id, checkout_hash FROM invoices WHERE user_id = ? AND checkout_key = ?');
                 $stmt->execute([$userId, $checkoutKey]);
@@ -214,6 +212,7 @@ final class BillingService
             if ($automatic && ($locked['type']!=='renew' || !(bool)$instance['auto_renew'] || strtotime($instance['due_date'].' UTC')>time()+7*86400)) {
                 throw new ApiException('Automatic renewal is disabled or outside billing window',409,409);
             }
+            CustomerAccessService::assertActive($db,$userId);
             self::assertPayable($db,$instance,$locked);
             $amount = Money::positive($locked['total']);
             $stmt = $db->prepare("UPDATE invoices SET status = 'paid', payment_method = 'balance', paid_at = UTC_TIMESTAMP() WHERE id = ? AND status = 'unpaid'");
@@ -236,6 +235,7 @@ final class BillingService
             $invoice = $this->invoice($userId, $id);
             if ($invoice['type'] === 'recharge' && $invoice['instance_id'] === null) {
                 $s=$db->prepare('SELECT status FROM invoices WHERE id=? FOR UPDATE');$s->execute([$id]);$status=$s->fetchColumn();
+                if(!$onlyExpired){CustomerAccessService::assertActive($db,$userId);}
                 // A concurrent cancel may have committed after the initial snapshot read.
                 $invoice['status']=$status;
                 if ($onlyExpired || $status === 'cancelled') { return $invoice; }
@@ -252,6 +252,7 @@ final class BillingService
             $stmt = $db->prepare('SELECT *, quote_expired_at <= UTC_TIMESTAMP() AS expired FROM invoices WHERE id = ? FOR UPDATE');
             $stmt->execute([$id]);
             $locked = $stmt->fetch();
+            if(!$onlyExpired){CustomerAccessService::assertActive($db,$userId);}
             if ($locked['status'] === 'cancelled' || ($onlyExpired && (!$locked['expired'] || $locked['status'] !== 'unpaid'))) {
                 $invoice['status'] = $locked['status'];
                 $invoice['payment_method'] = $locked['payment_method'];

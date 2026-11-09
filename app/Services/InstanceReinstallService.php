@@ -87,7 +87,7 @@ final class InstanceReinstallService
             $i=$this->owned($user,$id,true);
             if(($claims['expires']??0)<=time()||!InstancePowerService::eligible($i)||!hash_equals($this->version($i),$claims['version'])){throw new ApiException('Instance changed; refresh first',409,409);}
             self::clear($db,$id);
-            $s=$db->prepare('SELECT status FROM users WHERE id=? FOR UPDATE');$s->execute([$user]);if($s->fetchColumn()!=='active'){throw new ApiException('Account suspended',403,403);}
+            CustomerAccessService::assertActive($db,$user);
             $s=$db->prepare('SELECT status FROM providers WHERE id=? FOR UPDATE');$s->execute([$i['provider_id']]);if((int)$s->fetchColumn()!==1){throw new ApiException('Provider unavailable',409,409);}
             $identity='instance_reinstall:'.$id.':'.$key;
             $s=$db->prepare('SELECT id FROM tasks WHERE idempotency_key=?');$s->execute([$identity]);if($s->fetch()){throw new ApiException('Reinstall already submitted',409,409);}

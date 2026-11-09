@@ -98,8 +98,7 @@ final class InstancePowerService
             $i=$this->owned($user,$id,true);
             if(!self::eligible($i) || !hash_equals($this->version($i),$claims['version'])){throw new ApiException('Instance or operation changed; refresh first',409,409);}
             self::clear($db,$id);
-            $s=$db->prepare('SELECT status FROM users WHERE id=? FOR UPDATE');$s->execute([$user]);
-            if($s->fetchColumn()!=='active'){throw new ApiException('Account suspended',403,403);}
+            CustomerAccessService::assertActive($db,$user);
             $s=$db->prepare('SELECT status FROM providers WHERE id=? FOR UPDATE');$s->execute([$i['provider_id']]);
             if((int)$s->fetchColumn()!==1){throw new ApiException('Provider unavailable',409,409);}
             $identity='instance_power:'.$id.':'.$key;

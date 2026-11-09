@@ -13,6 +13,7 @@ final class TicketService
 
     private function actor(PDO $db,int $id,bool $admin,bool $lock=false): void
     {
+        if(!$admin&&$lock){CustomerAccessService::assertActive($db,$id);return;}
         $s=$db->prepare('SELECT status'.($admin?',role':'').' FROM '.($admin?'admins':'users').' WHERE id=?'.($lock?' FOR UPDATE':''));$s->execute([$id]);$a=$s->fetch();
         if(!$a||$a['status']!=='active'||($admin&&!in_array($a['role'],['super_admin','finance','support','operator'],true))){throw new ApiException('Active account required',403,403);}
     }

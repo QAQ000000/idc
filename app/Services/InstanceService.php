@@ -52,6 +52,7 @@ final class InstanceService
             if(!$row){throw new ApiException('Instance not found',404,404);}
             if($row['status']!=='active'){throw new ApiException('Credentials available after delivery',409,409);}
             InstanceReinstallService::assertCredentialsAvailable($db,$id);
+            CustomerAccessService::assertActive($db,$user);
             $snapshot=json_decode($row['config_snapshot']??'{}',true,32,JSON_THROW_ON_ERROR);
             return ['username'=>$snapshot['delivery']['username']??null,'password'=>Security::decrypt($row['encrypted_password']??''),
                 'verification'=>$snapshot['delivery']['credentials_verification']??'upstream_reported'];

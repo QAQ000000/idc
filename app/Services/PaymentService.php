@@ -32,6 +32,7 @@ final class PaymentService
             if ($recharge) {
                 if ($inv['type'] !== 'recharge' || $inv['instance_id'] !== null || $inv['status'] !== 'unpaid') { throw new ApiException('Recharge invoice cannot be paid',409,409); }
             } else { BillingService::assertPayable($db,$instance,$inv); }
+            CustomerAccessService::assertActive($db,$userId);
             // A new click is a new attempt. Older cashier attempts remain attributable if paid late;
             // never resubmit an existing attempt to gateways that reject duplicate merchant orders.
             $p = ['invoice_id' => $invoiceId, 'trade_no' => 'jy_' . bin2hex(random_bytes(20)), 'amount' => Money::positive($inv['total'])];

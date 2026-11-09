@@ -1,5 +1,7 @@
 # JianYun (简云) · 统一单前端架构设计规范 (Frontend Specification)
 
+**客户账号操作弹窗**：原客户详情顶部仅超级管理员显示入口；账号状态、续费影响、操作依据与确认前置，近期审计折叠。版本409／丢响应先GET按原操作编号核对，无自动重发。密码离开编辑表单／关闭／后台／离页即清，分页和刷新不销毁未决操作，详见[页面与验收契约](M2_CUSTOMER_ACCOUNTS.md)。
+
 **易支付后台**：`/admin/payments`前置新收银开关、身份摘要及保存／核对，详细参数折叠。沿用通知页实际重复的独立草稿／版本核对算法（useSettingsDraft），保留通知适配器，不建设通用页壳；密钥离区清除，未知不重提，历史身份锁定后的草稿采用原商户身份。见[支付配置契约](M2_PAYMENT_SETTINGS.md)。
 
 **通知设置分区**：`/admin/notifications?section=mail|tickets`支持目标区初次进入，页内切区不改URL；SMTP按需展开、两区独立草稿／版本／核对，不套实体页壳。145项页面检查及密钥／未知结果边界见 [通知页治理](NOTIFICATION_SETTINGS_PAGE.md)。

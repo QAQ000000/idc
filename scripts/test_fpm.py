@@ -137,6 +137,37 @@ def verify(socket_path, root):
     assert request(socket_path, root, 'GET', payment_settings, token=client_token)[0] == 401
     assert request(socket_path, root, 'GET', payment_settings)[0] == 401
     print('PASS: isolated PHP-FPM payment settings current-role and credential isolation')
+    # A separate disposable customer keeps the existing client/instance fixture's session intact.
+    ca_email = 'fpm-customer-' + str(uuid.uuid4()) + '@example.test'
+    status, ca_session = request(socket_path, root, 'POST', '/api/v1/auth/register', {'email': ca_email, 'password': 'FpmCustomer!2026'})
+    assert status == 200
+    ca_id = ca_session['data']['user']['id']
+    ca_token = ca_session['data']['token']
+    ca_path = f'/api/v1/admin/customers/{ca_id}'
+    status, ca = request(socket_path, root, 'GET', ca_path + '/account', token=admin_token)
+    assert status == 200 and set(ca['data']['account']) == {'id', 'email', 'status', 'version'}
+    for other in [support_token, finance_token]:
+        assert request(socket_path, root, 'GET', ca_path, token=other)[0] == 200
+        assert request(socket_path, root, 'GET', ca_path + '/account', token=other)[0] == 403
+        assert request(socket_path, root, 'PATCH', ca_path + '/status', {}, token=other)[0] == 403
+        assert request(socket_path, root, 'POST', ca_path + '/password', {}, token=other)[0] == 403
+    assert request(socket_path, root, 'GET', ca_path + '/account', token=ca_token)[0] == 401
+    ca_body = {'expected_version': ca['data']['account']['version'], 'request_key': str(uuid.uuid4()), 'status': 'suspended', 'evidence': 'FPM isolated account acceptance', 'confirmed': True}
+    assert request(socket_path, root, 'PATCH', ca_path + '/status', ca_body, token=admin_token)[0] == 200
+    assert request(socket_path, root, 'GET', '/api/v1/auth/me', token=ca_token)[0] == 403
+    status, ca = request(socket_path, root, 'GET', ca_path + '/account?request_key=' + ca_body['request_key'], token=admin_token)
+    assert status == 200 and ca['data']['operation']['context']['request_key'] == ca_body['request_key']
+    ca_body.update(expected_version=ca['data']['account']['version'], status='active', request_key=str(uuid.uuid4()))
+    assert request(socket_path, root, 'PATCH', ca_path + '/status', ca_body, token=admin_token)[0] == 200
+    assert request(socket_path, root, 'GET', '/api/v1/auth/me', token=ca_token)[0] == 401
+    status, ca = request(socket_path, root, 'GET', ca_path + '/account', token=admin_token)
+    reset = {'expected_version': ca['data']['account']['version'], 'request_key': str(uuid.uuid4()), 'new_password': 'FpmReplacement!2026', 'evidence': 'FPM explicit password reset', 'confirmed': True}
+    assert request(socket_path, root, 'POST', ca_path + '/password', reset, token=admin_token)[0] == 200
+    assert request(socket_path, root, 'POST', ca_path + '/password', reset, token=admin_token)[0] == 409
+    status, after = request(socket_path, root, 'GET', ca_path + '/account', token=admin_token)
+    assert status == 200 and reset['new_password'] not in json.dumps(after)
+    print('PASS: isolated PHP-FPM customer account roles, audit lookup, disable, permanent revocation and reset')
+
     assert request(socket_path, root, 'GET', price_path, token=finance_token)[0] == 200
     assert request(socket_path, root, 'PATCH', price_path, {}, token=finance_token)[0] == 403
     adjustment_path = f'/api/v1/admin/instances/{instance_id}/manual-adjustment'

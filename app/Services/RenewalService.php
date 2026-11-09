@@ -67,6 +67,7 @@ final class RenewalService
             if (!$current) { throw new ApiException('Instance not found',404,404); }
             $s=$db->prepare('SELECT id FROM invoices WHERE cycle_marker=? AND user_id=? FOR UPDATE');$s->execute([$marker,$user]);
             if ($existing=$s->fetchColumn()) { return (new BillingService())->invoice($user,(int)$existing); }
+            if((int)(\App\Middlewares\AuthMiddleware::user()['id']??0)===$user){CustomerAccessService::assertActive($db,$user);}
             self::available($db,$current);
             foreach (['provider_id','product_id','remote_instance_id','due_date','billing_cycle','recurring_price','override_price','config_snapshot'] as $key) {
                 if ($current[$key] !== $i[$key]) { throw new ApiException('Instance changed during renewal preflight',409,409); }
@@ -150,6 +151,7 @@ final class RenewalService
         Database::transaction(static function(PDO $db) use($user,$id,$enabled):void {
             $s=$db->prepare('SELECT id FROM instances WHERE id=? AND user_id=? FOR UPDATE');$s->execute([$id,$user]);
             if (!$s->fetch()) { throw new ApiException('Instance not found',404,404); }
+            CustomerAccessService::assertActive($db,$user);
             $db->prepare('UPDATE instances SET auto_renew=? WHERE id=?')->execute([(int)$enabled,$id]);
         });
     }

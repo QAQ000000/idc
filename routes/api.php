@@ -73,6 +73,9 @@ Route::middleware('admin')->group(function (): void {
     Route::post('admin/provider-connections/{id}/verify', [\App\Http\Controllers\AdminProviderController::class, 'verify']);
     Route::get('admin/customers', [\App\Http\Controllers\AdminQueryController::class, 'customers']);
     Route::get('admin/customers/{id}', [\App\Http\Controllers\AdminQueryController::class, 'customer']);
+    Route::get('admin/customers/{id}/account', [\App\Http\Controllers\CustomerAccountController::class, 'show']);
+    Route::patch('admin/customers/{id}/status', [\App\Http\Controllers\CustomerAccountController::class, 'status']);
+    Route::post('admin/customers/{id}/password', [\App\Http\Controllers\CustomerAccountController::class, 'password']);
     Route::get('admin/instances', [\App\Http\Controllers\AdminQueryController::class, 'instances']);
     Route::get('admin/instances/{id}', [\App\Http\Controllers\AdminQueryController::class, 'instance']);
     Route::post('admin/instances/{id}/service-status', [\App\Http\Controllers\InstanceController::class, 'adminServiceStatus']);

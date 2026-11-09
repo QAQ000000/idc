@@ -50,3 +50,15 @@ Chromium客户19项＋后台17项（共36项）通过：客户三类状态、显
 本机记录（不入Git）：`/tmp/jianyun-expiry-integration.log`、`/tmp/jianyun-expiry-targeted.log`、`/tmp/jianyun-expiry-customer-ui.log`、`/tmp/jianyun-expiry-build.log`，截图在 `output/playwright/expiry/`。客户到期页 `customer-expired-1440/768/390/320.png`、暂停／核验／错误 `customer-billing-768.png`／`customer-review-390.png`／`customer-query-error-390.png`；后台 `admin-review-list-1440/768/390/320.png`、`admin-review-empty-768.png`、`admin-instance-review-390/768.png` 及 `admin-support-review-768.png`。页面路径为本人实例→权益／上游观察→显式核对，后台实例查询→核验筛选→原详情；未增付款或停机入口。
 
 本轮未重启 M2 Worker，未操作真实上游／资金或发送真实邮件。M2 状态核对需加载本版 Worker 后再核对，真实欠费恢复仅限已授权体验 CDN（商品391），本地实际 paused／充值／原单代扣及上游恢复须单独保留证据；不将旧“本地 active、上游 Suspended”的充值验收计为本批暂停恢复通过。真实邮件启用仍另行安排。
+
+## M2 运行接入与体验 CDN 真实恢复（2026-11-09）
+
+本节替代上文当时“未重启、真实恢复待验”的运行状态。原 Worker 归属为本仓库／PHP 8.4／独立 M2 配置；在无执行中任务的窗口正常停启，15:04:38（Asia/Shanghai）PID 1004092 → 1092819，active/running、NRestarts=0。重启前后8张关键表全部内容哈希一致，HTTP／Worker 的 APP_KEY、DB、Redis 和配置缓存一致；原分钟 timer、健康接口正常。没有迁移、新 unit、正式部署或共享服务重启，邮件启用仍另行安排。
+
+用户明确在上游设置体验 CDN 欠费暂停，并授权依据上游证据校准本地原周期。15:12 只读确认实例1／商品391／资源4250为 Suspended、结构化 due、到期 2026-11-09 07:10:12 UTC；MySQL 8 完整27表备份后，原实例锁和任务／资金门禁下仅校准 due_date：2026-12-07 17:05:24 → 2026-11-09 07:10:12，审计 #9。原已付 #1／#2／#5、原任务及历史标记均保留；本次是验收数据校准，不是日常覆盖客户已购权益的授权。随后原核对服务将本地记为 suspended／billing／BILLING_DUE，不伪造停机任务。
+
+原周期唯一续费单 #9／¥0.01、marker `r:1:20261109071012`。用户支付充值单 #10／¥0.01，真实网关流水 H202611091516138299，15:17:12 到账；原 Worker 15:17:13 唤醒代扣 #9，钱包 0.00→0.01→0.00，两条原账本 #3／#4，消费累计只增加0.01。唯一 renew 任务 #10、执行令牌2、上游原账单811262于15:17:30完成。付款先延长权益但保留 suspended；确认原资源上游目标日期及 Active 后，本地才恢复 active、suspend_reason=NULL。最终本地／上游均为 2026-12-09 07:10:12 UTC，未调用单独解挂、重购或自动退款。
+
+对既有已验签成功凭证重建两个相同签名通知，仅重放原收款；重取原周期账单仍为 #9，额外两次本人代扣扫描均0。users／invoices／transactions／payment_records／tasks全内容哈希保持不变，没有第二次扣款、第二个renew或重复顺延。上游再查询 Active 与日期一致。本批证明此体验 CDN 的真实欠费恢复，不推广为 VPS、其他驱动、长期可用性或供应商资源保留期已验。
+
+私有证据位于 `/root/.local/state/jianyun-m2-acceptance/`：`expiry-m2-before.json`、`expiry-m2-after-restart.json`、`expiry-runtime-verification.json`、`expiry-real-verification.json`，以及 `expiry-before-alignment-20261109T071222Z.sql`。均不入Git；备份含凭据和业务数据，不作为公开产物。

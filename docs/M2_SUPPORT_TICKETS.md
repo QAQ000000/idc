@@ -46,3 +46,10 @@
 本地截图（忽略文件，不入Git）：`output/playwright/tickets/`下的`create-mobile.png`、`thread-320.png`／`thread-390.png`／`thread-768.png`、`admin-thread.png`、`admin-list-mobile.png`、`closed-mobile.png`、`pagination-tablet.png`、`customer-list-mobile.png`。本批是新增页面，无旧版同功能页面可作改造前对照。实际手机软键盘／触控、其他浏览器及用户运营手测仍未验证。
 
 **运行边界**：本批未对M2／正式库执行000009，未重启或更改其Worker、账号、资金或真实资源。启用前按[部署规程](DEPLOYMENT_RUNTIME.md#最小客服工单接入)备份并迁移；不把隔离页面验收计作M2已接入。没有自动邮件、附件、转派、内部便签或代客户执行业务动作。
+
+
+## M2 运行接入（2026-11-09）
+
+13:21（Asia/Shanghai）核对HTTP／业务Worker／邮件Worker的项目归属及HTTP与业务Worker的配置一致性后，用原MySQL8工具完成166244字节完整备份，随后执行000009。迁移后27表／8条迁移／5个保护触发器，两个新字段及两个作者唯一索引齐备；全表行内容摘要仅migrations变化，原工单、资金、资源与任务保持。备份及逐表摘要保存在私有验收目录，不进入Git。
+
+经现有M2前端代理验证健康200、客户工单／本人实例选择器与管理员列表200，匿名／客户与管理员跨身份访问401；三个原守护／调度保持active，业务Worker PID1004092未变，无需重启。客户可从`/tickets`、管理员从`/admin/tickets`手测；本次只读取接口，没有代客户提单、发送邮件或操作真实资源。正式环境另行部署，实际用户操作／手机触控与软键盘体验仍待手测。上节“本批未接入”仅描述实现提交82ceedb时的历史边界，以本节增量为准。

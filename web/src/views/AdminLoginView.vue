@@ -17,7 +17,7 @@ async function submit() {
     });
     account.establish(result.token, result.admin); password.value = "";
     const target = route.query.redirect;
-    await router.push(typeof target === "string" && /^\/admin\/(?:accounts(?:\/\d+)?|account\/security|notifications|providers(?:\/(?:\d+|new))?|customers(?:\/\d+)?|instances(?:\/\d+)?|tickets(?:\/\d+)?|tasks(?:\/\d+)?|finance(?:\/invoices\/\d+)?|products(?:\/(?:\d+|import))?)(?:\?.*)?$/.test(target) ? target : "/admin/tasks");
+    await router.push(typeof target === "string" && /^\/admin\/(?:accounts(?:\/\d+)?|account\/security|notifications|captcha|site|payments|providers(?:\/(?:\d+|new))?|customers(?:\/\d+)?|instances(?:\/\d+)?|tickets(?:\/\d+)?|tasks(?:\/\d+)?|finance(?:\/invoices\/\d+)?|products(?:\/(?:\d+|import))?)(?:\?.*)?$/.test(target) ? target : "/admin/tasks");
   } catch (e) { error.value = message(e); await captcha.value?.refresh(); }
   finally { busy.value = false; }
 }

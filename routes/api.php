@@ -4,8 +4,8 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('site', [\App\Http\Controllers\SiteSettingsController::class, 'publicConfig']);
 Route::get('captcha/config', [ApiController::class, 'captcha']);
-Route::post('auth/register', [ApiController::class, 'register'])->middleware('captcha:register');
-Route::post('auth/login', [ApiController::class, 'login'])->middleware('captcha:login');
+Route::post('auth/register', [ApiController::class, 'register'])->middleware(['customer.throttle:register','captcha:register']);
+Route::post('auth/login', [ApiController::class, 'login'])->middleware(['customer.throttle:login','captcha:login']);
 Route::post('auth/password/forgot',[ApiController::class,'forgot'])->middleware('captcha:password_reset');
 Route::post('auth/password/reset',[ApiController::class,'resetPassword']);
 Route::get('products', [ApiController::class, 'products']);
@@ -48,6 +48,8 @@ Route::middleware('client')->group(function (): void {
 });
 Route::post('admin/auth/login', [\App\Http\Controllers\AdminAuthController::class, 'login'])->middleware('captcha:login');
 Route::middleware('admin')->group(function (): void {
+    Route::get('admin/captcha-settings', [\App\Http\Controllers\CaptchaSettingsController::class, 'show']);
+    Route::patch('admin/captcha-settings/{scene}', [\App\Http\Controllers\CaptchaSettingsController::class, 'save']);
     Route::get('admin/site-settings', [\App\Http\Controllers\SiteSettingsController::class, 'show']);
     Route::patch('admin/site-settings', [\App\Http\Controllers\SiteSettingsController::class, 'save']);
     Route::get('admin/payment-settings/epay', [\App\Http\Controllers\PaymentSettingsController::class, 'show']);

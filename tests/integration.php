@@ -211,6 +211,8 @@ check(scalar('SELECT status FROM instances WHERE id = ?', [$instance]) === 'pend
 check((int)scalar('SELECT COUNT(*) FROM instances WHERE id = ? AND start_date IS NULL AND due_date IS NULL', [$instance]) === 1, 'paid purchase does not consume rental period while delivery waits');
 check(scalar('SELECT total_spent FROM users WHERE id = ?', [$uid]) === '10.00', 'total_spent increments exactly once');
 
+// Separate registration fixture; the preceding five security probes intentionally used one quota.
+(new RedisStore())->command('DEL','jianyun:auth:register:'.Security::requestFingerprint('127.0.0.1'));
 $r = http('POST', '/api/v1/auth/register', ['email' => 'other-' . $email, 'password' => 'ExampleOtherPass!23', 'captcha_payload' => captcha('register')]);
 $otherToken = $r[1]['data']['token'];
 foreach (['GET' => '', 'POST' => '/pay'] as $method => $suffix) {

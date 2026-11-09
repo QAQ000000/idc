@@ -1,5 +1,13 @@
 # JianYun (简云) · RESTful API 契约与接口字典 (API Specification)
 
+## 验证码策略后台（2026-11-09）
+
+- `GET /api/v1/admin/captcha-settings`：仅当前启用super_admin，返回`scenes`三场景对象；每场景`enabled:boolean,driver,mode,configured:boolean,version:string`。
+- `PATCH /api/v1/admin/captcha-settings/{scene}`：同权限，完整`{enabled:boolean,driver:"builtin_image",mode:"always",expected_version:string}`，响应`{saved:true}`；未知字段／场景／模式400，失效会话401、角色403、旧版本409。场景版本独立，保存与审计同事务，响应no-store。
+- 客户`POST /auth/login`限制每可信IP 10次／60秒、`POST /auth/register`限制5次／60秒，包含无效参数／验证码失败，429拒绝且不执行业务；关闭验证码也限流，Redis不可用拒绝。管理员与找回原独立限流保持。
+
+`login`同时影响客户和管理员。旧页面每次提交按当前策略校验；关闭页遇开启422并重新获取挑战，开启页遇关闭按当前关闭策略且继续限流。不承诺开关清空已发挑战。损坏配置／不可用驱动拒绝；丢响应先GET核对，不自动PATCH，完整边界见[契约](M2_CAPTCHA_SETTINGS.md)。
+
 ## 站点基础配置（2026-11-09）
 
 - `GET /api/v1/site`：匿名、no-store，仅返回`site_name,logo_path,company_name,copyright_text,icp_number`五项字符串，绝不返回其他设置、密文、版本或审计。
@@ -46,13 +54,15 @@
   "msg": "ok",
   "data": {
     "enabled": true,
-    "type": "slider",           // 'image' | 'click' | 'slider'
-    "driver": "geetest",
-    "site_key": "xxx-xxx-xxx",  // 第三方公钥或图片base64
-    "challenge_id": "c-902184"
+    "type": "image",
+    "driver": "builtin_image",
+    "img_base64": "data:image/png;base64,...",
+    "challenge_id": "48位十六进制挑战ID"
   }
 }
 ```
+
+关闭场景仅返回`{enabled:false}`。当前仅安装image驱动；挑战有效5分钟，验证尝试一次即销毁，绑定场景与可信IP。未配置默认开启，异常不跳过。
 
 ### 2. 用户注册
 - **请求**：`POST /api/v1/auth/register`

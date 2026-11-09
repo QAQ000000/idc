@@ -1,5 +1,7 @@
 # JianYun (简云) · 系统全景架构设计文档
 
+**验证码策略管理增量**：CaptchaSettingsService复用原captcha_scenes JSON行和不可改审计，按场景独立CAS，锁定管理员后重核会话／权限，更新与审计同事务；核心仍只依赖CaptchaDriverRegistry。公开客户HTTP认证新增独立Redis原子限流，先限流后验证码，关闭验证仍计数、依赖故障拒绝；不参与资金／资源事实。无新表、驱动或迁移，见[契约](M2_CAPTCHA_SETTINGS.md)。
+
 **站点展示配置**：独立SiteSettingsService只读写`system_settings.site.basic`，超级管理员保存与`site_configure`审计同事务，HMAC版本含最新审计以拒绝ABA；公开投影只读value的五个固定字段，不触及支付、SMTP或上游凭据。前端display-only状态异步加载和失败默认，不参与业务决策。无新表、驱动耦合或迁移，见[契约](M2_SITE_SETTINGS.md)。
 
 **客户账号运营增量**：CustomerAccountService只写原客户账号和不可改审计，复用auth_version撤销旧登录／找回链接；CustomerAccessService在关键主动操作最终提交时检查当前状态与原请求认证版本。后台按管理员→客户行锁复核，原金融顺序仍实例→账单→钱包；已付任务、回调结算不经过主动操作门禁。27表无迁移，详见[契约](M2_CUSTOMER_ACCOUNTS.md)。

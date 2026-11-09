@@ -14,7 +14,7 @@ final class ApiController
     {
         $scene = request()->query('scene', '');
         if (!is_string($scene)) { throw new ApiException('Invalid captcha scene'); }
-        return ApiResponse::success(app(CaptchaService::class)->config($scene, Security::getClientIp()));
+        return ApiResponse::success(app(CaptchaService::class)->config($scene, Security::getClientIp()))->header('Cache-Control','no-store');
     }
     public function register(AuthService $auth): JsonResponse { return ApiResponse::success($auth->register(Request::body())); }
     public function login(AuthService $auth): JsonResponse { return ApiResponse::success($auth->login(Request::body())); }

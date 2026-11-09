@@ -90,6 +90,30 @@ def verify(socket_path, root):
     })
     assert status == 200
     support_token = support['data']['token']
+    captcha_path = '/api/v1/admin/captcha-settings'
+    status, captcha = request(socket_path, root, 'GET', captcha_path, token=admin_token)
+    assert status == 200 and set(captcha['data']['scenes']) == {'login', 'register', 'password_reset'}
+    assert request(socket_path, root, 'GET', captcha_path, token=support_token)[0] == 403
+    assert request(socket_path, root, 'PATCH', captcha_path + '/login', {}, token=support_token)[0] == 403
+    assert request(socket_path, root, 'GET', captcha_path, token=client_token)[0] == 401
+    assert request(socket_path, root, 'GET', captcha_path)[0] == 401
+    policy = captcha['data']['scenes']['register']
+    policy_body = {'enabled': False, 'mode': 'always', 'driver': 'builtin_image', 'expected_version': policy['version']}
+    assert request(socket_path, root, 'PATCH', captcha_path + '/register', policy_body, token=admin_token)[0] == 200
+    assert request(socket_path, root, 'PATCH', captcha_path + '/register', policy_body, token=admin_token)[0] == 409
+    status, current_captcha = request(socket_path, root, 'GET', captcha_path, token=admin_token)
+    assert status == 200 and current_captcha['data']['scenes']['login'] == captcha['data']['scenes']['login']
+    policy_body['enabled'] = True
+    policy_body['expected_version'] = current_captcha['data']['scenes']['login']['version']
+    assert request(socket_path, root, 'PATCH', captcha_path + '/login', policy_body, token=admin_token)[0] == 200
+    assert request(socket_path, root, 'POST', '/api/v1/auth/login', {'email': 'browser@example.test', 'password': 'BrowserFixture!2026'})[0] == 422
+    assert request(socket_path, root, 'POST', '/api/v1/admin/auth/login', {'username': 'browser-admin', 'password': 'BrowserAdmin!2026'})[0] == 422
+    status, current_captcha = request(socket_path, root, 'GET', captcha_path, token=admin_token)
+    policy_body['enabled'] = False
+    policy_body['expected_version'] = current_captcha['data']['scenes']['login']['version']
+    assert request(socket_path, root, 'PATCH', captcha_path + '/login', policy_body, token=admin_token)[0] == 200
+    assert request(socket_path, root, 'GET', '/api/v1/captcha/config?scene=login')[1]['data'] == {'enabled': False}
+    print('PASS: isolated PHP-FPM captcha scene CAS, current-policy enforcement and permission isolation')
     site_path = '/api/v1/admin/site-settings'
     status, site = request(socket_path, root, 'GET', site_path, token=admin_token)
     assert status == 200 and len(site['data']) == 7

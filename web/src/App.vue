@@ -29,6 +29,7 @@ const links = computed(() =>
         ...(adminAccount.admin?.role === "super_admin" ? [{to:"/admin/notifications", label:"邮件与通知", mark:"⚙"}] : []),
         ...(adminAccount.admin?.role === "super_admin" ? [{to:"/admin/payments", label:"易支付配置", mark:"¥"}] : []),
         ...(adminAccount.admin?.role === "super_admin" ? [{to:"/admin/site", label:"站点基础配置", mark:"⚙"}] : []),
+        ...(adminAccount.admin?.role === "super_admin" ? [{to:"/admin/captcha", label:"验证码策略", mark:"◇"}] : []),
         ...(adminAccount.admin?.role === "super_admin" ? [{to:"/admin/accounts", label:"管理员账号", mark:"♙"}] : []),
         {to:"/admin/account/security", label:"账户安全", mark:"◇"},
         { to: "/admin/tasks", label: "异常任务", mark: "≡" },

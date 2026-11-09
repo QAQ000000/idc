@@ -23,7 +23,7 @@ $app = Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         // 不自动 trim/改写 JSON，保留密码、金额字符串及既有错误语义。
         $middleware->use([ApiContext::class, Illuminate\Http\Middleware\HandleCors::class]);
-        $middleware->alias(['admin' => AuthenticateAdmin::class, 'client' => AuthenticateClient::class, 'captcha' => VerifyCaptcha::class]);
+        $middleware->alias(['admin' => AuthenticateAdmin::class, 'client' => AuthenticateClient::class, 'captcha' => VerifyCaptcha::class, 'customer.throttle'=>\App\Http\Middleware\ThrottleCustomerAuth::class]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(fn () => true);

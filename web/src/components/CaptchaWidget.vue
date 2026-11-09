@@ -1,27 +1,32 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { onMounted, onUnmounted, ref, watch } from "vue";
 import { api, message, type Captcha } from "../api/request";
 const props = defineProps<{ scene: "login" | "register" | "password_reset" }>();
 const config = ref<Captcha | null>(null);
 const answer = ref("");
 const error = ref("");
 const loading = ref(false);
+let generation = 0;
 async function refresh() {
+  const current = ++generation;
   loading.value = true;
   error.value = "";
   config.value = null;
   answer.value = "";
   try {
-    config.value = await api<Captcha>("/captcha/config?scene=" + props.scene);
+    const next = await api<Captcha>("/captcha/config?scene=" + props.scene);
+    if (current !== generation) return;
+    if (typeof next?.enabled !== "boolean" || (next.enabled && (next.type !== "image" || typeof next.challenge_id !== "string" || !/^[a-f0-9]{48}$/.test(next.challenge_id) || typeof next.img_base64 !== "string" || !next.img_base64.startsWith("data:image/png;base64,")))) throw new Error("验证码暂不可用，请重新获取");
+    config.value = next;
   } catch (e) {
-    error.value = message(e);
+    if (current === generation) error.value = message(e);
   } finally {
-    loading.value = false;
+    if (current === generation) loading.value = false;
   }
 }
 function payload() {
   if (
-    !config.value ||
+    loading.value || !!error.value || !config.value ||
     (config.value.enabled &&
       (config.value.type !== "image" || !answer.value.trim()))
   )
@@ -32,6 +37,8 @@ function payload() {
 }
 defineExpose({ refresh, payload });
 onMounted(refresh);
+watch(() => props.scene, refresh);
+onUnmounted(() => { generation++; config.value = null; answer.value = ""; });
 </script>
 <template>
   <div v-loading="loading" class="captcha">

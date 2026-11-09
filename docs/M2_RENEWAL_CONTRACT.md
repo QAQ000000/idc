@@ -120,3 +120,7 @@
 最终钱包 ¥0.00，消费累计只增加续费 ¥0.01，充值不计消费／佣金。只有两张新账单、两条收款记录、两条钱包流水、一条 renew 任务；没有新实例或充值交付任务。原任务 1–7（含旧待核验任务 3）、历史续费账单 2、其他实例／账户保持，27 表不变。上述真实 M2 接入共核对 **17 项结果断言**，与 856 项隔离业务、26 项独立运行检查分开记录。现有开发 HTTP 仍不是正式部署；本次本地状态原为 active，不作为本地欠费暂停恢复门禁的新验收证据。
 
 私有证据目录 `/root/.local/state/jianyun-m2-acceptance/`：`wakeup-runtime-before.json`、`wakeup-before-authorized-alignment.json`、`wakeup-real-prepared.json`、`wakeup-real-observations.jsonl`、`wakeup-real-confirmed.json`、`wakeup-real-finance.json`、`wakeup-runtime-after.json`、`wakeup-runtime-verification.json` 及重复通知结果；含凭据的原始响应／签名材料仅留受保护本机，不入 Git。Worker／分钟 timer 保留启用，15 分钟 MySQL 扫描继续兜底；不把一次顺利履约承诺为固定秒数或所有故障下的上游完成时限。
+
+## 管理员后续续费改价（2026-11-09）
+
+已接入原实例详情，仅当前启用超级管理员可设置override_price或恢复原recurring_price。与付款／代扣共用实例锁，原未付renew单作废及周期标记释放、改价与审计同事务。原出账器随后按新有效价出账；已付账单／已购账期不变，旧单渠道迟到实收幂等入钱包，不按旧价续费。版本与任务／资金门禁不可绕过，无当期补差、上游变配或新迁移，完整证据见 [改价契约](M2_INSTANCE_RENEWAL_PRICE.md)。

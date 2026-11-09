@@ -95,6 +95,20 @@ def verify(socket_path, root):
     status, task = request(socket_path, root, 'GET', f'/api/v1/admin/tasks/{task_id}', token=support_token)
     assert status == 200 and not task['data']['can_view_finance'] and task['data']['receipts'] == []
     assert request(socket_path, root, 'GET', '/api/v1/admin/finance/invoices', token=support_token)[0] == 403
+    price_path = f'/api/v1/admin/instances/{instance_id}/renewal-price'
+    status, price = request(socket_path, root, 'GET', price_path, token=admin_token)
+    assert status == 200 and not price['data']['editable'] and price['data']['blocked_reason']
+    assert 'password' not in json.dumps(price) and 'config_snapshot' not in price['data']
+    assert request(socket_path, root, 'GET', price_path, token=client_token)[0] == 401
+    assert request(socket_path, root, 'GET', price_path, token=support_token)[0] == 403
+    assert request(socket_path, root, 'PATCH', price_path, {}, token=support_token)[0] == 403
+    status, finance = request(socket_path, root, 'POST', '/api/v1/admin/auth/login', {
+        'username': 'browser-finance', 'password': 'BrowserFinance!2026',
+    })
+    assert status == 200
+    finance_token = finance['data']['token']
+    assert request(socket_path, root, 'GET', price_path, token=finance_token)[0] == 200
+    assert request(socket_path, root, 'PATCH', price_path, {}, token=finance_token)[0] == 403
     status, catalog = request(socket_path, root, 'GET', '/api/v1/admin/provider-drivers', token=admin_token)
     assert status == 200 and catalog['data']['items']
     assert request(socket_path, root, 'GET', '/api/v1/admin/provider-connections', token=client_token)[0] == 401
@@ -109,3 +123,4 @@ def verify(socket_path, root):
     print('PASS: isolated PHP-FPM provider queries, driver forms and configuration permission isolation')
     print('PASS: isolated PHP-FPM client/admin authentication, anonymous and cross-scope identity isolation')
     print('PASS: isolated PHP-FPM customer/instance navigation and finance role isolation')
+    print('PASS: isolated PHP-FPM renewal price read/write permissions and blocked-state projection')

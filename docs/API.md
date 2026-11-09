@@ -248,18 +248,16 @@
 > `WHERE id = :resource_id AND user_id = :current_auth_user_id`
 > 资源若存在但不属于当前 Token 用户，统一返回 `403 FORBIDDEN`，彻底杜绝越权（IDOR）漏洞。
 
-### 2. 【实例改价与补差神器】(Price Override & Balance Debit)
-- **请求**：`POST /api/v1/admin/instances/{id}/override-price`
-- **载荷**：
-```json
-{
-  "new_recurring_price": 70.00,        // 修改下次续费循环价格
-  "debit_balance_diff": true,          // 是否折算天数直接从用户余额扣除升级差价
-  "diff_amount": 13.33,                // 折算差价
-  "remark": "运维在母鸡上加了2核4G，同步改价"
-}
-```
-- **效果**：同一事务完成改价、作废在途未付 `renew` 账单（`cycle_marker = NULL`）、生成已付差价账单（`invoices.type = 'upgrade'`, `status = 'paid'`，因运维已在母鸡手动完成变配，不投递 Outbox `tasks`）、扣除余额、写 `admin_audit_logs` 审计日志。
+### 2. 管理员实例续费改价（已实现，仅后续续费）
+
+| 接口（前缀 `/api/v1`） | 当前语义 |
+|---|---|
+| GET /admin/instances/{id}/renewal-price | 当前启用 finance/super_admin 可读；返回 frozen_price、override_price、effective_price、billing_cycle、version、editable、blocked_reason、unpaid_invoices 和最近20条改价 audit。客服／运维403，客户Token401，响应no-store。 |
+| PATCH /admin/instances/{id}/renewal-price | 仅当前启用 super_admin；严格载荷 `{override_price: "12.00" 或 null, expected_version: "64位版本", evidence: "10–1000字节依据"}`。金额必须十进制字符串，范围0.01–99999999.99；null显式恢复实例原冻结价。 |
+
+同实例锁下重核版本、任务／资金门禁和管理员身份，覆盖价、全部归属一致的未付续费单CAS作废、释放cycle_marker和审计同事务提交。旧版本／同值／在途任务409；修改依据、前后价和作废账单ID保留。已付账单、已购账期、配置和原资源不变；后续由原服务出账。旧渠道迟到实收沿用凭证唯一键入钱包，不按旧价续费。详见 [改价契约](M2_INSTANCE_RENEWAL_PRICE.md)。
+
+原 `POST /admin/instances/{id}/override-price` 的当期补差／余额划扣仅是未来另行授权的规划，当前没有此路由。本批不提供补差、上游变配或退款。
 
 ### 3. 任务队列监控、【一键重试】与【人工核验回填激活】
 - **请求**：`GET /api/v1/admin/tasks?status=failed`

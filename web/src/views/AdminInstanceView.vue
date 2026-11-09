@@ -8,6 +8,7 @@ import { invoiceLabels, invoiceTypes } from "../api/finance";
 import { cycleLabels } from "../api/adminProducts";
 import { message } from "../api/request";
 import AdminRelatedLinks from "../components/AdminRelatedLinks.vue";
+import InstanceRenewalPricePanel from "../components/InstanceRenewalPricePanel.vue";
 const route = useRoute(), router = useRouter(), account = useAdmin();
 const data = ref<InstanceDetail>(), busy = ref(false), error = ref("");
 const finance = computed(() => ["finance", "super_admin"].includes(account.admin?.role || ""));
@@ -24,7 +25,7 @@ onMounted(load);
 <template>
   <section class="admin-query-page">
     <RouterLink class="back-link" to="/admin/instances">← 返回实例查询</RouterLink>
-    <div class="page-heading"><div><p class="eyebrow">实例资料 · 只读</p><h1>实例 #{{ route.params.id }}</h1><p class="muted">本地服务记录；不查询实时电源状态，不执行上游操作。</p></div><el-button :loading="busy" @click="load">刷新实例详情</el-button></div>
+    <div class="page-heading"><div><p class="eyebrow">实例资料</p><h1>实例 #{{ route.params.id }}</h1><p class="muted">本地服务记录；不查询实时电源状态，不执行上游操作。</p></div><el-button :loading="busy" @click="load">刷新实例详情</el-button></div>
     <el-alert v-if="error" :title="error" type="error" :closable="false" role="alert" />
     <el-card v-if="busy" shadow="never"><el-skeleton :rows="8" animated /></el-card>
     <template v-if="data">
@@ -43,6 +44,7 @@ onMounted(load);
         <el-descriptions-item v-if="data.instance.status === 'suspended'" label="暂停类型">{{ data.instance.suspend_type }}</el-descriptions-item>
       </el-descriptions><h2>关联定位</h2><AdminRelatedLinks :user-id="data.instance.user_id" :instance-id="data.instance.id" />
 </el-card>
+      <InstanceRenewalPricePanel v-if="finance" :instance-id="data.instance.id" @changed="load" />
       <el-card class="query-results" shadow="never">
 <h2>关联账单</h2><p class="muted">仅展示归属一致的原账单与状态，资金详情继续由财务权限校验。</p>
         <el-table :data="data.invoices.items" empty-text="此实例暂无关联账单" row-key="invoice_id">

@@ -777,3 +777,7 @@ CREATE TABLE IF NOT EXISTS `migrations` (
 ### 客户认证版本增量（2026-11-08）
 
 `users.auth_version` 为认证撤销事实，000007 迁移在旧库增加默认 0 的 BIGINT UNSIGNED；密码更新与版本递增在同一用户行锁事务。兼容旧无 av 登录仅限版本 0，禁止自动回滚删除已有撤销记录。复用 notification_deliveries 的 pending context 密文暂存短效重置凭据，认领及终态清理，无新增表，仍 27 张。设计原因、影响模块及证据见 [客户自助](M2_CUSTOMER_SELF_SERVICE.md)。
+
+### 管理员续费改价 JSON 与事务边界（2026-11-09）
+
+复用 instances.recurring_price（原冻结价）和可空override_price（覆盖价），不追随当前商品价；未付renew账单作废与cycle_marker=NULL、审计同事务。admin_audit_logs.action=instance_renewal_price，context仅存evidence、before／after三种价格及cancelled_invoice_ids，最新审计ID参与版本以拒绝ABA。已付账单、原账期与资源不改写，27表／DDL保持，无迁移，见 [改价契约](M2_INSTANCE_RENEWAL_PRICE.md)。

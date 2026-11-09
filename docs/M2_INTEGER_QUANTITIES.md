@@ -48,3 +48,7 @@ Chromium **81项**通过（客户62＋后台19）：默认数量展示、非法�
 1440桌面、320／390手机、768／820竖屏平板及390×440缩小高度覆盖异常／恢复、数字输入焦点、长选项展开／收起、吸底提交／后台保存可达且无横向溢出；缩小高度只模拟键盘占位，不代表移动真机软键盘或跨浏览器验收。代表320客户异常和390后台截图已目视检查。脚本／结果和截图保存在忽略的[验收目录](../output/playwright/integer-quantity/client-results.txt)，另有[后台结果](../output/playwright/integer-quantity/admin-results.txt)、[320客户异常](../output/playwright/integer-quantity/phone320-invalid.png)、[768客户页](../output/playwright/integer-quantity/tablet768.png)、[390后台](../output/playwright/integer-quantity/admin-phone390.png)。
 
 PHP语法、Python语法、Vue类型／ESLint／Vite构建、字典同步及diff检查通过。原Element Plus公共包超过500kB提示保留，无新依赖。完整日志 `/tmp/jianyun-quantity-integration.log`，构建／Lint日志 `/tmp/jianyun-quantity-build.log`、`/tmp/jianyun-quantity-lint.log`。无M2运行变更；启用与真实销售边界见上节。
+
+## 后续M2接入与真实选品（2026-11-10）
+
+已只读选得商品389的低规格2 IP月付候选（首期／续费各¥78），对照1 IP各¥38，覆盖计价区间变化；563重新确认零库存。原HTTP／Vite已服务当前代码，原业务Worker于00:16正常停启加载ea71705，资金／目录／实例冻结配置／原任务保持，27表／8迁移不变。尚未导入、下单或付款，实际规格待验，完整范围及推荐参数见[真实销售准备记录](M2_QUANTITY_SALES_ACCEPTANCE.md)。本节仅追加后续运行证据，不改写上文开发批次的隔离验收边界。

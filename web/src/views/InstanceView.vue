@@ -1,136 +1,79 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { onBeforeRouteLeave, useRoute, useRouter } from "vue-router";
 import { api, message, type Instance, type Invoice } from "../api/request";
 import InstanceServiceStatusPanel from "../components/InstanceServiceStatusPanel.vue";
 import InstancePowerPanel from "../components/InstancePowerPanel.vue";
 import InstanceReinstallPanel from "../components/InstanceReinstallPanel.vue";
-const powerBlocked = ref(false), reinstallBlocked = ref(false), powerRefreshVersion = ref(0);
-function invalidateCredentials() { credentialVersion++; credentials.value = null; }
-const route = useRoute(),
-  router = useRouter(),
-  instance = ref<Instance | null>(null),
-  loading = ref(true),
-  busy = ref(false),
-  error = ref("");
-const credentials = ref<{
-  username: string | null;
-  password: string | null;
-  verification?: string;
-} | null>(null);
-let credentialVersion = 0;
-const labels: Record<string, string> = {
-  awaiting_payment: "待付款",
-  provisioning: "开通中",
-  investigating: "正在核验上游结果",
-  needs_review: "需要人工核验",
-  delivered: "已交付",
-  cancelled: "已取消",
-  compensated: "已取消并补偿至余额",
-};
+const route = useRoute(), router = useRouter();
+const instance = ref<Instance | null>(null), loading = ref(true), busy = ref(false), error = ref(""), readFailed = ref(false), activeTab = ref("overview");
+const powerRefreshVersion = ref(0);
+const powerState = ref({ blocked: true, submitting: false, message: "" }), reinstallState = ref({ blocked: true, submitting: false, message: "" });
+const powerBlocked = computed(() => !!instance.value?.remote_instance_id && powerState.value.blocked);
+const reinstallBlocked = computed(() => !!instance.value?.remote_instance_id && reinstallState.value.blocked);
+const operationMessages = computed(() => [powerState.value.message, reinstallState.value.message].filter(Boolean));
+const powerPanel = ref<InstanceType<typeof InstancePowerPanel>>(), reinstallPanel = ref<InstanceType<typeof InstanceReinstallPanel>>();
+const credentials = ref<{ username: string | null; password: string | null; verification?: string } | null>(null);
+const credentialBusy = ref(false), credentialError = ref(""), credentialOpen = ref(false), credentialVisible = ref(false), credentialRegion = ref<HTMLElement>();
+let credentialVersion = 0, credentialObserver: IntersectionObserver | undefined;
+function invalidateCredentials() { credentialVersion++; credentials.value = null; credentialBusy.value = false; credentialError.value = ""; }
+const canReadCredentials = computed(() => activeTab.value === "maintenance" && credentialOpen.value && credentialVisible.value && !reinstallBlocked.value && !readFailed.value && !loading.value);
+function leaveCredentials() { credentialOpen.value = false; invalidateCredentials(); }
+function credentialToggle(event: Event) { credentialOpen.value = (event.target as HTMLDetailsElement).open; if (!credentialOpen.value) invalidateCredentials(); }
+watch(activeTab, leaveCredentials, { flush: "sync" });
+watch(credentialRegion, element => {
+  credentialObserver?.disconnect(); credentialVisible.value = false;
+  if (element) { credentialObserver = new IntersectionObserver(entries => {
+    credentialVisible.value = entries.some(entry => entry.isIntersecting);
+    if (!credentialVisible.value) invalidateCredentials();
+  }); credentialObserver.observe(element); }
+}, { flush: "post" });
+function reinstallStatus(value: typeof reinstallState.value) { reinstallState.value = value; if (value.blocked) invalidateCredentials(); }
+function reinstallChanged() { invalidateCredentials(); powerRefreshVersion.value++; void load(); }
+const labels: Record<string, string> = { awaiting_payment: "待付款", provisioning: "开通中", investigating: "正在核验上游结果", needs_review: "需要人工核验", delivered: "已交付", cancelled: "已取消", compensated: "已取消并补偿至余额" };
 async function load() {
   if (busy.value) return;
-  loading.value = true;
-  busy.value = true;
-  error.value = "";
-  credentials.value = null;
-  credentialVersion++;
-  try {
-    instance.value = await api<Instance>("/instances/" + route.params.id);
-  } catch (e) {
-    instance.value = null;
-    error.value = message(e);
-  } finally {
-    busy.value = false;
-    loading.value = false;
-  }
+  loading.value = true; busy.value = true; error.value = ""; invalidateCredentials();
+  try { instance.value = await api<Instance>("/instances/" + route.params.id); readFailed.value = false; }
+  catch (e) { readFailed.value = true; error.value = message(e); }
+  finally { busy.value = false; loading.value = false; }
+}
+async function refresh() {
+  if (busy.value) return;
+  await Promise.all([load(), powerPanel.value?.refresh(), reinstallPanel.value?.refresh()]);
 }
 async function reveal() {
-  if (busy.value) return;
-  if (credentials.value) {
-    credentialVersion++;
-    credentials.value = null;
-    return;
-  }
-  busy.value = true;
-  error.value = "";
+  if (credentials.value || credentialBusy.value) { invalidateCredentials(); return; }
+  if (!canReadCredentials.value || document.hidden) return;
+  const version = ++credentialVersion; credentialBusy.value = true; credentialError.value = "";
   try {
-    const version = ++credentialVersion;
-    const value = await api<{
-      username: string | null;
-      password: string | null;
-  verification?: string;
-    }>("/instances/" + route.params.id + "/credentials");
-    if (version === credentialVersion && !document.hidden)
-      credentials.value = value;
-  } catch (e) {
-    error.value = message(e);
-  } finally {
-    busy.value = false;
-  }
+    const value = await api<{ username: string | null; password: string | null; verification?: string }>("/instances/" + route.params.id + "/credentials");
+    if (version === credentialVersion && canReadCredentials.value && !document.hidden) credentials.value = value;
+  } catch (e) { if (version === credentialVersion && canReadCredentials.value && !document.hidden) credentialError.value = message(e); }
+  finally { if (version === credentialVersion) credentialBusy.value = false; }
 }
 async function renew() {
-  if (busy.value || !instance.value?.due_date) return;
-  busy.value = true;
-  error.value = "";
+  if (busy.value || readFailed.value || powerBlocked.value || reinstallBlocked.value || !instance.value?.due_date) return;
+  busy.value = true; error.value = "";
   try {
-    const invoice = await api<Invoice>(
-      "/instances/" + route.params.id + "/renew",
-      {
-        method: "POST",
-        body: { base_due_date: instance.value.due_date },
-      },
-    );
+    const invoice = await api<Invoice>("/instances/" + route.params.id + "/renew", { method: "POST", body: { base_due_date: instance.value.due_date } });
     await router.push("/invoices/" + invoice.invoice_id);
-  } catch (e) {
-    error.value = message(e);
-  } finally {
-    busy.value = false;
-  }
+  } catch (e) { error.value = message(e); }
+  finally { busy.value = false; }
 }
 async function setAutomatic(enabled: boolean) {
-  if (busy.value || !instance.value) return;
-  busy.value = true;
-  error.value = "";
-  try {
-    await api("/instances/" + route.params.id + "/auto-renew", {
-      method: "PATCH",
-      body: { enabled },
-    });
-    instance.value.auto_renew = enabled ? 1 : 0;
-  } catch (e) {
-    error.value = message(e);
-  } finally {
-    busy.value = false;
-  }
+  if (busy.value || readFailed.value || !instance.value) return;
+  busy.value = true; error.value = "";
+  try { await api("/instances/" + route.params.id + "/auto-renew", { method: "PATCH", body: { enabled } }); instance.value.auto_renew = enabled ? 1 : 0; }
+  catch (e) { error.value = message(e); }
+  finally { busy.value = false; }
 }
-const statusLabels: Record<string, string> = {
-  pending: "待交付",
-  active: "已交付",
-  suspended: "已暂停",
-  terminated: "已销毁",
-  cancelled: "已取消",
-};
-const cycles: Record<string, string> = {
-  monthly: "月付",
-  annually: "年付",
-  onetime: "一次性",
-};
-function clearCredentials() {
-  if (document.hidden) {
-    credentialVersion++;
-    credentials.value = null;
-  }
-}
-onMounted(() => {
-  void load();
-  document.addEventListener("visibilitychange", clearCredentials);
-});
-onUnmounted(() => {
-  credentialVersion++;
-  credentials.value = null;
-  document.removeEventListener("visibilitychange", clearCredentials);
-});
+const statusLabels: Record<string, string> = { pending: "待交付", active: "已交付", suspended: "已暂停", terminated: "已销毁", cancelled: "已取消" };
+const cycles: Record<string, string> = { monthly: "月付", annually: "年付", onetime: "一次性" };
+function clearCredentials() { if (document.hidden) leaveCredentials(); }
+onBeforeRouteLeave(leaveCredentials);
+onMounted(() => { void load(); document.addEventListener("visibilitychange", clearCredentials); window.addEventListener("pagehide", leaveCredentials); });
+onUnmounted(() => { invalidateCredentials(); credentialObserver?.disconnect(); document.removeEventListener("visibilitychange", clearCredentials); window.removeEventListener("pagehide", leaveCredentials); });
 </script>
 <template>
   <section class="instance-page" aria-labelledby="instance-title">
@@ -141,29 +84,30 @@ onUnmounted(() => {
           实例管理
           <span v-if="instance">/ #{{ instance.id }}</span>
         </p>
-        <h1 id="instance-title">{{ instance?.name || "实例详情" }}</h1>
-        <p v-if="instance" class="muted">{{ instance.product_name }}</p>
+        <h1 id="instance-title" :title="instance?.name">{{ instance?.name || "实例详情" }}</h1>
+        <p v-if="instance" class="muted" :title="instance.product_name">{{ instance.product_name }}</p>
       </div>
-      <el-button :loading="loading" :disabled="busy" @click="load">
+      <el-button :loading="loading" :disabled="busy" @click="refresh">
         刷新详情
       </el-button>
     </div>
     <el-alert
       v-if="error"
       :title="error"
+      :description="readFailed && instance ? '本次读取失败，仍显示上次资料；原任务继续跟踪，操作暂不可用，请重试。' : undefined"
       type="error"
       :closable="false"
       role="alert"
     />
     <el-card
-      v-if="loading"
+      v-if="loading && !instance"
       shadow="never"
       aria-label="实例加载中"
       aria-busy="true"
     >
       <el-skeleton :rows="8" animated />
     </el-card>
-    <template v-else-if="instance">
+    <template v-if="instance">
       <el-alert
         v-if="
           ['provisioning', 'investigating', 'needs_review'].includes(
@@ -229,57 +173,38 @@ onUnmounted(() => {
           <strong>{{ instance.due_date || "交付后确定" }}</strong>
         </div>
       </div>
+      <div v-if="operationMessages.length" class="client-operation-summary" role="status" aria-label="未决操作与阻断摘要">
+        <el-alert v-for="text in operationMessages" :key="text" :title="text" type="warning" :closable="false" />
+      </div>
+      <el-alert v-if="instance.service_observation.review_required" title="上游服务状态需要核验" description="暂停原因或恢复结果尚未确认；请保留原资源和账单，勿重复操作。" type="warning" :closable="false" />
+      <el-tabs v-model="activeTab" class="client-instance-sections" aria-label="客户实例分区">
+        <el-tab-pane label="概览" name="overview">
       <div class="instance-quick-actions actions">
         <el-button
           v-if="instance.status === 'active' && instance.remote_instance_id && instance.entitlement_state !== 'expired'"
           type="primary"
+          :disabled="readFailed || loading || powerBlocked || reinstallBlocked"
           @click="router.push(`/instances/${instance.id}/console`)"
         >
 VNC 控制台 ↗
 </el-button>
       </div>
-      <div class="instance-columns">
-        <div class="panel-stack">
+<div class="panel-stack">
           <InstancePowerPanel
-            v-if="instance.remote_instance_id && instance.status === 'active'"
+            v-if="instance.remote_instance_id"
+            ref="powerPanel"
             :key="instance.id"
             :instance-id="Number(instance.id)"
             :external-blocked="reinstallBlocked"
+            :page-unavailable="readFailed || loading"
             :refresh-version="powerRefreshVersion"
-            @blocked="powerBlocked = $event"
+            @state="powerState = $event"
           />
           <el-card v-else shadow="never">
             <h2>运行状态与电源操作</h2>
             <p class="muted">
               实例交付完成且服务有效后，可查询实际运行状态和可用操作。
             </p>
-          </el-card>
-          <InstanceServiceStatusPanel v-if="instance.remote_instance_id && instance.service_status_supported" :instance-id="Number(instance.id)" :entitlement="instance.entitlement_state" :observation="instance.service_observation" @refreshed="load" />
-          <el-card shadow="never">
-            <template #header><h2>系统登录凭据</h2></template>
-            <p class="muted">
-              登录凭据按需读取，重装或任务核验期间可能暂不可用。
-            </p>
-            <div class="actions">
-              <el-button
-                v-if="instance.status === 'active'"
-                :disabled="busy"
-                :aria-expanded="Boolean(credentials)"
-                @click="reveal"
-              >
-                {{ credentials ? "隐藏凭据" : "查看登录凭据" }}
-              </el-button>
-            </div>
-            <div v-if="credentials" class="credentials-panel">
-              <p class="muted">请妥善保管，切换标签页或刷新详情后隐藏。</p>
-              <p v-if="credentials.verification === 'upstream_reported'" class="muted">当前凭据来自上游，本站尚未验证系统登录；如登录失败，请联系支持。</p>
-              <dl>
-                <dt>账号</dt>
-                <dd class="mono">{{ credentials.username || "上游未提供" }}</dd>
-                <dt>密码</dt>
-                <dd class="mono">{{ credentials.password || "上游未提供" }}</dd>
-              </dl>
-            </div>
           </el-card>
           <el-card shadow="never">
             <details class="auxiliary-details">
@@ -317,15 +242,39 @@ VNC 控制台 ↗
               </div>
             </details>
           </el-card>
+</div>
+        </el-tab-pane>
+        <el-tab-pane label="系统维护" name="maintenance">
+<div class="panel-stack">
+<div ref="credentialRegion" class="credential-region">
+  <el-card shadow="never">
+    <details class="auxiliary-details" :open="credentialOpen" @toggle="credentialToggle">
+      <summary>系统登录凭据</summary>
+      <p class="muted">按需读取，仅当前查看区域保留；离开区域、切换分区或进入后台即清除。</p>
+      <el-alert v-if="credentialError" :title="credentialError" type="error" :closable="false" role="alert" />
+      <el-button v-if="instance.status === 'active'" :disabled="!credentials && !credentialBusy && !canReadCredentials" :aria-expanded="Boolean(credentials)" @click="reveal">{{ credentialBusy ? '取消读取凭据' : credentials ? '隐藏凭据' : '查看登录凭据' }}</el-button>
+      <div v-if="credentials" class="credentials-panel">
+        <p v-if="credentials.verification === 'upstream_reported'" class="muted">当前凭据来自上游，本站尚未验证系统登录；如登录失败，请联系支持。</p>
+        <dl><dt>账号</dt><dd class="mono">{{ credentials.username || '上游未提供' }}</dd><dt>密码</dt><dd class="mono">{{ credentials.password || '上游未提供' }}</dd></dl>
+      </div>
+    </details>
+  </el-card>
+</div>
           <InstanceReinstallPanel
             v-if="instance.remote_instance_id"
+            ref="reinstallPanel"
             :key="`reinstall-${instance.id}`"
+            :external-blocked="powerBlocked"
+            :page-unavailable="readFailed || loading"
             :instance-id="Number(instance.id)"
-            @blocked="reinstallBlocked = $event; if ($event) invalidateCredentials()"
-            @changed="invalidateCredentials(); powerRefreshVersion++"
+            @state="reinstallStatus"
+            @changed="reinstallChanged"
           />
-        </div>
-        <div class="panel-stack">
+          <InstanceServiceStatusPanel v-if="instance.remote_instance_id && instance.service_status_supported" :instance-id="Number(instance.id)" :entitlement="instance.entitlement_state" :observation="instance.service_observation" @refreshed="load" />
+</div>
+</el-tab-pane>
+        <el-tab-pane label="账期与续费" name="renewal">
+<div class="panel-stack">
           <el-card shadow="never">
             <template #header><h2>账期与续费</h2></template>
             <p class="field-label">
@@ -355,7 +304,7 @@ VNC 控制台 ↗
               <el-button
                 v-if="instance.renewal_eligible"
                 :disabled="
-                  busy ||
+                  busy || readFailed ||
                   powerBlocked || reinstallBlocked ||
                   ['provisioning', 'investigating', 'needs_review'].includes(
                     instance.renewal_status,
@@ -378,7 +327,7 @@ VNC 控制台 ↗
                 <strong>余额自动续费</strong>
                 <el-switch
                   :model-value="Boolean(instance.auto_renew)"
-                  :disabled="busy"
+                  :disabled="busy || readFailed"
                   aria-label="余额自动续费"
                   @change="setAutomatic(Boolean($event))"
                 />
@@ -389,11 +338,30 @@ VNC 控制台 ↗
               </p>
             </div>
           </el-card>
-        </div>
-      </div>
+</div>
+</el-tab-pane>
+      </el-tabs>
     </template>
-    <el-empty v-else description="无法显示此实例，请检查访问权限或稍后重试">
+    <el-empty v-else-if="!loading" description="无法显示此实例，请检查访问权限或稍后重试">
       <el-button type="primary" @click="load">重新加载</el-button>
     </el-empty>
   </section>
 </template>
+<style scoped>
+.client-instance-sections, .client-instance-sections :deep(.el-tabs__content) { min-width: 0; }
+.client-instance-sections .instance-quick-actions { margin: 0 0 10px; }
+.client-operation-summary { overflow-wrap: anywhere; }
+#instance-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
+@media (max-width: 1023px) {
+  .client-instance-sections :deep(.el-tabs__header) { margin-bottom: 8px; }
+  .client-instance-sections .panel-stack { gap: 12px; }
+  .instance-summary { margin-bottom: 4px !important; }
+}
+@media (max-width: 640px) {
+  .instance-summary { padding: 6px 12px !important; gap: 6px 12px !important; }
+  .page-heading .muted { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; overflow: hidden; }
+  .client-instance-sections :deep(.instance-power-panel .el-card__header) { padding-block: 8px; }
+  .client-instance-sections :deep(.instance-power-panel .runtime-state) { margin-bottom: 8px; }
+  .client-instance-sections :deep(.el-tabs__item) { padding-inline: 14px; }
+}
+</style>

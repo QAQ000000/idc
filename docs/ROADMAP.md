@@ -1,6 +1,8 @@
 # JianYun (简云) · 研发路线图与交付里程碑 (Milestones)
 
-**页面治理接入（2026-11-09）**：外部 v2.1.0 已定稿并纳入 [仓库规范](PAGE_BLOAT_GOVERNANCE_AND_ARCHITECTURE_SPEC.md)，AGENTS／前端规范已引用；与外部定稿分开记录。首批后台实例样板实现及验收见 [记录](ADMIN_INSTANCE_PAGE_SAMPLE.md)。公共骨架提炼、客户实例与通知页推广仍待另批，不因规范接入而勾选完成。
+**客户实例页样板（2026-11-09）**：三分区治理及148项客户侧独立检查通过，覆盖任务跨区跟踪、凭据离区／后台失效、提交意图与隔离API／Worker恢复，见 [客户样板](CLIENT_INSTANCE_PAGE_SAMPLE.md)。公共骨架提炼与通知页推广仍待后续，不借用后台证据勾选客户行为。
+
+**页面治理接入（2026-11-09）**：外部 v2.1.0 已定稿并纳入 [仓库规范](PAGE_BLOAT_GOVERNANCE_AND_ARCHITECTURE_SPEC.md)，AGENTS／前端规范已引用；与外部定稿分开记录。首批后台实例样板实现及验收见 [记录](ADMIN_INSTANCE_PAGE_SAMPLE.md)。客户实例另批验收见上；公共骨架提炼与通知页推广仍待后续，不因规范接入而勾选完成。
 
 ## 管理员账号管理最小闭环（2026-11-09）
 

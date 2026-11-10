@@ -12,7 +12,7 @@ export interface AdminProduct {
 }
 export interface ProductDetail extends AdminProduct {
   version: string; fields: ConfigField[]; defaults: Record<string, string>; configuration_error: string | null;
-  audit: Page<{ id: number; admin_id: number; username: string; action: string; created_at: string; context: { evidence: string; before?: object; after?: object; prices?: object } }>;
+  audit: Page<{ id: number; admin_id: number; username: string; action: string; created_at: string; context: { evidence?: string; before?: object; after?: object; prices?: object } }>;
 }
 export interface SnapshotPreview {
   fields: ConfigField[]; defaults: Record<string, string>; prices: Record<string, string>;

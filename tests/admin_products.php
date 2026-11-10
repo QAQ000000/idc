@@ -12,7 +12,7 @@ function req(string $method,string $path,?array $body=null,?string $token=null):
  $h=curl_init(getenv('TEST_BASE_URL').'/api/v1'.$path);curl_setopt_array($h,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_CUSTOMREQUEST=>$method,CURLOPT_TIMEOUT=>20,CURLOPT_HTTPHEADER=>array_filter(['Content-Type: application/json',$token?'Authorization: Bearer '.$token:null])]);if($body!==null){curl_setopt($h,CURLOPT_POSTFIELDS,json_encode($body));}$raw=curl_exec($h);$code=curl_getinfo($h,CURLINFO_RESPONSE_CODE);curl_close($h);return [$code,json_decode($raw,true,64,JSON_THROW_ON_ERROR)];
 }
 function detail(int $id):array{global $admin;[$s,$r]=req('GET','/admin/products/'.$id,null,$admin);if($s!==200){throw new RuntimeException('detail failed: '.json_encode($r));}return $r['data'];}
-function edit(int $id,array $changes=[]):array{$p=detail($id);return array_replace(['name'=>$p['name'],'status'=>$p['status'],'markup_type'=>$p['markup_type'],'markup_value'=>$p['markup_value'],'expected_version'=>$p['version'],'evidence'=>'OPS-PRODUCT: verified catalog change for isolated acceptance'],$changes);}
+function edit(int $id,array $changes=[]):array{$p=detail($id);return array_replace(['name'=>$p['name'],'status'=>$p['status'],'markup_type'=>$p['markup_type'],'markup_value'=>$p['markup_value'],'expected_version'=>$p['version']],$changes);}
 function fixture(string $path):array{return json_decode(file_get_contents(getenv('UPSTREAM_TEST_URL').$path),true,64,JSON_THROW_ON_ERROR);}
 function concurrent(string $method,string $path,array $body,string $token,int $count=4):array{
  $multi=curl_multi_init();$handles=[];
@@ -35,6 +35,7 @@ $providers=req('GET','/admin/providers',null,$admin)[1]['data'];
 check(!str_contains(json_encode($providers),'endpoint') && !str_contains(json_encode($providers),'credentials') && !str_contains(json_encode($providers),'isolated-api-key'),'provider picker contains no connection secrets');
 foreach(['page[]=1','per_page=101','status=invalid','provider_id=-1','name[]=x'] as $q){check(req('GET','/admin/products?'.$q,null,$admin)[0]===400,'invalid filter rejected: '.$q);}
 $pre=preview($input);
+check(req('POST','/admin/products/import',$input+['preview_token'=>$pre['preview_token']],$admin)[0]===400,'import still requires evidence independently of routine edits');
 check(count($pre['fields'])===13 && $pre['prices']['monthly']==='16.00' && $pre['recurring_prices']['monthly']==='14.00','import preview projects selectable form and separate first/recurring prices');
 check((int)pv('SELECT COUNT(*) FROM products WHERE provider_id=?',[$provider])===0,'read-only preview does not import or purchase');
 check(!str_contains(json_encode($pre),'order_namespace') && !str_contains(json_encode($pre),'credentials') && !str_contains(json_encode($pre),'pricings'),'preview hides raw schema and credentials');
@@ -53,8 +54,10 @@ check(req('PATCH','/admin/products/'.$pid,$edit,$reader)[0]===403,'operator cann
 check(req('PATCH','/admin/products/'.$pid,$edit+['provider_id'=>999],$admin)[0]===400,'editor rejects rebinding and arbitrary columns');
 check(req('PATCH','/admin/products/'.$pid,array_replace($edit,['markup_value'=>'-1']),$admin)[0]===400,'negative markup rejected');
 check(req('PATCH','/admin/products/'.$pid,array_replace($edit,['markup_value'=>2]),$admin)[0]===400,'money must use decimal strings');
-check(req('PATCH','/admin/products/'.$pid,$edit,$admin)[0]===200,'super administrator can publish and set fixed markup');
+check(req('PATCH','/admin/products/'.$pid,$edit,$admin)[0]===200,'super administrator can publish and set fixed markup without evidence');
 $p=detail($pid);check($p['prices']['monthly']==='18.00' && $p['recurring_prices']['monthly']==='16.00','reference prices recomputed from original cost, preserving setup fee difference');
+check($p['audit']['items'][0]['action']==='product_update' && !array_key_exists('evidence',$p['audit']['items'][0]['context']) && $p['audit']['items'][0]['context']['before']['status']==='hidden' && $p['audit']['items'][0]['context']['after']['status']==='active' && (int)$p['audit']['items'][0]['admin_id']===$aid && $p['audit']['items'][0]['created_at']!=='' && filter_var(pv('SELECT ip FROM admin_audit_logs WHERE id=?',[$p['audit']['items'][0]['id']]),FILTER_VALIDATE_IP)!==false,'automatic audit retains actor, time, IP and before/after without fabricated evidence');
+check($p['audit']['items'][1]['context']['evidence']==='OPS-SNAPSHOT: verified upstream schema and reference quote','existing audit evidence remains readable');
 check(req('PATCH','/admin/products/'.$pid,$edit,$admin)[0]===409,'stale edit is rejected even on repeated payload');
 check(req('GET','/admin/products?provider_id='.$provider.'&status=active&per_page=1',null,$admin)[1]['data']['total']===1,'provider/status filtering and pagination work');
 check(req('GET','/admin/products?provider_id='.$provider.'&page=2&per_page=1',null,$admin)[1]['data']['items']===[],'product page beyond results is empty');
@@ -63,8 +66,9 @@ $q=$catalog->calculate($pid,'monthly',$options);
 $order=['product_id'=>$pid,'billing_cycle'=>'monthly','hostname'=>'product-host','password'=>'ProductRoot2026','config_options'=>$options,'quote_token'=>$q['quote_token'],'checkout_key'=>'admin-product-order-0001'];
 $pending=$bill->checkout($uid,$order);
 $oldInvoice=pv('SELECT price_snapshot FROM invoices WHERE id=?',[$pending['invoice_id']]);$oldInstance=pv('SELECT config_snapshot FROM instances WHERE id=?',[$pending['instance_id']]);
-$edit=edit($pid,['name'=>'Retitled new sales only','markup_type'=>'percent','markup_value'=>'50.00']);
+$edit=edit($pid,['name'=>'Retitled new sales only','markup_type'=>'percent','markup_value'=>'50.00','evidence'=>'Legacy client optional note']);
 check(req('PATCH','/admin/products/'.$pid,$edit,$admin)[0]===200 && detail($pid)['prices']['monthly']==='24.00','percentage markup uses stored cost rather than marked-up retail');
+check(detail($pid)['audit']['items'][0]['context']['evidence']==='Legacy client optional note','older clients can still supply an optional audit note');
 check(pv('SELECT price_snapshot FROM invoices WHERE id=?',[$pending['invoice_id']])===$oldInvoice && pv('SELECT config_snapshot FROM instances WHERE id=?',[$pending['instance_id']])===$oldInstance,'editing name/markup never modifies historical invoice or resource snapshot');
 check(pv('SELECT recurring_price FROM instances WHERE id=?',[$pending['instance_id']])==='16.00','catalog adjustment leaves frozen instance renewal price intact');
 check(req('POST','/orders/checkout',array_replace($order,['checkout_key'=>'stale-product-order-0002']),$client)[0]===409,'catalog markup change invalidates previously confirmed new quote');
@@ -82,6 +86,7 @@ $worker->runOnce('delisted-renewal');check(pv('SELECT status FROM tasks WHERE in
 // Refresh a changed default configuration while preserving all historical financial facts.
 $beforeInvoice=pv('SELECT price_snapshot FROM invoices WHERE id=?',[$pending['invoice_id']]);$beforeInstance=pv('SELECT config_snapshot FROM instances WHERE id=?',[$pending['instance_id']]);$namespace=json_decode(pv('SELECT config_cache FROM products WHERE id=?',[$pid]),true)['order_namespace'];
 $changedOptions=$options;$changedOptions['276853']='1173031';$refresh=['expected_version'=>detail($pid)['version'],'billing_cycles'=>['monthly','annually'],'config_options'=>$changedOptions];$rp=preview($refresh,$pid);
+check(req('POST','/admin/products/'.$pid.'/snapshot',$refresh+['preview_token'=>$rp['preview_token']],$admin)[0]===400,'manual snapshot refresh still requires evidence');
 check($rp['prices']['monthly']==='36.00' && $rp['recurring_prices']['monthly']==='33.00','refresh preview calculates selected CPU and separate recurring markup');
 check(snapshot($refresh,$rp,$pid)[0]===200,'confirmed refresh updates one local JSON schema snapshot');
 $p=detail($pid);check($p['status']==='retired' && $p['defaults']['276853']==='1173031' && count($p['billing_cycles'])===2,'refresh keeps sale state and installs selected default configuration/cycles');

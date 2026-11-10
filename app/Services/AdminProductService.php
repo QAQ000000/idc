@@ -76,7 +76,9 @@ final class AdminProductService
     }
     public function update(int $admin,int $id,array $input): array
     {
-        $this->authorize($admin);$evidence=$this->evidence($input);$old=$this->read($id);$this->checkVersion($old,$input);
+        $this->authorize($admin);$old=$this->read($id);$this->checkVersion($old,$input);
+        // Older clients may still send a note; routine edits no longer require one.
+        $evidence=array_key_exists('evidence',$input)?trim(Request::text($input,'evidence',0,1000)):'';
         foreach(array_keys($input) as $key){if(!in_array($key,['name','status','markup_type','markup_value','expected_version','evidence'],true)){throw new ApiException('Unsupported product edit field');}}
         $name=trim(Request::text($input,'name',1,100));$status=Request::text($input,'status',1,20);$type=Request::text($input,'markup_type',1,20);$value=Request::text($input,'markup_value',1,20);
         if($name==='' || !in_array($status,['active','hidden','retired'],true)){throw new ApiException('Invalid name or sales status');}
@@ -105,7 +107,7 @@ final class AdminProductService
         return Database::transaction(function(PDO $db)use($admin,$id,$input,$old,$cache,$name,$status,$type,$value,$evidence):array{
             $s=$db->prepare('SELECT * FROM products WHERE id=? FOR UPDATE');$s->execute([$id]);$current=$s->fetch();$this->checkVersion($current,$input);$this->authorize($admin,$db);
             $db->prepare('UPDATE products SET name=?,status=?,markup_type=?,markup_value=?,config_cache=? WHERE id=?')->execute([$name,$status,$type,$value,json_encode($cache,JSON_THROW_ON_ERROR),$id]);
-            $this->audit($db,$admin,$id,'product_update',['evidence'=>$evidence,'before'=>array_intersect_key($old,array_flip(['name','status','markup_type','markup_value'])),'after'=>['name'=>$name,'status'=>$status,'markup_type'=>$type,'markup_value'=>$value],'prices'=>$cache['prices']??[]]);
+            $this->audit($db,$admin,$id,'product_update',($evidence!==''?['evidence'=>$evidence]:[])+['before'=>array_intersect_key($old,array_flip(['name','status','markup_type','markup_value'])),'after'=>['name'=>$name,'status'=>$status,'markup_type'=>$type,'markup_value'=>$value],'prices'=>$cache['prices']??[]]);
             return ['product_id'=>$id];
         });
     }

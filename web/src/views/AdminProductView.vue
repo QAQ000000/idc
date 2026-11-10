@@ -11,7 +11,7 @@ import AdminSnapshotForm from "../components/AdminSnapshotForm.vue";
 const route = useRoute(), account = useAdmin();
 const detail = ref<ProductDetail>(), busy = ref(false), saving = ref(false), error = ref(""), dialog = ref(false), formError = ref(""), auditPage = ref(1);
 const editable = computed(() => account.admin?.role === "super_admin");
-const form = reactive({ name: "", status: "hidden", markup_type: "none", markup_value: "0.00", evidence: "", expected_version: "" });
+const form = reactive({ name: "", status: "hidden", markup_type: "none", markup_value: "0.00", expected_version: "" });
 async function load(page = auditPage.value) {
   busy.value = true; error.value = ""; detail.value = undefined; auditPage.value = page;
   try { detail.value = await adminApi<ProductDetail>(`/products/${route.params.id}?audit_page=${page}`); }
@@ -20,16 +20,14 @@ async function load(page = auditPage.value) {
 }
 function edit() {
   if (!detail.value) return;
-  Object.assign(form, { name: detail.value.name, status: detail.value.status, markup_type: detail.value.markup_type, markup_value: detail.value.markup_value, evidence: "", expected_version: detail.value.version });
+  Object.assign(form, { name: detail.value.name, status: detail.value.status, markup_type: detail.value.markup_type, markup_value: detail.value.markup_value, expected_version: detail.value.version });
   formError.value = ""; dialog.value = true;
 }
 async function save() {
   if (saving.value) return;
-  const bytes = new TextEncoder().encode(form.evidence.trim()).length;
-  if (bytes < 10 || bytes > 1000) { formError.value = "请填写 10–1000 字节的变更依据"; return; }
   saving.value = true; formError.value = "";
   try {
-    await adminApi(`/products/${route.params.id}`, { method: "PATCH", body: { ...form, evidence: form.evidence.trim() } });
+    await adminApi(`/products/${route.params.id}`, { method: "PATCH", body: { ...form } });
     dialog.value = false; ElMessage.success("商品已更新并写入审计；历史账单和实例续费价未改变"); await load(1);
   } catch (e) {
     if (e instanceof ApiError && e.status === 409) { dialog.value = false; await load(1); error.value = message(e) + "；请核对最新数据后再操作。"; }
@@ -74,7 +72,7 @@ onMounted(() => load());
         <h2>商品变更记录</h2>
         <el-table :data="detail.audit.items" empty-text="暂无网页商品变更记录">
           <el-table-column prop="created_at" label="时间 (UTC)" width="180" /><el-table-column prop="username" label="管理员" min-width="140" /><el-table-column prop="action" label="动作" min-width="190" />
-          <el-table-column label="依据与变更" min-width="320"><template #default="{ row }"><div class="audit-evidence">{{ row.context.evidence }}</div><div v-if="row.context.before">原值：{{ JSON.stringify(row.context.before) }}</div><div v-if="row.context.after">新值：{{ JSON.stringify(row.context.after) }}</div><div v-if="row.context.prices">参考价：{{ JSON.stringify(row.context.prices) }}</div></template></el-table-column>
+          <el-table-column label="变更详情" min-width="320"><template #default="{ row }"><div v-if="row.context.evidence" class="audit-evidence">依据：{{ row.context.evidence }}</div><div v-if="row.context.before">原值：{{ JSON.stringify(row.context.before) }}</div><div v-if="row.context.after">新值：{{ JSON.stringify(row.context.after) }}</div><div v-if="row.context.prices">参考价：{{ JSON.stringify(row.context.prices) }}</div></template></el-table-column>
         </el-table>
         <el-pagination class="task-pagination" :current-page="auditPage" :total="detail.audit.total" :page-size="20" :pager-count="5" layout="prev, pager, next, total" @current-change="load" />
       </el-card>
@@ -89,7 +87,6 @@ onMounted(() => load());
       <el-form-item label="加价类型"><el-select v-model="form.markup_type" aria-label="编辑加价类型"><el-option label="不加价" value="none" /><el-option label="固定金额" value="fixed" /><el-option label="百分比" value="percent" /></el-select></el-form-item>
       <el-form-item v-if="form.markup_type !== 'none'" label="加价值（元 / %）"><el-input v-model="form.markup_value" aria-label="编辑加价值" inputmode="decimal" maxlength="20" /></el-form-item>
       <p class="muted">加价基于已记录的默认配置成本参考，不在原售价上叠加；缺少旧成本时只读补取上游报价，失败则拒绝调价。实际购买仍实时预检。</p>
-      <el-form-item label="变更依据（不填密钥）"><el-input v-model="form.evidence" type="textarea" aria-label="编辑变更依据" :rows="3" maxlength="1000" /></el-form-item>
       <div class="actions"><el-button native-type="submit" type="primary" :loading="saving">确认保存并记录审计</el-button><el-button :disabled="saving" @click="dialog = false">取消</el-button></div>
     </el-form>
   </el-dialog>

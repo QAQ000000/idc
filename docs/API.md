@@ -414,13 +414,15 @@ allowed_actions 是当前一致性快照下的候选操作，不能当作授权�
 | GET /admin/providers | 仅返回 id/name/driver/status/snapshot_supported，不返回 endpoint 或 credentials。保留选择既有上游的数组响应；连接管理使用独立接口，见 [上游接入](#admin-provider-connections)。 |
 | GET /admin/products | page 默认 1、最大 100000；per_page 默认 20、最大 100。按 status=active/hidden/retired、provider_id 和 name 子串筛选，按 ID 倒序返回 items/total/page/per_page。名称中的 `%`、`_` 按普通字符匹配。 |
 | GET /admin/products/{id} | 商品绑定、类型、销售状态、可售账期、默认参考首期价/新购续费参考价、加价规则、安全配置字段/默认选择、version 和分页审计。audit_page 默认 1，20 条/页，最大 100000；无商品 404。旧快照未记录续费参考价时明确缺失，不假定等于首期。 |
-| PATCH /admin/products/{id} | `{name,status,markup_type,markup_value,expected_version,evidence}`；完整提交以上字段，其他写字段拒绝。status=active/hidden/retired，markup_type=none/fixed/percent，markup_value 必须非负十进制字符串。none 规范化为 0.00。只改目录、不跨写账单/实例/任务。 |
+| PATCH /admin/products/{id} | `{name,status,markup_type,markup_value,expected_version}`；完整提交以上字段，日常编辑无需依据。兼容旧客户端可选 evidence（字符串、最多1000 UTF-8字节；空字符串或全空白不记录），其他写字段拒绝。status=active/hidden/retired，markup_type=none/fixed/percent，markup_value 必须非负十进制字符串。none 规范化为 0.00。只改目录、不跨写账单/实例/任务。 |
 | POST /admin/products/preview | `{provider_id,remote_pid,name,type,markup_type,markup_value,billing_cycles,config_options?}`；从已配置且启用上游读取 Schema、只读报价，返回 fields/defaults/prices/recurring_prices/billing_cycles/preview_token/expires_at。支持驱动已声明的独立配置与固定商品，其他能力拒绝。 |
 | POST /admin/products/import | 上述输入加 preview_token/evidence，再次读取上游比对预览；新商品默认 hidden，返回 product_id/prices。相同导入确认重放返回原 product_id，不新增商品/审计；同 Provider/远端 PID 的不同导入意图拒绝 409，需刷新既有商品。 |
 | POST /admin/products/{id}/snapshot/preview | `{expected_version,billing_cycles?,config_options?}`；由原商品决定 Provider/PID/名称/类型/加价，不能通过请求重绑；省略配置使用上游默认值。 |
 | POST /admin/products/{id}/snapshot | 同刷新预览输入加 preview_token/evidence；保持原销售状态和订单命名空间，整体保存该商品 JSON 快照。返回 product_id/prices/changed；同内容 changed=false，不重写商品，仍追加本次人工操作审计。 |
 
-编辑、导入及刷新 evidence 为去首尾空白后 10–1000 UTF-8 字节；不填密码或密钥。同事务追加 `product_update` / `product_import` / `product_snapshot_refresh` 管理审计，记录依据、可核对变更或快照摘要与参考价。审计写入失败整笔回滚，不以补写日志替代。读取仅投影已知安全字段，不返回原始 Schema、成本、凭据或完整上下文。
+日常名称／上下架／加价编辑自动记录 `product_update`，不要求填写依据；仍保留操作者、时间、IP、目标商品、修改前后值和参考价。未提供备注时 context 不生成 evidence，历史记录中的 evidence 继续按原白名单返回。导入及手工刷新仍必填去首尾空白后 10–1000 UTF-8 字节的 evidence；共享校验没有放宽，不填密码或密钥。三类修改分别与 `product_update` / `product_import` / `product_snapshot_refresh` 审计同事务提交；审计失败整笔回滚，不以补写日志替代。读取仅投影已知安全字段，不返回原始 Schema、成本、凭据或完整上下文。
+
+2026-11-10 契约简化原因：目录日常编辑已有完整自动审计，取消重复人工填写。仅调整 AdminProductService.update、商品编辑弹窗及审计展示；导入／手工刷新预览确认、权限、版本冲突和历史价格隔离保持。旧客户端携带的合法备注仍兼容，无数据库迁移。页面规则见 [商品页面契约](FRONTEND.md#商品管理页面契约2026-11-08)。
 
 `version` 绑定商品销售字段/快照与该商品最新审计版本，不将销售中的库存变动当作编辑冲突。旧编辑或刷新遇到其他变更返回 409，不能自动覆盖或更换版本重交。预览 5 分钟 HMAC 绑定管理员、规范输入、Schema、所选配置、两类报价与原版本；提交再读上游变化返回 409，不保存半成品。仅导入支持在确认令牌有效期内按原令牌找回已提交结果；刷新重复或旧版本拒绝，结果不明先看列表与审计。
 

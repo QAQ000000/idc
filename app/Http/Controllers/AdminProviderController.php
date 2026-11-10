@@ -51,4 +51,14 @@ final class AdminProviderController
     {
         return $this->response($s->verify($this->admin(), Request::id($id), Request::body()));
     }
+
+    public function catalog(string $id, \App\Services\UpstreamCatalogService $s): JsonResponse
+    {
+        $refresh = request()->query('refresh', '0');
+        if (! in_array($refresh, ['0', '1'], true)) {
+            throw new \App\Core\ApiException('Invalid refresh flag');
+        }
+
+        return $this->response($s->listing($this->admin(), AdminAuthMiddleware::authVersion(), Request::id($id), $refresh === '1'));
+    }
 }

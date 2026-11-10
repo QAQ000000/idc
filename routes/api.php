@@ -76,6 +76,7 @@ Route::middleware('admin')->group(function (): void {
     Route::get('admin/provider-connections', [\App\Http\Controllers\AdminProviderController::class, 'index']);
     Route::post('admin/provider-connections', [\App\Http\Controllers\AdminProviderController::class, 'store']);
     Route::get('admin/provider-connections/{id}', [\App\Http\Controllers\AdminProviderController::class, 'show']);
+    Route::get('admin/provider-connections/{id}/catalog', [\App\Http\Controllers\AdminProviderController::class, 'catalog']);
     Route::patch('admin/provider-connections/{id}', [\App\Http\Controllers\AdminProviderController::class, 'update']);
     Route::post('admin/provider-connections/{id}/verify', [\App\Http\Controllers\AdminProviderController::class, 'verify']);
     Route::get('admin/customers', [\App\Http\Controllers\AdminQueryController::class, 'customers']);

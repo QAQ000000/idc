@@ -583,3 +583,11 @@ service_observation 仅 state、suspension、checked_at、remote_due_date、revi
 两个写接口均要求expected_version（64位HMAC）、request_key（UUID v4）、evidence（10–1000字节）及confirmed=true；未知字段400、旧版本／空状态变更／已用操作编号409、非超管403、登录认证已撤销401。返回customer_id、request_key、sessions_revoked=true，不返回密码／哈希／auth_version／余额。账号变更与审计同事务。
 
 GET返回account={id,email,status,version}、audit=[{id,admin_id,username,action,context,created_at}]、operation（按本超管原request_key命中的审计或null）；context仅evidence/request_key/before_status/after_status/sessions_revoked白名单。即使操作不在最近20条内也可独立查到。丢响应不自动重提；同版本且未查到审计仍为未知，不能仅凭当前状态判断成功。停用的资金、资源与续费边界见[完整契约](M2_CUSTOMER_ACCOUNTS.md)。
+
+## 上游候选目录（第一阶段，2026-11-10）
+
+`GET /api/v1/admin/provider-connections/{id}/catalog?refresh=0|1`，仅当前启用super_admin会话，响应`code=0`／no-store。返回provider_id／provider_name、cached_at（UTC）、cache_hit、categories（id／name／item_count）及items：remote_pid正整数、name、category、type（未知unsupported）、stock_state（in_stock／sold_out／unlimited／unknown）、stock_qty、hidden、description纯文本、observed_at UTC秒，以及每次实时查询得到的imported／local_product_id／local_status。无价格、凭据／作用域、原始响应或extra。
+
+目录有效期600秒，强制刷新同连接30秒限频（429），并发读取占用409；禁用连接／能力不支持409、无超管权限403、过期／撤销会话401、供应商协议／网络或缓存异常503。不得用陈旧目录作为实时成功响应；查询不自动写商品或上架。`ProviderConnection.catalog_supported`是新增可选能力投影。
+
+单品沿用`POST /admin/products/preview`及`POST /admin/products/import`，无新导入接口；默认hidden与同事务审计不变。同preview_token有效期内重放返回原product_id，其他已存在绑定仍409；过期后的未知操作先从原商品详情与审计核对，不承诺过期令牌直接重放。完整契约见[规范](UPSTREAM_CATALOG_DISCOVERY_AND_BATCH_IMPORT_SPEC.md)。

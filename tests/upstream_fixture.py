@@ -116,6 +116,9 @@ class Handler(BaseHTTPRequestHandler):
             r = {'ok': True}
         elif path == '/__state':
             r = {'creates': state['creates'], 'hosts': len(state['hosts']), 'renew_calls': state['renew_calls'], 'renew_payments': state['renew_payments'], 'last_config': state.get('last_config', {}), 'last_qty': state.get('last_qty'), 'power_calls': state['power_calls'], 'reinstall_calls': state['reinstall_calls'], 'last_reinstall': state.get('last_reinstall', {})}
+        elif path == '/__catalog_mode':
+            state['catalog_mode'] = p['mode'][0]
+            r = {'ok': True}
         elif path == '/__request_counts':
             r = dict(state['request_counts'])
         elif path == '/__token_mode':
@@ -135,6 +138,26 @@ class Handler(BaseHTTPRequestHandler):
             r = {'status': 200, 'jwt': token}
         elif self.headers.get('Authorization') != 'Bearer ' + (state.get('token_current', '') if state.get('token_mode', 'opaque') != 'opaque' else 'isolated-test-token'):
             r = {'status': 405}
+        elif path == '/cart/all':
+            mode = state.get('catalog_mode', 'normal')
+            if mode == 'unavailable':
+                self.send_error(503, 'Catalog unavailable')
+                return
+            if mode == 'delay':
+                time.sleep(2)
+            products = [
+                {'id': '391', 'type': 'cdn', 'name': '体验CDN', 'stock_control': 0, 'qty': 0, 'description': '<b>纯文本介绍</b><script>internal-secret</script>'},
+                {'id': 14, 'type': 'dcimcloud', 'name': '枚举 VPS', 'stock_control': 1, 'qty': '5'},
+                {'id': 563, 'type': 'dcimcloud', 'name': '零库存样本', 'stock_control': 1, 'qty': 0},
+                {'id': 900, 'type': 'new_unknown_type', 'name': '未知类型', 'stock_control': 'bad', 'qty': 0, 'extra': {'token': 'INTERNAL_SECRET'}},
+                {'id': 901, 'type': 'server', 'name': '双层库存', 'api_type': 'zjmf_api', 'stock_control': 1, 'qty': 6, 'upstream_stock_control': 1, 'upstream_qty': 2},
+                {'id': 902, 'type': 'hostingaccount', 'name': '隐藏主机', 'hidden': 1, 'stock_control': 0, 'qty': 0},
+                {'id': 903, 'type': 'software', 'name': '协议软件', 'stock_control': 1, 'qty': 'bad'},
+            ]
+            if mode == 'bad_id': products[0]['id'] = '0'
+            if mode == 'duplicate': products.append(dict(products[0]))
+            if mode == 'removed': products = products[1:]
+            r = {'status': 200, 'data': {'products': [] if mode == 'empty' else [{'id': 1, 'name': '测试分组', 'products': products[:4]}, {'id': 2, 'name': '其他分组', 'products': products[4:]}]}}
         elif path == '/cart/get_product_config':
             data = {'products': {'id': 391}, 'config_groups': [], 'customfields': [], 'advanced': []}
             if p.get('pid') == ['389']:

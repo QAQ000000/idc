@@ -49,11 +49,13 @@ final class AdminProviderService
         $out['driver_installed'] = false;
         $out['configuration_complete'] = false;
         $out['snapshot_supported'] = false;
+        $out['catalog_supported'] = false;
         $out['configuration_fields'] = [];
         try {
             $driver = ProviderRegistry::installed()->get($p['driver']);
             $out['driver_installed'] = true;
             $out['snapshot_supported'] = $driver instanceof ConfigurableDriverInterface;
+            $out['catalog_supported'] = $driver instanceof \App\Plugins\Providers\CatalogDiscoveryDriverInterface;
             if ($driver instanceof ConnectionConfigInterface) {
                 $credentials = json_decode($p['credentials'] ?? '{}', true, 32, JSON_THROW_ON_ERROR);
                 $complete = true;

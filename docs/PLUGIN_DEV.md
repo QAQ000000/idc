@@ -348,3 +348,9 @@ connectionFields 返回 `{key,label,type,required,max_length}` 列表，type 仅
 `ReinstallDriverInterface` 独立于新购／续费／电源，包含 inspectReinstall(instance, credentials): ReinstallOptions、executeReinstall(operation, credentials): DriverExecutionResult、queryReinstall(operation, credentials): DriverExecutionResult。ReinstallOptions 只投影最多 500 个唯一 id/name 镜像、upstream_generated 密码模式与 no_format_requested 数据盘策略，不允许原始模块响应进入核心／页面。没有接口或没有镜像即不开放。
 
 执行上下文冻结原 provider_id/remote_pid/remote_instance_id/billing_cycle、requested_by、image_id/image_name 与 reinstall_options。驱动执行前重查能力，变更拒绝；query 必须只读。succeeded 默认需要本次可关联完成证据和非空 username/password。REINSTALL_EXECUTION_ENDED 例外只表示完整观察到本次执行结束，不保证系统成功；核心重查持久受理／monitor version 1／执行检查点后，保存 upstream_reported 凭据及 execution_ended 结果，清除旧已确认镜像，不改变身份、资金、账期和续费价。pending 区分 REINSTALL_ACCEPTED／REINSTALL_EXECUTING；unknown 不重发。魔方仅支持明确 dcimcloud/default reinstall/cloud_os 组合，首次空闲预检后提交一次；明确受理后读 func=status，仅 process + 严格 task_type=reinstall 识别重装，不解析中文；对应上游最小投影补丁见 [上游兼容说明](../plugins/providers/zjmf/compat/README.md)，类型待真机验证。观察重装后回到 on/off、原资源凭据与再次空闲齐备才自动结束。未受理、漏观察、旧任务或查询异常继续只读，超时才转人工；不能单用当前镜像、主机状态或旧进度证明成功，详见 [契约](M2_INSTANCE_REINSTALL.md)。
+
+## 可选上游目录发现（第一阶段）
+
+`App\Plugins\Providers\CatalogDiscoveryDriverInterface::discoverCatalog(array $credentials): array` 返回`UpstreamCatalogItem[]`，无写操作。DTO仅含正整数remotePid、名称／分类、归一化类型、四态库存、hidden、纯文本描述及observedAt；未知类型为unsupported，不输出extra、价格或凭据。魔方解析`/cart/all`可见候选与本地／其代理库存控制，详细映射和白名单留插件；认证拒绝仅只读重试一次。
+
+缓存与当前会话／连接门禁、本地导入叠加由UpstreamCatalogService负责；未实现接口的驱动无需空实现，仍可按PID使用原支持能力。目录不证明配置、周期、计价或交付受支持，后续原单品预览／导入不可省略。无批量驱动接口，见[第一阶段规范](UPSTREAM_CATALOG_DISCOVERY_AND_BATCH_IMPORT_SPEC.md)。

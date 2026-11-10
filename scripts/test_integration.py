@@ -181,6 +181,7 @@ def main():
             run_checks(php, 'tests/renewal_wakeup.php', env, r'Renewal wake-up checks: \d+')
             run_checks(php, 'tests/admin_queries.php', env, r'Admin query checks: \d+')
             run_checks(php, 'tests/admin_providers.php', env, r'Admin provider checks: \d+')
+            run_checks(php, 'tests/upstream_catalog.php', env, r'Upstream catalog checks: \d+')
             run_checks(php, 'tests/instance_renewal_price.php', env, r'Instance renewal price checks: \d+')
             run_checks(php, 'tests/tickets.php', env, r'Ticket checks: \d+')
             run_checks(php, 'tests/ticket_mail.php', env, r'Ticket mail checks: \d+')

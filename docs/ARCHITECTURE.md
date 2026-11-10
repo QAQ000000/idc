@@ -1,5 +1,7 @@
 # JianYun (简云) · 系统全景架构设计文档
 
+**上游目录第一阶段**：可选CatalogDiscoveryDriverInterface／UpstreamCatalogItem保持核心与魔方协议隔离，UpstreamCatalogService以Laravel Cache暂存候选白名单；超管会话及连接在返回前重核，本地导入状态不缓存。只读目录不改商品生命周期；原AdminProductService承担单品核价、确认及同事务商品／审计，第二阶段不实现，见[规范](UPSTREAM_CATALOG_DISCOVERY_AND_BATCH_IMPORT_SPEC.md)。
+
 **实例展示读取增量**：可选PowerObservationDriverInterface只读原绑定状态，核心InstanceDisplayService只投影电源观察和镜像；Redis短缓存／在途合并不能授权或释放任务。连接及密文凭据修订作用域由ProviderService提供，上游Token期限与认证重试留在插件。原full准备、提交及Worker实时检查保持，27表无迁移，见[契约](M2_INSTANCE_DISPLAY_CACHE.md)。
 
 **实例读取编排**：电源runtime新增与重装一致的本地tasks模式；初始门禁与远端能力分离，镜像按需读取、面板持续跟踪原任务。没有缓存事实或新驱动契约，原签发／提交／Worker校验保持，见[契约](M2_INSTANCE_LOADING.md)。

@@ -10,8 +10,72 @@ use App\Plugins\Providers\{ConnectionConfigInterface, ServiceStatusDriverInterfa
 use App\Plugins\Providers\{UpstreamDriverInterface, RenewalDriverInterface, DriverExecutionResult as R, PreflightResult, ConfigurableDriverInterface, ConfigOptions, PasswordPolicy, PowerDriverInterface, PowerState, ConsoleDriverInterface, ConsoleTarget, ReinstallDriverInterface, ReinstallOptions};
 
 /** Magic Finance agent API. Stateless cart_data avoids clearing or sharing the upstream account's cart. */
-final class ZjmfDriver implements \App\Plugins\Providers\PowerObservationDriverInterface, ConnectionConfigInterface, UpstreamDriverInterface, RenewalDriverInterface, ConfigurableDriverInterface, PowerDriverInterface, ConsoleDriverInterface, ReinstallDriverInterface, ServiceStatusDriverInterface, \App\Plugins\Providers\SnapshotRulesDriverInterface, \App\Plugins\Providers\LocalPreviewDriverInterface
+final class ZjmfDriver implements \App\Plugins\Providers\CatalogDiscoveryDriverInterface, \App\Plugins\Providers\PowerObservationDriverInterface, ConnectionConfigInterface, UpstreamDriverInterface, RenewalDriverInterface, ConfigurableDriverInterface, PowerDriverInterface, ConsoleDriverInterface, ReinstallDriverInterface, ServiceStatusDriverInterface, \App\Plugins\Providers\SnapshotRulesDriverInterface, \App\Plugins\Providers\LocalPreviewDriverInterface
 {
+    public function discoverCatalog(array $credentials): array
+    {
+        $r = $this->request($credentials, '/cart/all', token: $this->token($credentials));
+        if (($r['status'] ?? null) !== 200 || ! is_array($r['data']['products'] ?? null)) {
+            throw new \RuntimeException('Catalog unavailable');
+        }
+        $items = [];
+        $seen = [];
+        $now = time();
+        foreach ($r['data']['products'] as $group) {
+            if (! is_array($group) || ! is_string($group['name'] ?? null) || ! is_array($group['products'] ?? null)) {
+                throw new \RuntimeException('Invalid catalog group');
+            }
+            foreach ($group['products'] as $p) {
+                $id = $p['id'] ?? null;
+                if ((! is_int($id) && ! is_string($id)) || ! preg_match('/^[1-9][0-9]{0,9}$/D', (string) $id)
+                    || (int) $id > 2147483647 || isset($seen[(int) $id]) || ! is_string($p['name'] ?? null) || count($items) >= 5000) {
+                    throw new \RuntimeException('Invalid catalog product');
+                }
+                $seen[(int) $id] = true;
+                $type = match ($p['type'] ?? null) {
+                    'dcimcloud', 'cloud' => 'cloud',
+                    'dcim', 'server', 'bareMetal', 'dedicated' => 'dedicated',
+                    'hostingaccount', 'hosting' => 'hosting',
+                    'cdn' => 'cdn',
+                    'software' => 'software',
+                    default => 'unsupported',
+                };
+                $stock = $this->catalogStock($p);
+                $clean = static fn (string $text, int $max): string => mb_substr(trim(strip_tags(preg_replace('/<(script|style)\b[^>]*>.*?<\/\1>/is', '', $text))), 0, $max);
+                $items[] = new \App\Plugins\Providers\UpstreamCatalogItem((int) $id, $clean($p['name'], 100), $clean($group['name'], 100), $type,
+                    $stock->state, $stock->quantity, in_array($p['hidden'] ?? 0, [1, '1', true], true),
+                    is_string($p['description'] ?? null) ? $clean($p['description'], 500) : null, $now);
+            }
+        }
+
+        return $items;
+    }
+
+    private function catalogStock(array $p): StockObservation
+    {
+        $controls = [[$p['stock_control'] ?? null, $p['qty'] ?? null]];
+        // Old suppliers may not normalize their own upstream inventory yet.
+        if (($p['api_type'] ?? null) === 'zjmf_api') {
+            $controls[] = [$p['upstream_stock_control'] ?? 0, $p['upstream_qty'] ?? null];
+        }
+        $quantities = [];
+        foreach ($controls as [$control, $qty]) {
+            if (in_array($control, [0, '0'], true)) {
+                continue;
+            }
+            if (! in_array($control, [1, '1'], true) || (! is_int($qty) && ! is_string($qty)) || ! preg_match('/^[0-9]{1,9}$/D', (string) $qty)) {
+                return new StockObservation('unknown');
+            }
+            $quantities[] = (int) $qty;
+        }
+        if (! $quantities) {
+            return new StockObservation('unlimited');
+        }
+        $qty = min($quantities);
+
+        return new StockObservation($qty === 0 ? 'sold_out' : 'in_stock', $qty);
+    }
+
     public function previewPrice(array $schema, string $cycle, array $options): ?PreflightResult
     {
         $now = time();
@@ -136,7 +200,7 @@ final class ZjmfDriver implements \App\Plugins\Providers\PowerObservationDriverI
             error_log(json_encode(['event' => 'zjmf_read_timing', 'stage' => $stage, 'elapsed_ms' => round((hrtime(true) - $started) / 1e6, 1), 'http_status' => $status, 'transport_ok' => $ok !== false], JSON_THROW_ON_ERROR));
         }
         // Only known read-only endpoints may refresh authentication and repeat once.
-        $readOnly = in_array($path, ['/cart/get_product_config', '/cart/get_total', '/cart/hostinfo', '/host/header'], true)
+        $readOnly = in_array($path, ['/cart/all', '/cart/get_product_config', '/cart/get_total', '/cart/hostinfo', '/host/header'], true)
             || ($path === '/provision/default' && ($params['func'] ?? null) === 'status');
         if ($ok !== false && $status === 401 && $token !== null) {
             (new TokenCache())->invalidate($c, $token);

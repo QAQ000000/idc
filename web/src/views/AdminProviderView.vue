@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, onBeforeUnmount, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useAdmin } from "../stores/admin";
 import { adminApi } from "../api/admin";
 import { providerActions, type ProviderDetail, type ConnectionVerification } from "../api/adminProviders";
 import { message } from "../api/request";
+import UpstreamCatalogManager from "../components/UpstreamCatalogManager.vue";
+const section = ref("overview"), catalogVisited = ref(false);
+watch(section, value => { if (value === "catalog") catalogVisited.value = true; });
+let requestVersion = 0;
 const account = useAdmin(), route = useRoute(), router = useRouter();
 const data = ref<ProviderDetail>(), loading = ref(false), busy = ref(false), error = ref(""), operationError = ref("");
 const name = ref(""), evidence = ref(""), pid = ref(""), cycle = ref("monthly"), verification = ref<ConnectionVerification>();
@@ -17,12 +21,13 @@ function auditValue(key: string, value: string | number): string | number {
 }
 const writable = computed(() => account.admin?.role === "super_admin");
 async function load() {
-  if (loading.value) return;
-  loading.value = true; error.value = ""; data.value = undefined; verification.value = undefined;
+  const version = ++requestVersion;
+  loading.value = true; error.value = ""; verification.value = undefined;
   try {
-    data.value = await adminApi<ProviderDetail>(`/provider-connections/${route.params.id}?` + new URLSearchParams({ audit_page: String(route.query.audit_page || "1") }));
-    name.value = data.value.name;
-  } catch (e) { error.value = message(e); } finally { loading.value = false; }
+    const result = await adminApi<ProviderDetail>(`/provider-connections/${route.params.id}?` + new URLSearchParams({ audit_page: String(route.query.audit_page || "1") }));
+    if (version !== requestVersion) return;
+    data.value = result; name.value = result.name;
+  } catch (e) { if (version === requestVersion) error.value = message(e); } finally { if (version === requestVersion) loading.value = false; }
 }
 async function rename() {
   if (!data.value || busy.value) return;
@@ -41,7 +46,9 @@ async function verify() {
   } catch (e) { operationError.value = message(e) + "；未执行购买或付款，请刷新详情核对验证审计。"; } finally { busy.value = false; }
 }
 async function turn(page: number) { await router.push({ path: route.path, query: { audit_page: String(page) } }); }
+watch(() => route.query.audit_page, load);
 onMounted(load);
+onBeforeUnmount(() => ++requestVersion);
 </script>
 <template>
   <section class="admin-query-page">
@@ -49,8 +56,11 @@ onMounted(load);
     <div class="page-heading"><div><p class="eyebrow">连接详情 · 固定资源命名空间</p><h1>上游连接 #{{ route.params.id }}</h1></div><el-button :loading="loading" :disabled="busy" @click="load">刷新详情</el-button></div>
     <el-alert v-if="error" :title="error" type="error" :closable="false" role="alert" />
     <el-alert v-if="operationError" :title="operationError" type="error" :closable="false" role="alert" />
-    <el-card v-if="loading" shadow="never"><el-skeleton :rows="6" animated /></el-card>
+    <el-card v-if="loading && !data" shadow="never"><el-skeleton :rows="6" animated /></el-card>
     <template v-if="data">
+      <p class="muted">{{ data.name }} · {{ data.status ? "启用" : "禁用" }} · {{ data.driver }}</p>
+      <el-tabs v-model="section" aria-label="上游连接分区">
+        <el-tab-pane label="连接概况与维护" name="overview">
       <el-card shadow="never">
 <h2>连接与绑定</h2><el-descriptions :column="1" border>
         <el-descriptions-item label="名称">{{ data.name }}</el-descriptions-item><el-descriptions-item label="驱动">{{ data.driver }} · {{ data.driver_installed ? '已安装' : '不可用' }}</el-descriptions-item>
@@ -90,6 +100,12 @@ onMounted(load);
         </el-table>
         <el-pagination class="task-pagination" :current-page="data.audit.page" :page-size="data.audit.per_page" :total="data.audit.total" :pager-count="5" layout="prev, pager, next, total" :disabled="busy || loading" @current-change="turn" />
       </el-card>
+        </el-tab-pane>
+        <el-tab-pane v-if="writable" label="上游商品与选品导入" name="catalog">
+          <UpstreamCatalogManager v-if="catalogVisited && data.catalog_supported" :provider-id="data.id" :enabled="!!data.status" />
+          <el-alert v-else title="当前驱动不支持目录发现，可继续从连接概况按 PID 预览导入" type="info" :closable="false" />
+        </el-tab-pane>
+      </el-tabs>
     </template>
     <el-button v-if="error" @click="load">重新加载连接详情</el-button>
   </section>

@@ -7,8 +7,28 @@ use App\Plugins\Providers\{ConnectionConfigInterface, ServiceStatusDriverInterfa
 use App\Plugins\Providers\{UpstreamDriverInterface, RenewalDriverInterface, DriverExecutionResult as R, PreflightResult, ConfigurableDriverInterface, ConfigOptions, PasswordPolicy, PowerDriverInterface, PowerState, ConsoleDriverInterface, ConsoleTarget, ReinstallDriverInterface, ReinstallOptions};
 
 /** Magic Finance agent API. Stateless cart_data avoids clearing or sharing the upstream account's cart. */
-final class ZjmfDriver implements ConnectionConfigInterface, UpstreamDriverInterface, RenewalDriverInterface, ConfigurableDriverInterface, PowerDriverInterface, ConsoleDriverInterface, ReinstallDriverInterface, ServiceStatusDriverInterface
+final class ZjmfDriver implements ConnectionConfigInterface, UpstreamDriverInterface, RenewalDriverInterface, ConfigurableDriverInterface, PowerDriverInterface, ConsoleDriverInterface, ReinstallDriverInterface, ServiceStatusDriverInterface, \App\Plugins\Providers\SnapshotRulesDriverInterface
 {
+    public function snapshotContent(array $schema): array
+    {
+        // Unknown fields are retained conservatively. Only known observations may be excluded.
+        foreach (['stock_control','qty','upstream_stock_control','upstream_qty'] as $key) { unset($schema['products'][$key]); }
+        return $schema;
+    }
+    public function validateSnapshotRules(array $schema, array $options, array $quotes): void
+    {
+        $rows=$schema['product_pricings']??[];
+        $currency=['id'=>$rows[0]['currency']??null,'code'=>$rows[0]['code']??null];
+        $now=time();
+        foreach ($quotes as $cycle=>$quote) {
+            $local=(new LocalPriceCalculator())->evaluate(['schema'=>$schema,'fetched_at'=>$now,'currency'=>$currency],$cycle,$options,$now);
+            if (!$local['supported'] || $local['first']!==$quote['first'] || $local['recurring']!==$quote['recurring']) {
+                throw new \RuntimeException('Incomplete or inconsistent snapshot price rules');
+            }
+        }
+        if (!$quotes) { throw new \RuntimeException('Missing snapshot cycle quotes'); }
+        $this->inputContext($schema);
+    }
     public function connectionFields(): array
     {
         return [

@@ -89,6 +89,10 @@ Artisan::command('products:snapshot', function (): void {
     $this->line(json_encode(app(\App\Services\ProductSnapshotService::class)->save($input),JSON_THROW_ON_ERROR));
 })->purpose('Import or refresh a JSON schema product using an existing provider; read upstream only');
 
+Artisan::command('products:refresh',function():void{
+    $this->line(json_encode(app(\App\Services\ProductRefreshService::class)->runBatch(),JSON_THROW_ON_ERROR));
+})->purpose('Refresh at most two explicitly allowed products; publish complete rules with version fencing');
+
 Artisan::command('admin:create', function (): void {
     $input = json_decode(stream_get_contents(STDIN, 8192), true, 32, JSON_THROW_ON_ERROR);
     $id = app(\App\Services\AdminAuthService::class)->create($input);

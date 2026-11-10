@@ -1,5 +1,7 @@
 # JianYun (简云) · 数据库设计字典 (Database Schema)
 
+**计划刷新增量**：原products.config_cache增加可缺省0的snapshot_revision，实际销售快照内容变化递增，未知旧任务／账单不改。system_settings原表group=catalog、key=product.refresh.<本地ID>保存最后尝试／成功／失效UTC秒、结果和快照hash；不复制完整快照或永久历史表，不进入报价／编辑指纹。27表／DDL无变化，无迁移，见[契约](M2_PRODUCT_REFRESH.md)。
+
 **本地计价验证**：只读计价信封的schema／fetched_at／currency及pricing_hash仅在插件诊断内存／私有验收材料使用，不新增持久字段、不写products.config_cache，不重写历史账单／实例快照；27表／DDL／迁移不变，见[契约](M2_LOCAL_PRICING.md)。
 
 **库存展示增量**：upstream_stock是5分钟Redis观察的即时投影，不是products.stock、config_cache或MySQL新列；stock继续是本地销售配额，目录／核价都不覆盖它。观察不进入账单／实例冻结配置、报价签名或任务载荷；缓存故障不改变财务与预检。27表／DDL／迁移保持，见[契约](M2_CHECKOUT_RESPONSIVENESS.md)。

@@ -43,12 +43,13 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--browser', action='store_true', help='Keep an isolated backend + Vite running until Enter')
     parser.add_argument('--runtime', action='store_true', help='Also verify temporary systemd units, timer, restart and journal (root + systemd required)')
+    parser.add_argument('--product-refresh-runtime', action='store_true', help='Also verify isolated product refresh oneshot/timer and interruption')
     parser.add_argument('--boost', action='store_true', help='Also verify the dev-only Boost MCP against the isolated database')
     parser.add_argument('--deployment', action='store_true', help='Also rehearse a fresh production-mode release with isolated HTTPS/FPM/database')
     parser.add_argument('--deployment-only', action='store_true', help='Run only the fresh-install rehearsal, using the same disposable infrastructure')
     args = parser.parse_args()
-    if args.deployment_only and (args.runtime or args.browser):
-        parser.error('--deployment-only cannot be combined with --runtime or --browser')
+    if args.deployment_only and (args.runtime or args.product_refresh_runtime or args.browser):
+        parser.error('--deployment-only cannot be combined with --runtime, --product-refresh-runtime or --browser')
     php = shutil.which("php")
     redis = os.getenv("REDIS_SERVER") or shutil.which("redis-server")
     fpm = os.getenv('PHP_FPM') or (str(Path(php).resolve().parent.parent / 'sbin/php-fpm') if php else '')
@@ -58,7 +59,7 @@ def main():
         raise RuntimeError('PHP-FPM binary required (or PHP_FPM=/absolute/path)')
     if args.browser and not shutil.which('npm'):
         raise RuntimeError('Browser fixture requires npm and installed web dependencies')
-    if args.runtime and (os.geteuid() != 0 or not Path('/run/systemd/system').is_dir()):
+    if (args.runtime or args.product_refresh_runtime) and (os.geteuid() != 0 or not Path('/run/systemd/system').is_dir()):
         raise RuntimeError('Runtime verification requires root on a running systemd host')
     name = "jianyun-test-" + secrets.token_hex(6)
     env = os.environ.copy()
@@ -70,6 +71,7 @@ def main():
         REDIS_PASSWORD=secrets.token_hex(24), TEST_BASE_URL=f"http://127.0.0.1:{http_port}",
         PHP_CLI_SERVER_WORKERS="4", CORS_ALLOWED_ORIGINS="https://console.example.test",
         TRUSTED_PROXIES="127.0.0.1,::1",
+        PRODUCT_REFRESH_IDS="",
     )
     processes = []
     container_created = False
@@ -150,6 +152,7 @@ def main():
             run_checks(php, 'tests/checkout_responsiveness.php', env, r'Checkout responsiveness checks: \d+')
             run_checks(php, 'tests/admin.php', env, r'Admin checks: \d+')
             run_checks(php, 'tests/admin_products.php', env, r'Admin product checks: \d+')
+            run_checks(php, 'tests/product_refresh.php', env, r'Product refresh checks: \d+')
             run_checks(php, 'tests/power.php', env, r'Power checks: \d+')
             run_checks(php, 'tests/console.php', env, r'Console checks: \d+')
             run_checks(php, 'tests/reinstall.php', env, r'Reinstall checks: \d+')
@@ -208,6 +211,9 @@ def main():
             if args.runtime:
                 from test_runtime import verify_runtime
                 verify_runtime(env, directory, php)
+            if args.product_refresh_runtime:
+                from test_product_refresh_runtime import verify_product_refresh_runtime
+                verify_product_refresh_runtime(env, directory, php)
             if args.deployment:
                 from test_deployment import verify_deployment
                 verify_deployment(env, directory, php, fpm, name)

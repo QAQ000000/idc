@@ -1,5 +1,7 @@
 # JianYun (简云) · 模块化插件与驱动开发手册 (Plugin Development Guide)
 
+**完整快照发布可选契约**：SnapshotRulesDriverInterface::snapshotContent仅剔除可证明无成交语义的观察字段，未知字段保守保留；validateSnapshotRules(schema,options,quotes)负责完整周期矩阵／政策／生成规则以及默认组合两类在线金额一致性，任何不支持则整次拒绝发布，不能部分猜算。魔方复用已验计价器，核心不引用插件类；运行时间与库存不进入内容，详见[发布契约](M2_PRODUCT_REFRESH.md)。
+
 **计价验证增量**：魔方LocalPriceCalculator只在完整支持条件下输出本地首期／续费价；PriceComparison始终调用一次原在线预检，对比配置hash与两类金额，不将诊断结果接入客户销售。币种／矩阵／政策／新鲜度异常整组回退；CLI装配位于具体插件，不增加核心对插件的依赖、表或接口。支持范围、BCMath顺序和真实／隔离证据见[契约](M2_LOCAL_PRICING.md)；下文“数量不上本地计价”仍是当前客户成交路径的边界。
 
 **整数数量增量**：魔方IntegerQuantity仅投影独立类型15／18，通用integer字段有minimum／maximum／step／step_base／allow_endpoints／ranges；核心不感知具体类型号。数量按字段ID透传实际整数，枚举透传子项ID；范围／区间身份和步长进入schema_hash与可选configuration_quantities；首期／续费由上游核价，qty=1，不本地计算阶梯价，见[契约](M2_INTEGER_QUANTITIES.md)。

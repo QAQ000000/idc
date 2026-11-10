@@ -99,6 +99,7 @@ class Handler(BaseHTTPRequestHandler):
             r = {'ok': True}
         elif path == '/__config_mode':
             state['config_mode'] = p['mode'][0]
+            state['refresh_reads'] = 0
             r = {'ok': True}
         elif path == '/__reinstall_mode':
             state['reinstall_mode'] = p['mode'][0]
@@ -124,7 +125,24 @@ class Handler(BaseHTTPRequestHandler):
         elif path == '/cart/get_product_config':
             data = {'products': {'id': 391}, 'config_groups': [], 'customfields': [], 'advanced': []}
             if p.get('pid') == ['389']:
+                if state['config_mode'] == 'refresh_unavailable':
+                    self.send_error(503, 'Isolated supplier unavailable')
+                    return
                 data = copy.deepcopy(PRICING_SAMPLE['schema'])
+                with lock:
+                    state['refresh_reads'] = state.get('refresh_reads', 0) + 1
+                if state['config_mode'] == 'refresh_drift' and state['refresh_reads'] >= 3:
+                    data['product_pricings'][0]['monthly'] = '2.00'
+                if state['config_mode'] == 'refresh_delay':
+                    time.sleep(2)
+                if state['config_mode'] == 'refresh_bad':
+                    del data['config_groups'][0]['options'][0]['sub'][0]['pricings']
+                if state['config_mode'] == 'refresh_rule_price':
+                    data['product_pricings'][0]['monthly'] = '2.00'
+                if state['config_mode'] == 'refresh_unused_price':
+                    data['config_groups'][0]['options'][1]['sub'][1]['pricings'][0]['monthly'] = '1.00'
+                if state['config_mode'] == 'refresh_stock':
+                    data['products'].update(stock_control=1, qty=9, upstream_qty=9)
             if p.get('pid') == ['14']:
                 data = copy.deepcopy(CONFIG_SCHEMA)
                 if state['config_mode'] == 'schema':
@@ -155,6 +173,11 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 # Independent fixed supplier capture, not a second implementation of the calculator.
                 total, recurring = case['first'], case['recurring']
+                if state['config_mode'] == 'refresh_rule_price':
+                    from decimal import Decimal
+                    total = recurring = str(Decimal(total) + Decimal('1.00'))
+                if state['config_mode'] == 'refresh_delay':
+                    time.sleep(2)
                 if state['config_mode'] == 'pricing_mismatch':
                     recurring = '999.99'
             if p.get('pid') == ['14']:

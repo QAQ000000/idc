@@ -1,5 +1,7 @@
 # JianYun (简云) · RESTful API 契约与接口字典 (API Specification)
 
+**快照计划刷新**：无新增HTTP写接口；管理员商品详情增加只读snapshot_refresh={result,last_attempt_at,last_success_at,valid_until,fresh,pricing_mode:"online"}，时间为可空UTC Unix秒，缺失观察为never／fresh=false。只有匹配当前快照且未过期才新鲜；权限沿原管理员读权限，不输出原始规则、成本、凭据或刷新hash。客户calculate／checkout仍实时核价、原确认及原键恢复保持，见[契约](M2_PRODUCT_REFRESH.md)。
+
 **本地计价验证边界**：本批仅有魔方插件只读CLI对价入口，无新增HTTP API；客户calculate／checkout继续在线核价及原quote_token，诊断pricing_hash不可作为下单确认。规则不支持整组回退，在线失败不返回本地价，见[契约](M2_LOCAL_PRICING.md)。
 
 **整数数量配置增量**：原商品configuration、calculate与管理员preview接口的fields新增type=integer（choices=[]），提供minimum／maximum／step／step_base=0／allow_endpoints／ranges（id／minimum／maximum）；defaults及config_options仍为数字字符串，字段ID作为键，值为数量而非子项ID。原下单／预览确认校验范围、步长和指纹，非法输入400、配置／报价漂移409；configuration摘要value为数量字符串。无新接口，见[契约](M2_INTEGER_QUANTITIES.md)。
@@ -413,7 +415,7 @@ allowed_actions 是当前一致性快照下的候选操作，不能当作授权�
 | POST /admin/products/preview | `{provider_id,remote_pid,name,type,markup_type,markup_value,billing_cycles,config_options?}`；从已配置且启用上游读取 Schema、只读报价，返回 fields/defaults/prices/recurring_prices/billing_cycles/preview_token/expires_at。支持驱动已声明的独立配置与固定商品，其他能力拒绝。 |
 | POST /admin/products/import | 上述输入加 preview_token/evidence，再次读取上游比对预览；新商品默认 hidden，返回 product_id/prices。相同导入确认重放返回原 product_id，不新增商品/审计；同 Provider/远端 PID 的不同导入意图拒绝 409，需刷新既有商品。 |
 | POST /admin/products/{id}/snapshot/preview | `{expected_version,billing_cycles?,config_options?}`；由原商品决定 Provider/PID/名称/类型/加价，不能通过请求重绑；省略配置使用上游默认值。 |
-| POST /admin/products/{id}/snapshot | 同刷新预览输入加 preview_token/evidence；保持原销售状态和订单命名空间，更新该商品 JSON 快照。 |
+| POST /admin/products/{id}/snapshot | 同刷新预览输入加 preview_token/evidence；保持原销售状态和订单命名空间，整体保存该商品 JSON 快照。返回 product_id/prices/changed；同内容 changed=false，不重写商品，仍追加本次人工操作审计。 |
 
 编辑、导入及刷新 evidence 为去首尾空白后 10–1000 UTF-8 字节；不填密码或密钥。同事务追加 `product_update` / `product_import` / `product_snapshot_refresh` 管理审计，记录依据、可核对变更或快照摘要与参考价。审计写入失败整笔回滚，不以补写日志替代。读取仅投影已知安全字段，不返回原始 Schema、成本、凭据或完整上下文。
 

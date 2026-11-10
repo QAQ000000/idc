@@ -17,7 +17,7 @@ def quoted(value, *, executable=False):
     return '"' + value + '"'
 
 
-def render(name, app, php, user, env_file, output):
+def render(name, app, php, user, env_file, output, *, product_refresh=False):
     if not re.fullmatch(r'jianyun(?:-[a-z0-9]+)*', name):
         raise ValueError('Name must be jianyun or jianyun-<lowercase letters/digits>')
     if not re.fullmatch(r'[a-z_][a-z0-9_-]*\$?', user):
@@ -34,6 +34,8 @@ def render(name, app, php, user, env_file, output):
     output.mkdir(parents=True, exist_ok=True)
     paths = []
     sources = [('worker.service.in', 'worker.service'), ('schedule.service.in', 'schedule.service'), ('schedule.timer.in', 'schedule.timer'), ('mail.service.in', 'mail.service')]
+    if product_refresh:
+        sources.extend([('products.service.in', 'products.service'), ('products.timer.in', 'products.timer')])
     for source, suffix in sources:
         text = (ROOT / 'deploy/systemd' / source).read_text()
         for key, value in values.items():
@@ -53,6 +55,7 @@ if __name__ == '__main__':
     p.add_argument('--user', required=True)
     p.add_argument('--env-file', required=True)
     p.add_argument('--output', required=True)
+    p.add_argument('--product-refresh', action='store_true', help='Also render opt-in isolated product refresh service/timer')
     a = p.parse_args()
-    for path in render(a.name, a.app, a.php, a.user, a.env_file, a.output):
+    for path in render(a.name, a.app, a.php, a.user, a.env_file, a.output, product_refresh=a.product_refresh):
         print(path)

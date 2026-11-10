@@ -1,0 +1,11 @@
+[Unit]
+Description=JianYun product refresh wakeup (@NAME@)
+
+[Timer]
+OnCalendar=*-*-* *:*:00
+Persistent=true
+AccuracySec=1s
+Unit=@NAME@-products.service
+
+[Install]
+WantedBy=timers.target

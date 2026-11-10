@@ -34,6 +34,7 @@ final class AdminProductService
     {
         $p=$this->read($id);$result=$this->project($p);$cache=json_decode($p['config_cache']??'{}',true,64,JSON_THROW_ON_ERROR);
         $result['version']=$this->version($p);$result['fields']=[];$result['defaults']=$cache['default_config']??[];$result['configuration_error']=null;
+        $result['snapshot_refresh']=(new ProductRefreshService())->observation($id,$cache);
         if ($cache['configurable']??false) {
             try { $driver=ProviderRegistry::installed()->get($p['driver']);$result['fields']=$driver instanceof ConfigurableDriverInterface?$driver->describeForm($cache['schema']):[]; }
             catch (\Throwable) { $result['configuration_error']='Stored schema cannot be rendered; refresh requires operator review'; }

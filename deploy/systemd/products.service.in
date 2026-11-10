@@ -1,0 +1,18 @@
+[Unit]
+Description=JianYun bounded product snapshot refresh (@NAME@)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=@USER@
+WorkingDirectory=@APP_DIR@
+EnvironmentFile=@ENV_FILE@
+ExecStart=@PHP@ @ARTISAN@ products:refresh --no-interaction
+TimeoutStartSec=240
+KillMode=control-group
+UMask=0077
+NoNewPrivileges=true
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=@NAME@-products

@@ -1,5 +1,7 @@
 # JianYun (简云) · 系统全景架构设计文档
 
+**有界快照刷新**：ProductRefreshService只处理显式本地ID，独立可选oneshot／timer、不占金融Worker或schedule；MySQL会话互斥／失连拒绝发布，网络准备在事务外。核心通过可选SnapshotRulesDriverInterface要求完整规则和对价，魔方语义仍在插件；原persist事务发布、内容不变不写商品、变化推进JSON修订号，运行观察独立settings行。无新表、原客户在线核价与历史语义保持，见[契约](M2_PRODUCT_REFRESH.md)。
+
 **插件本地计价验证**：LocalPriceCalculator／PriceComparison与CLI均在魔方插件内，核心不直接引用或新增能力抽象；临时完整规则信封不写商品表，在线结果始终为权威。客户calculate／checkout、原指纹及Outbox不改，诊断价格hash不参与成交；定时同步与客户预览留待对价后接入，见[契约](M2_LOCAL_PRICING.md)。
 
 **选购库存观察**：通用PreflightResult追加可空StockObservation，魔方专用stock_control／qty语义只在插件解析。StockObservationService在Redis暂存5分钟，目录一次MGET批读、不遍历上游；缓存故障／过期显示未知。观察不写MySQL配额、配置快照、报价指纹或Outbox，不代替下单及Worker预检；前端合并核价与耗时记录见[契约](M2_CHECKOUT_RESPONSIVENESS.md)。

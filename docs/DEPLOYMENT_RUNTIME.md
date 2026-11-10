@@ -23,6 +23,12 @@
 
 Worker 被终止后不会清理或重置业务占用；过期 running 租约只允许接管同任务调查，不重发不明结果的续费或付款。普通停止不是上游请求撤销证明；发布重启也须保留原任务。失败人工核验任务重启后继续保留，不自动退款。
 
+## 可选商品刷新计划（默认关闭）
+
+`PRODUCT_REFRESH_IDS`显式指定本地商品ID；空值不处理任何商品。用原渲染器`--product-refresh`额外生成NAME-products.service／timer，按[发布契约](M2_PRODUCT_REFRESH.md#独立计划模板与启用)单独核对和安装这两个unit，不能覆盖／重启原四个服务。独立oneshot每批最多2商品、每商品10分钟，同名timer／MySQL锁防重叠，不在金融schedule:run或Outbox中等待上游。运行观察只写原settings及新成功快照，客户仍在线核价；M2启用范围另验，无迁移或Worker重启要求。
+
+停止timer／service会保留旧快照与running观察；不要重置任务。关注journal中的每商品失败和详情snapshot_refresh新鲜度，命令结束不等于所有商品刷新成功。定时器正常、异常中断／恢复可用独立验收`python3 scripts/test_integration.py --product-refresh-runtime`（另设REDIS_SERVER）验证，不接触M2单元。
+
 ## 到期状态核对接入（M2 已验收）
 
 无迁移、unit、Redis任务或新调度。原 outbox:work 每轮先充值提示及履约任务；两者均无工作才核对一个临期／暂停／核验资源，同资源至少15分钟、空候选进程内退避15秒。金融繁忙会延后核对，不能承诺精确15分钟SLA；--once 保持原唤醒／Outbox行为，不追加状态核对。显式单资源命令 `php artisan instances:reconcile-status ID` 仍会写运营观察，须按环境授权执行，不作纯查看命令。

@@ -6,6 +6,9 @@ use App\Core\{ApiException,Database,RedisStore,Security};
 use App\Plugins\Providers\{StockObservation,ProviderRegistry,ConfigOptions};
 use App\Services\{CatalogService,ProductSnapshotService,StockObservationService,BillingService,OutboxWorker};
 use Illuminate\Support\Facades\Redis;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Events\Dispatcher;
+use Illuminate\Redis\Events\CommandExecuted;
 
 if (getenv('APP_ENV') !== 'test' || getenv('DB_DATABASE') !== 'jianyun_test') {
     throw new RuntimeException('Isolated DB required');
@@ -116,24 +119,67 @@ $s->execute([$invoice['invoice_id']]);
 $task = $s->fetch();
 check($task['status'] === 'failed' && (int) $task['execution_token'] > 0, 'Worker actually attempts preflight and leaves missing resource for review');
 $key = 'jianyun:stock:'.hash('sha256', config('app.key').'|'.config('database.connections.mysql.database').'|'.$provider.'|14');
-(new RedisStore)->command('SET', $key, json_encode(['state' => 'in_stock', 'quantity' => 9, 'checked_at' => gmdate('Y-m-d H:i:s', time() - 301)]));
+$cacheStore = Cache::store('redis');
+$cacheStore->forget($key);
+(new RedisStore)->command('SET', $key, json_encode(['state' => 'in_stock', 'quantity' => 99, 'checked_at' => gmdate('Y-m-d H:i:s')]), 'EX', '300');
+check($stocks->read($provider, 14)['state'] === 'unknown', 'legacy raw cache is a cold miss without dual read or migration');
+$cacheStore->put($key, json_encode(['state' => 'in_stock', 'quantity' => 9, 'checked_at' => gmdate('Y-m-d H:i:s', time() - 301)]), 300);
 check($stocks->read($provider, 14)['state'] === 'unknown', 'expired observation is unknown even if cache key remains');
-(new RedisStore)->command('SET', $key, '{"state":"bad"}');
+$cacheStore->put($key, '{"state":"bad"}', 300);
 check($stocks->read($provider, 14)['state'] === 'unknown', 'malformed cache does not leak fields or break directory');
+$cacheStore->put($key, json_encode(['state' => 'in_stock', 'quantity' => 9, 'checked_at' => gmdate('Y-m-d H:i:s', time() + 60)]), 300);
+check($stocks->read($provider, 14)['state'] === 'unknown', 'future observation is not trusted');
+$current = $stocks->remember($provider, 14, new StockObservation('in_stock', 3));
+$stocks->remember($provider, 15, new StockObservation('sold_out', 0));
+$stocks->remember($provider + 10000, 14, new StockObservation('unlimited'));
+$connection = Redis::connection();
+$ttl = $connection->ttl($cacheStore->getStore()->getPrefix().$key);
+check($ttl > 0 && $ttl <= 300, 'framework cache applies a five minute Redis TTL');
+$dispatcher = $connection->getEventDispatcher();
+$events = new Dispatcher;
+$commands = [];
+$events->listen(CommandExecuted::class, function ($event) use (&$commands): void {
+    $commands[] = strtolower($event->command);
+});
+$connection->setEventDispatcher($events);
+try {
+    check($stocks->readMany([]) === [] && $commands === [], 'empty directory performs no cache read');
+    $batch = $stocks->readMany(['second' => [$provider, 15], 73 => [$provider, 14], 'same' => [$provider, 14], 'other' => [$provider + 10000, 14], 'missing' => [$provider, 16]]);
+    check($commands === ['mget'], 'directory batches all bindings into one framework MGET');
+    check(array_keys($batch) === ['second', 73, 'same', 'other', 'missing'] && $batch[73] === $current && $batch['same'] === $current, 'batch preserves caller keys, order and duplicate bindings');
+    check($batch['second']['state'] === 'sold_out' && $batch['other']['state'] === 'unlimited' && $batch['missing']['state'] === 'unknown', 'provider and remote product identities remain isolated');
+} finally {
+    if ($dispatcher) {
+        $connection->setEventDispatcher($dispatcher);
+    } else {
+        $connection->unsetEventDispatcher();
+    }
+}
+$identity = config('database.connections.mysql.database');
+try {
+    config(['database.connections.mysql.database' => $identity.'-other']);
+    check($stocks->read($provider, 14)['state'] === 'unknown', 'database identity isolates shared Redis observations');
+} finally {
+    config(['database.connections.mysql.database' => $identity]);
+}
 $root = Redis::getFacadeRoot();
-Redis::swap(new class
+Redis::swap(new class implements \Illuminate\Contracts\Redis\Factory
 {
-    public function connection(): never
+    public function connection($name = null): never
     {
         throw new RuntimeException('offline');
     }
 });
+// Cache stores retain their Redis factory: recreate it to exercise the failing boundary.
+Cache::forgetDriver('redis');
 try {
     check($stocks->read($provider, 14)['state'] === 'unknown', 'Redis outage degrades inventory only');
     $stocks->remember($provider, 14, new StockObservation('in_stock', 3));
     check(true, 'cache write outage never breaks successful domain operation');
 } finally {
     Redis::swap($root);
+    Cache::forgetDriver('redis');
 }
+check($stocks->read($provider, 14) === $current, 'cache becomes readable after Redis factory recovery');
 mode('normal');
 echo 'Checkout responsiveness checks: '.$checks.PHP_EOL;

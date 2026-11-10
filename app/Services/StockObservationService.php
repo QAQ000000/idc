@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Services;
 
-use App\Core\RedisStore;
 use App\Plugins\Providers\StockObservation;
+use Illuminate\Support\Facades\Cache;
 
 /** Disposable cache only: no MySQL product quota, snapshot or task writes. */
 final class StockObservationService
@@ -19,7 +19,7 @@ final class StockObservationService
     {
         $value = ['state' => $stock?->state ?? 'unknown', 'quantity' => $stock?->quantity, 'checked_at' => gmdate('Y-m-d H:i:s')];
         try {
-            (new RedisStore())->command('SET', $this->key($provider, $remote), json_encode($value, JSON_THROW_ON_ERROR), 'EX', '300');
+            Cache::store('redis')->put($this->key($provider, $remote), json_encode($value, JSON_THROW_ON_ERROR), 300);
         } catch (\Throwable) { /* Display failure must not break a real preflight or committed operation. */
         }
 
@@ -40,13 +40,13 @@ final class StockObservationService
         $unknown = ['state' => 'unknown', 'quantity' => null, 'checked_at' => null];
         $result = array_fill_keys(array_keys($bindings), $unknown);
         try {
-            $keys = array_map(fn (array $binding): string => $this->key($binding[0], $binding[1]), array_values($bindings));
-            $values = (new RedisStore())->command('MGET', ...$keys);
-            if (! is_array($values) || count($values) !== count($keys)) {
-                return $result;
+            $keys = [];
+            foreach ($bindings as $id => [$provider, $remote]) {
+                $keys[$id] = $this->key($provider, $remote);
             }
-            foreach (array_keys($bindings) as $i => $id) {
-                $result[$id] = $this->decode($values[$i]);
+            $values = Cache::store('redis')->many(array_values($keys));
+            foreach ($keys as $id => $key) {
+                $result[$id] = $this->decode($values[$key] ?? null);
             }
         } catch (\Throwable) { /* Unknown stock does not break local forms or directory. */
         }

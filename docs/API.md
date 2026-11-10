@@ -136,7 +136,7 @@
 
 ### 1. 获取在售商品列表
 - **请求**：`GET /api/v1/products?type={cloud|dedicated|cdn}`
-- **响应**：商品卡片列表（包含名称、默认配置参考价格 prices、configurable、类型、stock本地销售配额及upstream_stock上游观察）。`upstream_stock={state,quantity,checked_at}`：state为in_stock／sold_out／unlimited／unknown，可靠数量才非null，checked_at为UTC核对时间；缺失／过期／缓存故障为unknown且时间null。目录仅批读短期缓存，不调用上游。stock=-1为本地不限额，不能和上游未启用库存控制混为一谈。
+- **响应**：商品卡片列表（包含名称、默认配置参考价格 prices、configurable、类型、stock本地销售配额及upstream_stock上游观察）。`upstream_stock={state,quantity,checked_at}`：state为in_stock／sold_out／unlimited／unknown，可靠数量才非null，checked_at为UTC核对时间；缺失／过期／缓存故障为unknown且时间null。目录仅批读短期缓存，不调用上游。框架Cache存取收敛不改变此投影，切版冷缓存仍返回unknown，见[兼容记录](FRAMEWORK_REUSE.md#库存缓存试点契约)。stock=-1为本地不限额，不能和上游未启用库存控制混为一谈。
 
 ### 2. 获取商品配置项表单 (动态渲染)
 - **请求**：`GET /api/v1/products/{id}/config`

@@ -170,6 +170,8 @@
 | 接口、前端、割接 | [API](docs/API.md)、[前端](docs/FRONTEND.md)、[割接规程](docs/MIGRATION_RUNBOOK.md) |
 | 部署、调度、Worker 守护与日志 | [正式部署入口](docs/PRODUCTION_READINESS.md)、[运行部署规程](docs/DEPLOYMENT_RUNTIME.md)；区分 M2 验收环境与正式环境，接管前核验原进程归属 |
 
+基础设施整理先查[框架复用盘点](docs/FRAMEWORK_REUSE.md)：普通展示缓存优先使用 Laravel Cache；原子消费、所有者发布、资金／任务事实不能直接套普通缓存。PHP 统一运行 Pint，自动重构规则变更独立审阅。
+
 常用验证命令（从仓库根目录执行）：
 
 ```bash

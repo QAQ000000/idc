@@ -134,7 +134,7 @@ M0 已接入 Laravel 13/PHP 8.4，并建立唯一 `web/` 前端工程。现有�
 
 ### PHP 格式与框架复用
 
-安装开发依赖后执行 `composer lint`（`vendor/bin/pint --test`），修改格式用 `composer format`。Pint 版本由锁文件固定；采用 Laravel 预设的保守格式规则，关闭改写语法标记、导入和字面量的规则，避免格式整理混入自动重构。业务修改提交前与原有专项检查一起运行，不连接业务库。
+安装开发依赖后执行 `composer lint`（`vendor/bin/pint --test`），修改格式用 `composer format`。Pint 版本由锁文件固定；采用 Laravel 预设的保守格式规则，关闭改写语法标记、导入和字面量的规则，避免格式整理混入自动重构。业务修改提交前与原有专项检查一起运行，不连接业务库。基础设施保留理由、替代成本与库存缓存试点见[框架复用整理](docs/FRAMEWORK_REUSE.md)。
 
 ### 隔离集成测试
 

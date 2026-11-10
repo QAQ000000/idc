@@ -61,6 +61,8 @@ def main():
         raise RuntimeError('Browser fixture requires npm and installed web dependencies')
     if (args.runtime or args.product_refresh_runtime) and (os.geteuid() != 0 or not Path('/run/systemd/system').is_dir()):
         raise RuntimeError('Runtime verification requires root on a running systemd host')
+    # Style is a local prerequisite; reject drift before creating any test infrastructure.
+    subprocess.run([php, str(ROOT / 'vendor/bin/pint'), '--test'], cwd=ROOT, check=True)
     name = "jianyun-test-" + secrets.token_hex(6)
     env = os.environ.copy()
     redis_port, http_port = free_port(), free_port()

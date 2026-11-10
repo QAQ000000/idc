@@ -204,3 +204,9 @@ M2 已在无执行中任务时停启原 Worker，私有 MySQL 8 完整备份含 
 开发基线ea71705于00:16:32–00:16:33（Asia/Shanghai）接入既有M2。按本规程核对原进程和无在途／租约任务后，仅正常stop/start原业务Worker，PID1092819→1222885、active/running、NRestarts=0。原PHP开发HTTP无CLI OPcache、原Vite实际服务integer模块；HTTP／Worker密钥、DB、Redis及缓存环境一致。原资金／目录／实例冻结配置／任务及令牌摘要不变，27表／8迁移保持，无真实订单／付款／上游资源动作；未重启邮件或共享服务。分钟timer继续原频率自然触发。
 
 重启后00:17／00:18的分钟调度自然触发并成功结束，账单过期处理和通知sweep均为0；不替代15分钟代扣或非零履约验收。商品389只读选得4核／2GB／Ubuntu22.04／双盘40GB／15Mbps／2 IP、月付首期／续费各¥78，尚待资金授权与真实规格证据；563仍零库存。备选、原始证据位置和验收边界见[记录](M2_QUANTITY_SALES_ACCEPTANCE.md)。这次只证明同版运行接入，不冒充新数量订单的实际Worker交付。
+
+## 实例详情读取提速的M2 HTTP接入（2026-11-10）
+
+本批仅核验并重启原M2开发API（原PID831767，cwd本仓库，PHP8.4／127.0.0.1:18210），保留原环境与密钥，将私有runtime.env及HTTP进程设为 `PHP_CLI_SERVER_WORKERS=4`。父PID1628844及4个子进程共用原监听，健康200；慢上游电源请求约10.3秒期间，独立本地详情请求108ms／200，避免单进程队列阻塞。前端Vite保持18211，未建设新后端或改正式FPM部署方案。
+
+金融Worker、mail Worker与财务schedule.timer仍inactive／disabled；只读商品刷新timer保持。该并发修正不代表恢复运行门禁通过，不补历史款项或重发旧任务。页面三轮计时、同版API兼容与业务事实校验见[实例详情提速](M2_INSTANCE_LOADING.md)。

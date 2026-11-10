@@ -2,6 +2,8 @@
 
 **客户本地预览增量**：PRODUCT_LOCAL_PREVIEW默认关闭；有效完整快照通过可选LocalPreviewDriverInterface在本站后端计价，preview不调用上游，不支持／过期明确要求online。客户页面先预览，原calculate及checkout实时预检保留；本地确认独立用途并绑定金额、配置与完整履约上下文，409后强制在线重确认，原键恢复不改。无迁移，M2商品2实测及数据库误删后的恢复边界见[契约](docs/M2_LOCAL_PREVIEW.md)。
 
+**实例详情读取增量**：电源与重装先用原接口 `?view=tasks` 只读本站门禁，远端能力未加载／失败不等同任务占用；电源独立查，重装仅维护区展开时读镜像。稳定面板、15秒本地未决跟踪、原请求键／令牌及凭据离区清除保持；远端能力迟到需作废，27表无迁移，见[契约](docs/M2_INSTANCE_LOADING.md)。
+
 **商品计划刷新**：仅PRODUCT_REFRESH_IDS明确纳入的本地商品，每批最多2个、每商品10分钟间隔，独立可选oneshot／timer与MySQL会话互斥，不阻塞原财务调度。完整规则与默认组合对价、复读及发布版本检查都通过才整体替换；无变化不写商品，变化递增原JSON修订号。时间／结果独立存system_settings，库存仍Redis观察；客户calculate／checkout仍在线，选配预览按本批契约启用，无迁移，见[契约](docs/M2_PRODUCT_REFRESH.md)。
 
 **本地计价对照边界**：魔方插件提供只读计价器／对价CLI，完整支持条件不满足则整组在线回退，线上失败不能改用本地价格。客户calculate／checkout、确认指纹、原请求键和Worker预检保持；诊断hash不能充当成交凭据；原计价验证批未启用的计划刷新／客户预览已由后续独立批次承接。真实与隔离证据分开，见[契约](docs/M2_LOCAL_PRICING.md)。

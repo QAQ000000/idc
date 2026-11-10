@@ -76,7 +76,9 @@ final class ZjmfDriver implements ConnectionConfigInterface, UpstreamDriverInter
         if ($method === 'POST') { curl_setopt($curl, CURLOPT_POSTFIELDS, http_build_query($params)); }
         $started = hrtime(true);
         $ok = curl_exec($curl); $status = curl_getinfo($curl, CURLINFO_RESPONSE_CODE); curl_close($curl);
-        $stage=['/zjmf_api_login'=>'login','/cart/get_product_config'=>'configuration','/cart/get_total'=>'price'][$path]??null;
+        $stage=['/zjmf_api_login'=>'login','/cart/get_product_config'=>'configuration','/cart/get_total'=>'price',
+            '/cart/hostinfo'=>'resource','/host/header'=>'control'][$path]??null;
+        if ($path==='/provision/default' && ($params['func']??null)==='status') { $stage='power_status'; }
         if ($stage !== null) {
             // No URL, credentials, input or response data in timing logs.
             error_log(json_encode(['event'=>'zjmf_read_timing','stage'=>$stage,'elapsed_ms'=>round((hrtime(true)-$started)/1e6,1),'http_status'=>$status,'transport_ok'=>$ok!==false],JSON_THROW_ON_ERROR));

@@ -40,6 +40,12 @@ check(http('GET',"/instances/$iid/runtime",null,$at)[0]===401,'admin token canno
 check(http('GET',"/instances/$iid/runtime",null,$other)[0]===401,'nonexistent account token is rejected');
 $auth2=(new AuthService())->register(['email'=>'power-other@example.test','password'=>'OtherPower!2026']);$ot=Security::generateToken(['uid'=>(int)$auth2['user']['id']]);
 check(http('GET',"/instances/$iid/runtime",null,$ot)[0]===404,'another real customer cannot query resource state');
+$localPath="/instances/$iid/runtime?view=tasks";
+check(http('GET',$localPath)[0]===401&&http('GET',$localPath,null,$at)[0]===401&&http('GET',$localPath,null,$ot)[0]===404,'local power gate preserves authentication, customer scope and ownership');
+check(http('GET',"/instances/$iid/runtime?view=invalid",null,$token)[0]===400&&http('GET',"/instances/$iid/runtime?view[]=tasks",null,$token)[0]===400,'runtime rejects invalid or array view modes');
+$counts=fixture('/__request_counts');
+[$localStatus,$localView]=http('GET',$localPath,null,$token);
+check($localStatus===200&&$localView['data']===['blocked'=>false,'tasks'=>[]]&&fixture('/__request_counts')===$counts,'local power gate performs no upstream login or capability reads and issues no action token');
 $r=runtime();check($r['state']==='on'&&$r['actions']===['stop','reboot'],'actual state and declared capabilities determine allowed controls');
 $public=json_encode($r);check(!str_contains($public,'SECRET')&&!str_contains($public,'fixture-secret')&&!str_contains($public,'endpoint')&&!str_contains($public,'password'),'runtime projects only safe fields');
 check(command('start',$r)[0]===409&&command('hard_off',$r)[0]===400,'redundant start and unsupported hard power are rejected');
@@ -59,6 +65,8 @@ check($statuses===[200,409,409,409],'four concurrent repeated clicks insert one 
 check((int)fixture('/__state')['power_calls']===0,'HTTP submit never executes a mutating upstream command');
 check(task($tid)['invoice_id']===null&&task($tid)['action']==='power','nonfinancial power task has no invented invoice');
 check(runtime()['blocked']&&runtime()['actions']===[],'queued task immediately blocks further controls');
+$counts=fixture('/__request_counts');$local=http('GET',$localPath,null,$token)[1]['data'];
+check($local['blocked']&&$local['tasks'][0]['id']===$tid&&$local['tasks'][0]['result']==='pending'&&fixture('/__request_counts')===$counts,'queued power task is immediately visible without any upstream reads');
 check(command('reboot',$r)[0]===409,'conflicting stale operation cannot be enqueued');
 reject(fn()=>(new RenewalService())->issue($uid,$iid),'pending power task blocks renewal settlement path');
 $db->prepare("UPDATE products SET status='retired' WHERE id=?")->execute([$product]);
@@ -78,10 +86,15 @@ $db->prepare("UPDATE instances SET status='active',due_date=DATE_SUB(UTC_TIMESTA
 $db->prepare('UPDATE instances SET due_date=? WHERE id=?')->execute([$before[3],$iid]);
 $db->prepare('UPDATE providers SET status=0 WHERE id=?')->execute([$provider]);check(runtime()['actions']===[],'disabled provider fails closed');$db->prepare('UPDATE providers SET status=1 WHERE id=?')->execute([$provider]);
 $db->prepare("UPDATE invoices SET status='refund_pending' WHERE id=?")->execute([$order['invoice_id']]);check(runtime()['blocked']&&runtime()['actions']===[],'financial freeze blocks power writes');$db->prepare("UPDATE invoices SET status='paid' WHERE id=?")->execute([$order['invoice_id']]);
+$db->prepare("UPDATE invoices SET status='refund_pending' WHERE id=?")->execute([$order['invoice_id']]);$counts=fixture('/__request_counts');
+check(http('GET',$localPath,null,$token)[1]['data']['blocked']&&fixture('/__request_counts')===$counts,'local-only power gate retains financial freeze protection without an upstream dependency');
+$db->prepare("UPDATE invoices SET status='paid' WHERE id=?")->execute([$order['invoice_id']]);
 // A real lost response after executing reboot must never become another reboot.
 [$s,$v]=command('reboot');$lost=$v['data']['task_id'];$calls=fixture('/__state')['power_calls'];fixture('/__power_mode?mode=drop');$worker->runOnce('power-drop');
 check(task($lost)['status']==='investigating'&&(int)fixture('/__state')['power_calls']===$calls+1,'lost acknowledgement enters investigation after one execution');
 check(runtime()['state']==='on'&&runtime()['blocked'],'on state alone does not prove original reboot outcome');
+$counts=fixture('/__request_counts');$local=http('GET',$localPath,null,$token)[1]['data'];
+check($local['blocked']&&$local['tasks'][0]['id']===$lost&&$local['tasks'][0]['result']==='investigating'&&fixture('/__request_counts')===$counts,'unknown power outcomes remain occupied and trackable with local reads alone');
 check(command('reboot')[0]===409,'unknown result keeps the resource occupied');
 $db->prepare('UPDATE tasks SET next_retry_at=NULL WHERE id=?')->execute([$lost]);fixture('/__power_mode?mode=normal');$worker->runOnce('power-query');
 check(task($lost)['status']==='failed'&&str_starts_with(task($lost)['last_error'],'MANUAL_AUDIT_REQUIRED:'),'unqueryable request becomes durable administrator review');

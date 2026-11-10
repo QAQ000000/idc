@@ -7,7 +7,6 @@ import InstancePowerPanel from "../components/InstancePowerPanel.vue";
 import InstanceReinstallPanel from "../components/InstanceReinstallPanel.vue";
 const route = useRoute(), router = useRouter();
 const instance = ref<Instance | null>(null), loading = ref(true), busy = ref(false), error = ref(""), readFailed = ref(false), activeTab = ref("overview");
-const powerRefreshVersion = ref(0);
 const powerState = ref({ blocked: true, submitting: false, message: "" }), reinstallState = ref({ blocked: true, submitting: false, message: "" });
 const powerBlocked = computed(() => !!instance.value?.remote_instance_id && powerState.value.blocked);
 const reinstallBlocked = computed(() => !!instance.value?.remote_instance_id && reinstallState.value.blocked);
@@ -29,7 +28,7 @@ watch(credentialRegion, element => {
   }); credentialObserver.observe(element); }
 }, { flush: "post" });
 function reinstallStatus(value: typeof reinstallState.value) { reinstallState.value = value; if (value.blocked) invalidateCredentials(); }
-function reinstallChanged() { invalidateCredentials(); powerRefreshVersion.value++; void load(); }
+function reinstallChanged() { invalidateCredentials(); void load(); }
 const labels: Record<string, string> = { awaiting_payment: "待付款", provisioning: "开通中", investigating: "正在核验上游结果", needs_review: "需要人工核验", delivered: "已交付", cancelled: "已取消", compensated: "已取消并补偿至余额" };
 async function load() {
   if (busy.value) return;
@@ -197,7 +196,6 @@ VNC 控制台 ↗
             :instance-id="Number(instance.id)"
             :external-blocked="reinstallBlocked"
             :page-unavailable="readFailed || loading"
-            :refresh-version="powerRefreshVersion"
             @state="powerState = $event"
           />
           <el-card v-else shadow="never">
@@ -267,6 +265,7 @@ VNC 控制台 ↗
             :external-blocked="powerBlocked"
             :page-unavailable="readFailed || loading"
             :instance-id="Number(instance.id)"
+            :active="activeTab === 'maintenance'"
             @state="reinstallStatus"
             @changed="reinstallChanged"
           />

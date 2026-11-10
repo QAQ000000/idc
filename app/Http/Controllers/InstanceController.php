@@ -20,7 +20,11 @@ final class InstanceController
         return ApiResponse::success($s->issue(request()->bearerToken()??'',Request::id($id)))->header('Cache-Control','no-store')->header('Referrer-Policy','no-referrer');
     }
     public function runtime(string $id, \App\Services\InstancePowerService $s): \Illuminate\Http\JsonResponse
-    { return ApiResponse::success($s->runtime((int)AuthMiddleware::user()['id'],Request::id($id))); }
+    {
+        $view=request()->query('view','full');
+        if(!in_array($view,['full','tasks'],true)){throw new \App\Core\ApiException('Invalid runtime view');}
+        return ApiResponse::success($s->runtime((int)AuthMiddleware::user()['id'],Request::id($id),$view==='tasks'))->header('Cache-Control','no-store');
+    }
     public function serviceStatus(string $id, \App\Services\InstanceServiceStatusService $s): \Illuminate\Http\JsonResponse
     { return ApiResponse::success($s->reconcile(Request::id($id),(int)AuthMiddleware::user()['id']))->header('Cache-Control','no-store'); }
     public function adminServiceStatus(string $id, \App\Services\InstanceServiceStatusService $s): \Illuminate\Http\JsonResponse

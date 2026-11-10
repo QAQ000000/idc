@@ -189,7 +189,7 @@
 
 ### 3. 电源运维操作（本批已实现）
 - **请求**：`POST /api/v1/instances/{id}/power`
-- **状态及记录**：`GET /api/v1/instances/{id}/runtime` 返回 state、checked_at（UTC）、actions、blocked、2 分钟 operation_token 及最近 10 条安全 tasks。普通实例查询不访问上游。
+- **状态及记录**：`GET /api/v1/instances/{id}/runtime` 返回 state、checked_at（UTC）、actions、blocked、2 分钟 operation_token 及最近 10 条安全 tasks。普通实例查询不访问上游。同路径 `?view=tasks` 仅返回 blocked 与相同白名单 tasks，不调用上游、不签发令牌；缺省或 full 保持完整模式，其他值（含数组）400，两模式均 no-store。
 - **载荷**：`{ "action": "reboot", "operation_token": "<runtime确认>", "request_key": "<16–64位字母数字或下划线短横线>" }`，支持 reboot/start/stop。成功返回 task_id/status=pending/action，HTTP 不调用上游变更。
 - **授权与门禁**：本人有效客户身份、实例归属、active/已交付/未到期、真实产品能力和任务/退款门禁；模拟登录写操作本批拒绝。on 开放 stop/reboot，off 开放 start；重复请求/旧确认/冲突 409，越权资源 404，错误 Token 作用域 401。
 - **结果**：任务 success 仅证明命令被上游接受，状态查询与 OS 健康独立；丢响应或崩溃只读调查，无法证明结果则进入管理员待核验，不能盲目重启。管理员任务 action 筛选支持 power；super_admin 按原证据/令牌可 investigate/fulfill/close_unexecuted，无 retry/退款动作。

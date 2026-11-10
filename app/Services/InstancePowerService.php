@@ -63,20 +63,22 @@ final class InstancePowerService
     }
 
     /** Only explicit refresh performs upstream reads; the ordinary instance list remains local. */
-    public function runtime(int $user, int $id): array
+    public function runtime(int $user, int $id, bool $tasksOnly = false): array
     {
-        $i=$this->owned($user,$id);$version=$this->version($i);$state=$this->inspect($i);
-        return Database::transaction(function(PDO $db) use ($user,$id,$version,$state): array {
+        $i=$this->owned($user,$id);$version=$tasksOnly?'':$this->version($i);$state=$tasksOnly?null:$this->inspect($i);
+        return Database::transaction(function(PDO $db) use ($user,$id,$version,$state,$tasksOnly): array {
             $i=$this->owned($user,$id,true);
-            $current=$this->version($i);$blocked=false;
+            $blocked=false;
             try { self::clear($db,$id); } catch(ApiException $e) { if($e->httpStatus!==409){throw $e;} $blocked=true; }
-            $actions=self::eligible($i) && !$blocked && hash_equals($version,$current) ? self::actions($state) : [];
-            $claims=['user'=>$user,'instance'=>$id,'version'=>$current,'expires'=>time()+120,'actions'=>$actions];
-            $body=rtrim(strtr(base64_encode(json_encode($claims,JSON_THROW_ON_ERROR)),'+/','-_'),'=');
             $s=$db->prepare("SELECT id,status,last_error,created_at,updated_at,JSON_UNQUOTE(JSON_EXTRACT(payload,'$.power_action')) AS action FROM tasks WHERE instance_id=? AND action='power' ORDER BY id DESC LIMIT 10");$s->execute([$id]);
             $tasks=$s->fetchAll();
             foreach($tasks as &$t){$t['id']=(int)$t['id'];$t['result']=match($t['status']){'success'=>'accepted','failed'=>$t['last_error']==='ADMIN_VERIFIED:POWER_NOT_EXECUTED'?'not_executed':'needs_review',default=>$t['status']};unset($t['last_error']);}
             unset($t);
+            if($tasksOnly){return ['blocked'=>$blocked,'tasks'=>$tasks];}
+            $current=$this->version($i);
+            $actions=self::eligible($i) && !$blocked && hash_equals($version,$current) ? self::actions($state) : [];
+            $claims=['user'=>$user,'instance'=>$id,'version'=>$current,'expires'=>time()+120,'actions'=>$actions];
+            $body=rtrim(strtr(base64_encode(json_encode($claims,JSON_THROW_ON_ERROR)),'+/','-_'),'=');
             return ['state'=>hash_equals($version,$current)?$state->state:'unknown','checked_at'=>gmdate('Y-m-d H:i:s'),
                 'actions'=>$actions,'blocked'=>$blocked,'operation_token'=>$body.'.'.Security::requestFingerprint('power:'.$body),'tasks'=>$tasks];
         });

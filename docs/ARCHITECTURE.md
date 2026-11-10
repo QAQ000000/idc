@@ -1,5 +1,7 @@
 # JianYun (简云) · 系统全景架构设计文档
 
+**实例读取编排**：电源runtime新增与重装一致的本地tasks模式；初始门禁与远端能力分离，镜像按需读取、面板持续跟踪原任务。没有缓存事实或新驱动契约，原签发／提交／Worker校验保持，见[契约](M2_INSTANCE_LOADING.md)。
+
 **客户预览接入**：CatalogService通过可选LocalPreviewDriverInterface调用插件纯本地计价，独立preview入口不读取上游连接凭据、不发网络请求。成功发布观察hash及期限控制可用性；lp1确认绑定成交指纹与完整履约上下文，Billing仍实时预检并在原事务锁内比较。未支持只要求online，不以旧预览掩盖在线失败，见[契约](M2_LOCAL_PREVIEW.md)。
 
 **有界快照刷新**：ProductRefreshService只处理显式本地ID，独立可选oneshot／timer、不占金融Worker或schedule；MySQL会话互斥／失连拒绝发布，网络准备在事务外。核心通过可选SnapshotRulesDriverInterface要求完整规则和对价，魔方语义仍在插件；原persist事务发布、内容不变不写商品、变化推进JSON修订号，运行观察独立settings行。无新表、客户提交在线核价与历史语义保持，见[契约](M2_PRODUCT_REFRESH.md)。
@@ -30,7 +32,7 @@
 
 **客户重装增量**：InstanceReinstallService 通过可选 ReinstallDriverInterface 读取镜像与能力，HTTP 只落非财务 reinstall Outbox；复用任务门禁、令牌、调查与管理员同事务审计。已知原资源绑定／账期／价格不可改写，正常受理自动只读跟踪；空闲预检／明确受理／结构化重装类型（不解析中文）后恢复空闲且取得原资源凭据，原子同步密文并以 execution_ended 结束占用，不声称系统成功。未知／漏观察／超时才转人工；不能以 Active／镜像更新推定成功；不新增表、控制台中继或自动退款。兼容／迁移和验证见 [本批契约](M2_INSTANCE_REINSTALL.md)。
 
-**状态读取分工**：客户重装 `?view=tasks` 仅查询原 MySQL 任务与业务门禁，不读取驱动能力或生成操作确认；Worker 继续独立查询真实执行。页面结束后完整重取能力与确认。上游单独返回执行中也可触发有限页面轮询，不能据此写入任务证据、修改账期或解除占用；不增缓存事实副本、接口抽象或表。
+**状态读取分工**：客户重装 `?view=tasks` 仅查询原 MySQL 任务与业务门禁，不读取驱动能力或生成操作确认；Worker 继续独立查询真实执行。页面结束后失效旧能力；电源独立重取，重装镜像／确认留待维护区已展开时读取。上游单独返回执行中也可触发有限页面轮询，不能据此写入任务证据、修改账期或解除占用；不增缓存事实副本、接口抽象或表。
 
 **上游接入增量**：ProviderConnectionService 经可选 ConnectionConfigInterface 规范化并加密新增连接，原 CLI 安装器复用它；AdminProviderService 提供安全投影、当前超级管理员写权限、版本、重放和同事务审计。账号命名空间不可替换；验证仅复用 ProductSnapshotService.prepare 的只读配置／报价，不调用具体驱动类或增表，不混入商品／支付写入。见 [接入契约](M2_PROVIDER_CONNECTIONS.md)。
 

@@ -24,7 +24,7 @@ final class AdminProductController
 
     public function show(string $id, HttpRequest $r, AdminProductService $s): JsonResponse
     {
-        return ApiResponse::success($s->detail(Request::id($id), $r->query()));
+        return ApiResponse::success($s->detail(Request::id($id), $r->query(), (int) AdminAuthMiddleware::admin()['id']));
     }
 
     public function update(string $id, AdminProductService $s): JsonResponse

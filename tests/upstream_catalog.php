@@ -230,4 +230,75 @@ foreach ([0, -1, 2147483648] as $bad) {
         catalogCheck(true, 'DTO rejects PID '.$bad);
     }
 }
+// Batch UI reuses these endpoints; typed outcomes and audit lookup never bypass import gates.
+function catalogProductHttp(string $method, string $path, ?array $body, string $token): array
+{
+    $h = curl_init(getenv('TEST_BASE_URL').'/api/v1/admin/products'.$path);
+    curl_setopt_array($h, [CURLOPT_RETURNTRANSFER => true, CURLOPT_CUSTOMREQUEST => $method, CURLOPT_TIMEOUT => 30,
+        CURLOPT_HTTPHEADER => ['Accept: application/json', 'Content-Type: application/json', 'Authorization: Bearer '.$token]]);
+    if ($body !== null) curl_setopt($h, CURLOPT_POSTFIELDS, json_encode($body, JSON_THROW_ON_ERROR));
+    $raw = curl_exec($h);
+    $status = curl_getinfo($h, CURLINFO_RESPONSE_CODE);
+    curl_close($h);
+
+    return [$status, json_decode($raw, true, 64, JSON_THROW_ON_ERROR)];
+}
+$operation = hash('sha256', $body['preview_token']);
+$lookup = '/'.$local.'?import_operation='.$operation;
+$facts = catalogFacts();
+$calls = catalogCounts();
+[$status, $response] = catalogProductHttp('GET', $lookup, null, $token);
+catalogCheck($status === 200 && $response['data']['import_operation']['matched'], 'original persistent audit matches read-only operation hash');
+catalogCheck(! str_contains(json_encode($response), $operation) && ! str_contains(json_encode($response), $body['preview_token']), 'operation lookup does not echo hash or preview token');
+[$status, $response] = catalogProductHttp('GET', '/'.$local.'?import_operation='.str_repeat('a', 64), null, $token);
+catalogCheck($status === 200 && ! $response['data']['import_operation']['matched'], 'unrelated hash never proves an existing binding was this import');
+catalogCheck(catalogProductHttp('GET', $lookup, null, $tokens['support'])[0] === 403, 'non-super cannot use operation recovery projection');
+catalogCheck(catalogProductHttp('GET', '/'.$local.'?import_operation[]=bad', null, $token)[0] === 400, 'operation lookup rejects arrays');
+catalogCheck(catalogFacts() === $facts && catalogCounts() === $calls, 'operation recovery writes no facts and calls no upstream');
+[$status, $response] = catalogProductHttp('POST', '/import', $body, $token);
+catalogCheck($status === 200 && $response['data']['outcome'] === 'replayed' && $response['data']['product_id'] === $local, 'HTTP replay labels original operation separately from created');
+$expired = $body;
+$expired['preview_token'] = (time() - 1).'.'.str_repeat('a', 64);
+[$status, $response] = catalogProductHttp('POST', '/import', $expired, $token);
+catalogCheck($status === 409 && $response['code'] === 40911, 'expired confirmation has stable machine code and cannot write');
+[$status, $response] = catalogProductHttp('POST', '/import', $different + ['preview_token' => $p['preview_token'], 'evidence' => '已有商品不可当作本次成功'], $token);
+catalogCheck($status === 409 && $response['code'] === 40913, 'existing binding is a typed conflict, never fresh success');
+$db->prepare('UPDATE providers SET status=0 WHERE id=?')->execute([$provider]);
+[$status, $response] = catalogProductHttp('POST', '/preview', $input, $token);
+catalogCheck($status === 409 && $response['code'] === 40910, 'disabled provider rejected before precheck with batch stop code');
+$db->prepare('UPDATE providers SET status=1 WHERE id=?')->execute([$provider]);
+$stockInput = array_replace($input, ['remote_pid' => 563]);
+[$status, $response] = catalogProductHttp('POST', '/preview', $stockInput, $token);
+catalogCheck($status === 409 && $response['code'] === 40914, 'sold-out or unsupported item is a typed local rule rejection');
+$newInput = array_replace($input, ['remote_pid' => 903, 'type' => 'software']);
+[$status, $response] = catalogProductHttp('POST', '/preview', $newInput, $token);
+catalogCheck($status === 200, 'independent next product can preview after item rejection');
+$newBody = $newInput + ['preview_token' => $response['data']['preview_token'], 'evidence' => '隔离顺序导入下一商品'];
+[$status, $response] = catalogProductHttp('POST', '/import', $newBody, $token);
+$newLocal = $response['data']['product_id'] ?? 0;
+catalogCheck($status === 200 && $response['data']['outcome'] === 'created' && $db->query('SELECT status FROM products WHERE id='.(int) $newLocal)->fetchColumn() === 'hidden', 'HTTP fresh import has created outcome and remains hidden');
+$second = $auth->create(['username' => 'catalog-second-super', 'email' => 'catalog-second@example.test', 'password' => 'CatalogSecond!2026', 'role' => 'super_admin']);
+$secondToken = Security::generateToken(['uid' => $second, 'sub_type' => 'admin', 'av' => AdminAuthService::sessionVersion($db, $second)]);
+[$status,$response] = catalogProductHttp('GET', $lookup, null, $secondToken);
+catalogCheck($status === 200 && ! $response['data']['import_operation']['matched'], 'another super cannot claim another actor operation as own recovery');
+// Lookup is independent of the first audit page: old matched evidence must remain recoverable.
+for ($i = 0; $i < 21; $i++) $db->prepare("INSERT INTO admin_audit_logs(admin_id,action,target_type,target_id,context,ip) VALUES(?,'product_update','product',?,'{}','127.0.0.1')")->execute([$admin, $local]);
+[$status,$response] = catalogProductHttp('GET', $lookup, null, $token);
+catalogCheck($status === 200 && $response['data']['audit']['total'] > 20 && $response['data']['import_operation']['matched'], 'audit hash lookup finds original operation beyond first page');
+$priceInput = array_replace($input, ['remote_pid' => 14, 'type' => 'cloud']);
+file_get_contents(getenv('UPSTREAM_TEST_URL').'/__config_mode?mode=normal');
+$pricePreview = $products->preview($admin, $priceInput);
+file_get_contents(getenv('UPSTREAM_TEST_URL').'/__config_mode?mode=price');
+[$status,$response] = catalogProductHttp('POST', '/import', $priceInput + ['preview_token' => $pricePreview['preview_token'], 'evidence' => '变价不得静默继续导入'], $token);
+catalogCheck($status === 409 && $response['code'] === 40912, 'real upstream quote drift requires explicit new confirmation');
+file_get_contents(getenv('UPSTREAM_TEST_URL').'/__config_mode?mode=normal');
+// Recovery uses local bindings, even if catalog discovery or the connection is unavailable.
+$db->prepare('UPDATE providers SET status=0 WHERE id=?')->execute([$provider]);
+$calls = catalogCounts();
+[$status, $response] = catalogProductHttp('GET', '?provider_id='.$provider.'&remote_pid=903&per_page=2', null, $token);
+catalogCheck($status === 200 && $response['data']['total'] === 1 && $response['data']['items'][0]['id'] === $newLocal, 'local provider and PID lookup stays available when connection disabled');
+[$status, $response] = catalogProductHttp('GET', $lookup, null, $token);
+catalogCheck($status === 200 && $response['data']['import_operation']['matched'] && catalogCounts() === $calls, 'disabled supplier cannot block read-only original audit recovery or cause upstream reads');
+catalogCheck(catalogProductHttp('GET', '?remote_pid[]=903', null, $token)[0] === 400, 'remote PID lookup rejects non-scalar filters');
+$db->prepare('UPDATE providers SET status=1 WHERE id=?')->execute([$provider]);
 echo 'Upstream catalog checks: '.$checks.PHP_EOL;

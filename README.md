@@ -164,9 +164,11 @@ REDIS_SERVER=/absolute/path/to/redis-server python3 scripts/test_integration.py
 
 隔离网页验收：`REDIS_SERVER=/path/to/redis-server python3 -B scripts/test_integration.py --browser`。该脚本创建独立测试库/服务，测试账号 `browser-admin` / `BrowserAdmin!2026`、只读 `browser-support` / `BrowserSupport!2026` 仅在该隔离库有效，包含两条人工核验样本。不得将测试 fixture 导入业务库；退出时按提示回车清理。
 
-## 上游目录浏览与单品预填导入
+## 上游目录浏览与单品／多选顺序导入
 
-超级管理员在 `/admin/providers/:id` 的“上游商品与选品导入”分区浏览当前账号可见候选，按分类、名称／PID、导入和观察库存筛选。目录缓存10分钟，本地导入状态每次重读；强制同步限30秒一次，禁用连接／失效会话不能借缓存读取。候选仍须走原预览、确认及默认下架导入；抽屉提交中禁止关闭，结果未知保留原确认并先只读核对。第二阶段批量调度尚未实现，不自动上架或购买，见[规范与证据](docs/UPSTREAM_CATALOG_DISCOVERY_AND_BATCH_IMPORT_SPEC.md)。
+超级管理员在 `/admin/providers/:id` 的“上游商品与选品导入”分区浏览当前账号可见候选，按分类、名称／PID、导入和观察库存筛选。目录缓存10分钟，本地导入状态每次重读；强制同步限30秒一次，禁用连接／失效会话不能借缓存读取。候选仍须走原预览、确认及默认下架导入；抽屉提交中禁止关闭，结果未知保留原确认并先只读核对。支持多选顺序导入：最多20项、每组5项预检，人工确认摘要后逐项提交；单项规则失败可继续，未知结果停发并只读核对，过期／变价须重新确认。不自动上架或购买，见[规范与证据](docs/UPSTREAM_CATALOG_DISCOVERY_AND_BATCH_IMPORT_SPEC.md)。
+
+调度器专项：`npm --prefix web run test:catalog-batch`（使用前端已安装的TypeScript，仅在内存验证，不连接数据库／上游）。
 
 ## 商品管理、上下架与加价
 

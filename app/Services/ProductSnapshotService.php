@@ -57,7 +57,12 @@ final class ProductSnapshotService
                 throw new ApiException('Driver does not support schema snapshots', 409, 409);
             }
             $schema = $driver->getFormSchema($remotePid, $credentials);
-            $form = $driver->describeForm($schema);
+            try {
+                $form = $driver->describeForm($schema);
+            } catch (\Throwable) {
+                // Projection is pure: an unsupported product is distinct from transport/auth failure.
+                throw new ApiException('Product configuration is not supported; no snapshot saved', 409, 40914);
+            }
             $defaults = ConfigOptions::defaults($form);
             $config = ConfigOptions::validate($form, $input['config_options'] ?? $defaults);
             $prices = [];
@@ -87,6 +92,8 @@ final class ProductSnapshotService
             if ($driver instanceof SnapshotRulesDriverInterface) {
                 $schema = $driver->snapshotContent($schema);
             }
+        } catch (\App\Plugins\Providers\UpstreamOutOfStock) {
+            throw new ApiException('Upstream product sold out; no snapshot saved', 409, 40914);
         } catch (ApiException $e) {
             throw $e;
         } catch (\Throwable) {

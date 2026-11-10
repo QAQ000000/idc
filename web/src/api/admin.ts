@@ -1,5 +1,5 @@
 import { api } from "./request";
-export const adminApi = <T>(path: string, options: { method?: string; body?: unknown } = {}) =>
+export const adminApi = <T>(path: string, options: { method?: string; body?: unknown; signal?: AbortSignal } = {}) =>
   api<T>("/admin" + path, { ...options, scope: "admin" });
 export interface Admin {
   id: number; username: string; email: string;

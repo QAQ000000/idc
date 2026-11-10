@@ -30,6 +30,10 @@ final class AdminProductService
             $where[] = 'p.provider_id=?';
             $args[] = Request::id($q['provider_id']);
         }
+        if (isset($q['remote_pid']) && $q['remote_pid'] !== '') {
+            $where[] = 'p.remote_pid=?';
+            $args[] = Request::id($q['remote_pid']);
+        }
         if (isset($q['name']) && $q['name'] !== '') {
             $where[] = "p.name LIKE ? ESCAPE '!'";
             $args[] = '%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], Request::text($q, 'name', 1, 100)).'%';
@@ -60,7 +64,7 @@ final class AdminProductService
         return $rows;
     }
 
-    public function detail(int $id, array $query = []): array
+    public function detail(int $id, array $query = [], ?int $admin = null): array
     {
         $p = $this->read($id);
         $result = $this->project($p);
@@ -96,6 +100,15 @@ final class AdminProductService
             $audit[] = $row;
         }
         $result['audit'] = ['items' => $audit, 'total' => $total, 'page' => $page, 'per_page' => 20];
+        if (isset($query['import_operation'])) {
+            $this->authorize($admin ?? 0);
+            $operation = Request::text($query, 'import_operation', 64, 64);
+            if (! preg_match('/^[a-f0-9]{64}$/D', $operation)) {
+                throw new ApiException('Invalid import operation');
+            }
+            // Read-only lookup remains valid after preview expiry; never authorizes a new import.
+            $result['import_operation'] = ['matched' => $this->replay($db, $admin, $operation) === $id];
+        }
 
         return $result;
     }
@@ -246,6 +259,11 @@ final class AdminProductService
     private function prepared(array $input, ?int $id): array
     {
         $p = $this->snapshotInput($input, $id);
+        $s = Database::getInstance()->prepare('SELECT status FROM providers WHERE id=?');
+        $s->execute([Request::id($p['provider_id'] ?? null)]);
+        if ((int) $s->fetchColumn() !== 1) {
+            throw new ApiException('Provider disabled', 409, 40910);
+        }
         if (($p['config_options'] ?? null) === null) {
             unset($p['config_options']);
         }
@@ -273,16 +291,16 @@ final class AdminProductService
         $evidence = $this->evidence($input);
         $token = Request::text($input, 'preview_token', 75, 75);
         if (! preg_match('/^([0-9]{10})\.([a-f0-9]{64})$/D', $token, $m) || (int) $m[1] < time() || (int) $m[1] > time() + 300) {
-            throw new ApiException('Snapshot preview expired; preview again', 409, 409);
+            throw new ApiException('Snapshot preview expired; preview again', 409, 40911);
         }
         $operation = hash('sha256', $token);
         // A committed import can be safely found after a lost response, without re-fetching upstream.
         if (! $id && ($done = $this->replay(Database::getInstance(), $admin, $operation))) {
-            return ['product_id' => $done];
+            return ['product_id' => $done, 'outcome' => 'replayed'];
         }
         $p = $this->prepared($input, $id);
         if (! hash_equals($m[2], $this->signature($admin, $p, $input, (int) $m[1]))) {
-            throw new ApiException('Preview or upstream changed; preview again', 409, 409);
+            throw new ApiException('Preview or upstream changed; preview again', 409, 40912);
         }
 
         return Database::transaction(function (PDO $db) use ($admin, $input, $id, $p, $evidence, $operation): array {
@@ -290,7 +308,7 @@ final class AdminProductService
             $s = $db->prepare('SELECT status FROM providers WHERE id=? FOR UPDATE');
             $s->execute([$p['provider_id']]);
             if ((int) $s->fetchColumn() !== 1) {
-                throw new ApiException('Provider disabled', 409, 409);
+                throw new ApiException('Provider disabled', 409, 40910);
             }
             if ($id) {
                 $s = $db->prepare('SELECT * FROM products WHERE id=? FOR UPDATE');
@@ -299,19 +317,19 @@ final class AdminProductService
                 $this->checkVersion($old, $input);
             } else {
                 if ($done = $this->replay($db, $admin, $operation)) {
-                    return ['product_id' => $done];
+                    return ['product_id' => $done, 'outcome' => 'replayed'];
                 }
                 $s = $db->prepare('SELECT id FROM products WHERE provider_id=? AND remote_pid=? LIMIT 1 FOR UPDATE');
                 $s->execute([$p['provider_id'], $p['remote_pid']]);
                 if ($s->fetchColumn()) {
-                    throw new ApiException('Product already imported; refresh the existing product', 409, 409);
+                    throw new ApiException('Product already imported; refresh the existing product', 409, 40913);
                 }
             }
             $this->authorize($admin, $db);
             $result = (new ProductSnapshotService())->persist($db, $p, 'hidden');
             $this->audit($db, $admin, $result['product_id'], $id ? 'product_snapshot_refresh' : 'product_import', ['evidence' => $evidence, 'operation_key' => $operation, 'before' => $id ? ['name' => $old['name'], 'status' => $old['status'], 'snapshot_hash' => hash('sha256', $old['config_cache'])] : null, 'after' => ['provider_id' => $p['provider_id'], 'remote_pid' => $p['remote_pid'], 'billing_cycles' => array_keys($p['prices']), 'config_options' => $p['config_options'], 'schema_hash' => ConfigOptions::hash($p['fields'])], 'prices' => $p['prices']]);
 
-            return $result;
+            return $id ? $result : $result + ['outcome' => 'created'];
         });
     }
 

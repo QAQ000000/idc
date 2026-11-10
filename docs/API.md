@@ -591,3 +591,10 @@ GET返回account={id,email,status,version}、audit=[{id,admin_id,username,action
 目录有效期600秒，强制刷新同连接30秒限频（429），并发读取占用409；禁用连接／能力不支持409、无超管权限403、过期／撤销会话401、供应商协议／网络或缓存异常503。不得用陈旧目录作为实时成功响应；查询不自动写商品或上架。`ProviderConnection.catalog_supported`是新增可选能力投影。
 
 单品沿用`POST /admin/products/preview`及`POST /admin/products/import`，无新导入接口；默认hidden与同事务审计不变。同preview_token有效期内重放返回原product_id，其他已存在绑定仍409；过期后的未知操作先从原商品详情与审计核对，不承诺过期令牌直接重放。完整契约见[规范](UPSTREAM_CATALOG_DISCOVERY_AND_BATCH_IMPORT_SPEC.md)。
+
+
+### 多选顺序导入兼容增量（2026-11-11）
+
+不新增批量端点。`POST /admin/products/import`成功添加`outcome=created|replayed`，保留原product_id及其他字段；重复绑定仍409，绝不作为本批成功。原HTTP状态保持，code细分40910连接禁用、40911确认过期、40912配置／价格漂移、40913已有绑定、40914纯配置投影不支持或明确售罄。其他无法分类409／读取异常整批暂停，提交5xx或无可信结果待核对；400／422权威单品拒绝可继续。原快照刷新响应不加outcome，原客户端只读product_id继续兼容。
+
+`GET /admin/products/{id}?import_operation=<64位小写SHA256(preview_token)>`是原详情可选只读参数，额外返回`import_operation={matched:boolean}`；仅当前超管核对本人product_import审计，独立于审计第一页及令牌有效期，不回显hash或令牌、不发上游请求、不授权写入。空／数组／非hex参数400，其他角色403；不匹配仍为未知，不能凭已有product_id认定成功。普通详情不提供此字段。原商品列表新增可选remote_pid正整数筛选，可与provider_id组合用于本地精确查找，不依赖目录或连接启用。分页／金额／权限白名单保持，完整边界见[第二阶段契约](UPSTREAM_CATALOG_DISCOVERY_AND_BATCH_IMPORT_SPEC.md#第二阶段实施契约2026-11-11)。

@@ -4,6 +4,7 @@ export class ApiError extends Error {
     message: string,
     public status: number,
     public businessResponse = false,
+    public code = status,
   ) {
     super(message);
   }
@@ -38,7 +39,7 @@ export async function api<T>(
       sessionStorage.removeItem(key);
       window.dispatchEvent(new Event(options.scope === "admin" ? "jianyun:admin-unauthorized" : "jianyun:unauthorized"));
     }
-    throw new ApiError(result.msg || "请求失败", response.status, Number.isInteger(result.code) && result.code > 0 && typeof result.msg === "string");
+    throw new ApiError(result.msg || "请求失败", response.status, Number.isInteger(result.code) && result.code > 0 && typeof result.msg === "string", result.code);
   }
   return result.data;
 }

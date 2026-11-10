@@ -1,6 +1,6 @@
 # JianYun (简云) · 数据库设计字典 (Database Schema)
 
-**上游目录发现**：候选仅存600秒Laravel Cache，products原provider_id／remote_pid实时叠加导入状态；不建目录镜像表或批次表。原商品／审计同事务导入保持，27表／DDL／迁移不变，见[规范](UPSTREAM_CATALOG_DISCOVERY_AND_BATCH_IMPORT_SPEC.md)。
+**上游目录发现**：候选仅存600秒Laravel Cache，products原provider_id／remote_pid实时叠加导入状态；不建目录镜像表或批次表。第二阶段批次与原确认仅存页内内存，原admin_audit_logs.operation_key（JSON字段）用于只读找回，无DDL变更。原商品／审计同事务导入保持，27表／DDL／迁移不变，见[规范](UPSTREAM_CATALOG_DISCOVERY_AND_BATCH_IMPORT_SPEC.md)。
 
 **实例展示缓存（2026-11-10）**：电源观察／安全镜像投影及加密上游Token仅存短期Redis，任务和资金门禁仍读MySQL；无新增业务事实副本、表、DDL或迁移，仍27表，见[契约](M2_INSTANCE_DISPLAY_CACHE.md)。
 

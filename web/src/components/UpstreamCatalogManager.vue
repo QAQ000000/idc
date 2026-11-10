@@ -4,10 +4,20 @@ import { adminApi } from "../api/admin";
 import type { UpstreamCatalog, UpstreamCatalogItem } from "../api/adminProviders";
 import { message } from "../api/request";
 import AdminSnapshotForm from "./AdminSnapshotForm.vue";
+import CatalogImportBatch from "./CatalogImportBatch.vue";
 const props = defineProps<{ providerId: number; enabled: boolean }>();
 const catalog = ref<UpstreamCatalog>(), loading = ref(false), error = ref("");
 const search = ref(""), category = ref(""), onlyNew = ref(false), onlyStock = ref(false), page = ref(1);
 const selected = ref<UpstreamCatalogItem>(), drawer = ref(false), formState = ref({ busy: false, unknown: false });
+const chosen = ref<UpstreamCatalogItem[]>([]), batchState = ref({ running: false, unknown: false, active: false });
+const selectionLocked = computed(() => batchState.value.active || formState.value.busy || formState.value.unknown || !!selected.value || !props.enabled);
+function toggle(item: UpstreamCatalogItem) {
+  if (selectionLocked.value || item.imported || item.type === "unsupported") return;
+  const index = chosen.value.findIndex(row => row.remote_pid === item.remote_pid);
+  if (index >= 0) chosen.value.splice(index, 1);
+  else if (chosen.value.length < 20) chosen.value.push(item);
+}
+watch(catalog, value => { if (value) chosen.value = chosen.value.flatMap(item => { const latest = value.items.find(row => row.remote_pid === item.remote_pid); return latest && !latest.imported && latest.type !== "unsupported" ? [latest] : []; }); });
 const localLabels: Record<string,string> = { hidden: "下架", active: "在售", retired: "停售" };
 const types: Record<string,string> = { cloud: "云服务器", dedicated: "独立服务器", cdn: "CDN", hosting: "虚拟主机", software: "软件", unsupported: "需人工核验" };
 const stockLabels = { in_stock: "有货", sold_out: "售罄", unlimited: "不限", unknown: "未知" };
@@ -30,7 +40,7 @@ async function load(refresh = false) {
   finally { if (version === requestVersion) loading.value = false; }
 }
 function open(item: UpstreamCatalogItem) {
-  if (formState.value.busy || !props.enabled) return;
+  if (formState.value.busy || batchState.value.active || !props.enabled) return;
   if (!formState.value.unknown) { selected.value = item; formState.value = { busy: false, unknown: false }; }
   drawer.value = true;
 }
@@ -56,13 +66,15 @@ onBeforeUnmount(() => ++requestVersion);
     <el-skeleton v-if="loading && !catalog" :rows="5" animated />
     <p v-if="catalog">当前匹配 {{ filtered.length }} 项</p>
     <el-table v-if="catalog" :data="rows" row-key="remote_pid" empty-text="没有匹配的候选商品" class="catalog-table">
+      <el-table-column label="多选" width="64"><template #default="{ row }"><el-checkbox :model-value="chosen.some(item => item.remote_pid === row.remote_pid)" :aria-label="`选择商品 #${row.remote_pid}`" :disabled="selectionLocked || row.imported || row.type === 'unsupported' || (chosen.length >= 20 && !chosen.some(item => item.remote_pid === row.remote_pid))" @change="toggle(row)" /></template></el-table-column>
       <el-table-column label="候选商品" min-width="220"><template #default="{ row }"><strong>#{{ row.remote_pid }} · {{ row.name }}</strong><p>{{ row.category }} · {{ types[row.type] || '需人工核验' }}<span v-if="row.hidden"> · 上游隐藏</span></p><p class="catalog-description">{{ row.description }}</p></template></el-table-column>
       <el-table-column label="观察库存" width="110"><template #default="{ row }">{{ stockLabels[row.stock_state as keyof typeof stockLabels] }}<span v-if="row.stock_qty !== null"> · {{ row.stock_qty }}</span></template></el-table-column>
-      <el-table-column label="本地导入状态" min-width="150"><template #default="{ row }"><RouterLink v-if="row.imported" :to="`/admin/products/${row.local_product_id}`">已导入 #{{ row.local_product_id }} · {{ localLabels[row.local_status] }}</RouterLink><el-button v-else :disabled="!enabled || formState.busy || formState.unknown || row.type === 'unsupported'" @click="open(row)">预填导入 #{{ row.remote_pid }}</el-button></template></el-table-column>
+      <el-table-column label="本地导入状态" min-width="150"><template #default="{ row }"><RouterLink v-if="row.imported" :to="`/admin/products/${row.local_product_id}`">已导入 #{{ row.local_product_id }} · {{ localLabels[row.local_status] }}</RouterLink><el-button v-else :disabled="!enabled || batchState.active || formState.busy || formState.unknown || row.type === 'unsupported'" @click="open(row)">预填导入 #{{ row.remote_pid }}</el-button></template></el-table-column>
     </el-table>
-    <div v-if="catalog" class="catalog-cards"><el-card v-for="item in rows" :key="item.remote_pid" shadow="never"><h3>#{{ item.remote_pid }} · {{ item.name }}</h3><p>{{ item.category }} · {{ types[item.type] }}</p><p>{{ stockLabels[item.stock_state] }}<span v-if="item.stock_qty !== null"> · {{ item.stock_qty }}</span><span v-if="item.hidden"> · 上游隐藏</span></p><p class="catalog-description">{{ item.description }}</p><RouterLink v-if="item.imported" :to="`/admin/products/${item.local_product_id}`">已导入 #{{ item.local_product_id }} · {{ localLabels[item.local_status || ''] }}</RouterLink><el-button v-else :disabled="!enabled || formState.busy || formState.unknown || item.type === 'unsupported'" @click="open(item)">预填导入 #{{ item.remote_pid }}</el-button></el-card></div>
+    <div v-if="catalog" class="catalog-cards"><el-card v-for="item in rows" :key="item.remote_pid" shadow="never"><el-checkbox :model-value="chosen.some(row => row.remote_pid === item.remote_pid)" :aria-label="`选择商品 #${item.remote_pid}`" :disabled="selectionLocked || item.imported || item.type === 'unsupported' || (chosen.length >= 20 && !chosen.some(row => row.remote_pid === item.remote_pid))" @change="toggle(item)">选择 #{{ item.remote_pid }}</el-checkbox><h3>#{{ item.remote_pid }} · {{ item.name }}</h3><p>{{ item.category }} · {{ types[item.type] }}</p><p>{{ stockLabels[item.stock_state] }}<span v-if="item.stock_qty !== null"> · {{ item.stock_qty }}</span><span v-if="item.hidden"> · 上游隐藏</span></p><p class="catalog-description">{{ item.description }}</p><RouterLink v-if="item.imported" :to="`/admin/products/${item.local_product_id}`">已导入 #{{ item.local_product_id }} · {{ localLabels[item.local_status || ''] }}</RouterLink><el-button v-else :disabled="!enabled || batchState.active || formState.busy || formState.unknown || item.type === 'unsupported'" @click="open(item)">预填导入 #{{ item.remote_pid }}</el-button></el-card></div>
     <el-pagination v-if="catalog" v-model:current-page="page" :page-size="20" :total="filtered.length" :pager-count="5" layout="prev, pager, next" />
-    <p class="muted">刷新浏览器会清除内存草稿，已导入商品可重新读取核对；本批不支持批量导入。</p>
+    <CatalogImportBatch :provider-id="providerId" :selection="chosen" :enabled="enabled" :blocked="formState.busy || formState.unknown || !!selected" @state="batchState = $event" @created="chosen = []" @imported="load()" />
+    <p class="muted">最多选择20项，可跨筛选和分页选择。刷新浏览器会清除内存草稿和批次；已导入商品可重新读取核对，不自动续跑。</p>
     <el-drawer v-model="drawer" title="从候选预填单品导入" class="catalog-import-drawer" size="min(640px, 100vw)" :close-on-click-modal="!formState.busy" :close-on-press-escape="!formState.busy" :show-close="!formState.busy" :before-close="beforeClose" @closed="closed">
       <template v-if="selected"><p>当前连接 #{{ providerId }} · 候选 #{{ selected.remote_pid }}</p><AdminSnapshotForm :key="selected.remote_pid" :initial="{ provider_id: providerId, remote_pid: selected.remote_pid, name: selected.name, type: selected.type }" embedded @saved="saved" @state="formState = $event" /><el-button v-if="!formState.busy" @click="load()">只读核对目录导入状态</el-button></template>
     </el-drawer>

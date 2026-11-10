@@ -5,7 +5,7 @@ import { api, ApiError, message } from "../api/request";
 const props = defineProps<{ instanceId: number; externalBlocked?: boolean; pageUnavailable?: boolean; active?: boolean }>();
 const emit = defineEmits<{ blocked: [value: boolean]; changed: []; state: [value: { blocked: boolean; submitting: boolean; message: string }] }>();
 interface View {
-  state: string; available: boolean; blocked: boolean; operation_token: string;
+  checked_at?: string | null; cached?: boolean; state: string; available: boolean; blocked: boolean; operation_token: string;
   images: { id: string; name: string }[]; password_mode: string; data_disk: string;
   tasks: { id: number; status: string; image_name: string; result: string; accepted: boolean; updated_at: string }[];
 }
@@ -33,7 +33,7 @@ async function refresh(tasksOnly = !wantsOptions.value) {
   readingFull = !tracking; fullRefreshQueued = false; clearTimeout(timer); busy.value = true;
   const version = capabilityVersion;
   try {
-    const update = await api<View | TaskView>(`/instances/${props.instanceId}/reinstall${tracking ? "?view=tasks" : ""}`);
+    const update = await api<View | TaskView>(`/instances/${props.instanceId}/reinstall${tracking ? "?view=tasks" : "?view=images"}`);
     if (disposed) return;
     const current: View = tracking ? { ...view.value, ...update, available: false, operation_token: "" } : update as View;
     localReady.value = true; localError.value = "";
@@ -44,7 +44,7 @@ async function refresh(tasksOnly = !wantsOptions.value) {
       view.value = { ...view.value, blocked: current.blocked, tasks: current.tasks };
       if (changed || current.blocked) invalidateCapability();
     } else {
-      view.value = current; error.value = ""; optionsReady.value = true;
+      view.value = { ...current, available: current.state === "available" && !current.blocked, operation_token: "" }; error.value = ""; optionsReady.value = true;
       if (version !== capabilityVersion || props.externalBlocked || current.blocked) { invalidateCapability(); fullRefreshQueued = true; }
     }
     if (intention.value && current.tasks.some(t => intention.value!.taskId ? t.id === intention.value!.taskId : t.id > intention.value!.beforeTask)) intention.value = undefined;
@@ -70,14 +70,27 @@ function toggle(event: Event) { opened.value = (event.target as HTMLDetailsEleme
 async function submit() {
   if (busy.value || blocked.value || props.externalBlocked || props.pageUnavailable || !view.value?.available || !image.value || !confirmed.value) return;
   const selected = view.value.images.find(v => v.id === image.value); if (!selected) return;
-  const token = view.value.operation_token, beforeTask = Math.max(0, ...view.value.tasks.map(t => t.id));
+  let token = "";
+  const version = capabilityVersion, beforeTask = Math.max(0, ...view.value.tasks.map(t => t.id));
   clearTimeout(timer); busy.value = true; submitting.value = true; error.value = ""; notice.value = "";
   try {
+    // Cached images are selection aids only; acquire fresh capabilities before clear-disk confirmation.
+    const prepared = await api<View>(`/instances/${props.instanceId}/reinstall`);
+    if (disposed) return;
+    if (version !== capabilityVersion || props.externalBlocked || props.pageUnavailable || prepared.blocked || !prepared.available) throw new Error("实例或重装能力已变化，请刷新后重新确认");
+    const projection = (v: View) => JSON.stringify([v.images.map(os => [os.id, os.name]), v.password_mode, v.data_disk]);
+    if (projection(prepared) !== projection(view.value)) {
+      view.value = { ...prepared, operation_token: "" }; optionsReady.value = true;
+      if (!prepared.images.some(os => os.id === image.value)) image.value = "";
+      throw new Error("上游镜像或规则已变化，请重新选择并确认清盘");
+    }
+    token = prepared.operation_token;
     confirming = true;
     await ElMessageBox.confirm(`将重装为 ${selected.name}。系统盘全部数据会被清空，无法撤销。数据盘不请求格式化，但仍需提前备份。新密码由上游生成，执行结束并同步后在本站查看。确认已备份并提交一次？`, "再次确认重装系统", { type: "warning", confirmButtonText: "确认清空系统盘并重装", cancelButtonText: "取消" });
-  } catch { confirmed.value = false; submitting.value = false; busy.value = false; await refresh(); return; }
+  } catch (e) { if (e instanceof Error) error.value = message(e); confirmed.value = false; submitting.value = false; busy.value = false; if (!disposed) await refresh(true); return; }
   finally { confirming = false; }
   if (disposed) return;
+  if (version !== capabilityVersion || props.externalBlocked || props.pageUnavailable) { submitting.value = false; busy.value = false; invalidateCapability(); error.value = "操作条件已变化，请重新选择并确认。"; await refresh(true); return; }
   intention.value = { requestKey: crypto.randomUUID(), beforeTask, unknown: false };
   try {
     emit("changed");
@@ -120,6 +133,7 @@ defineExpose({ refresh: () => refresh(!wantsOptions.value) });
           <el-form v-if="optionsReady && view.images.length" label-position="top" @submit.prevent="submit">
             <el-alert title="系统盘全部清空，操作不可撤销；数据盘固定不请求格式化，仍须备份重要数据。" type="warning" :closable="false" />
             <el-form-item label="系统镜像"><el-select v-model="image" aria-label="重装系统镜像" placeholder="请选择上游提供的镜像" :disabled="busy || blocked || externalBlocked || pageUnavailable || !view.available" style="width: 100%" @change="confirmed = false"><el-option v-for="os in view.images" :key="os.id" :label="os.name" :value="os.id" /></el-select></el-form-item>
+            <p v-if="view.checked_at" class="muted">镜像核对：{{ view.checked_at }} UTC{{ view.cached ? " · 缓存列表，提交前实时核对" : "" }}</p>
             <p class="muted">密码由上游生成；执行结束并同步后通过本站“查看登录凭据”获取。重装不改变原资源、到期日或续费价。</p>
             <el-checkbox v-model="confirmed" class="task-confirm" :disabled="busy || blocked || externalBlocked || pageUnavailable || !view.available" style="height: auto; white-space: normal; margin-bottom: 16px">已备份重要数据，确认允许清空系统盘</el-checkbox>
             <div class="actions"><el-button native-type="submit" type="danger" :disabled="!view.available || !image || !confirmed || busy || blocked || externalBlocked || pageUnavailable">重装系统</el-button></div>

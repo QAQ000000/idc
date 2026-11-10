@@ -16,6 +16,8 @@ final class ProviderService
             if (!is_string($v) || ($v = Security::decrypt($v)) === null) { throw new \RuntimeException('Provider credentials unavailable'); }
         }
         unset($v);
+        // Reserved internal scope: connection identity plus encrypted credential revision; never project to clients.
+        $credentials['_connection_scope'] = Security::requestFingerprint(json_encode([$p['id'],$p['driver'],$p['endpoint'],$p['credentials']],JSON_THROW_ON_ERROR));
         $credentials['endpoint'] = $p['endpoint'];
         return [($this->registry ?? ProviderRegistry::installed())->get($p['driver']), $credentials];
     }

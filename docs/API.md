@@ -189,7 +189,7 @@
 
 ### 3. 电源运维操作（本批已实现）
 - **请求**：`POST /api/v1/instances/{id}/power`
-- **状态及记录**：`GET /api/v1/instances/{id}/runtime` 返回 state、checked_at（UTC）、actions、blocked、2 分钟 operation_token 及最近 10 条安全 tasks。普通实例查询不访问上游。同路径 `?view=tasks` 仅返回 blocked 与相同白名单 tasks，不调用上游、不签发令牌；缺省或 full 保持完整模式，其他值（含数组）400，两模式均 no-store。
+- **状态及记录**：`GET /api/v1/instances/{id}/runtime` 返回 state、checked_at（UTC）、actions、blocked、2 分钟 operation_token 及最近 10 条安全 tasks。普通实例查询不访问上游。同路径 `?view=tasks` 仅返回 blocked 与相同白名单 tasks，不调用上游、不签发令牌；缺省或 full 保持实时操作准备模式。`?view=observation`只返回120秒内上次观察，`?view=state`合并同资源在途查询后读取最新展示状态；返回state／checked_at（可空）／cached／blocked／tasks，无actions或operation_token，缓存命中也重核归属与本地门禁。其他值（含数组）400，所有模式均no-store。
 - **载荷**：`{ "action": "reboot", "operation_token": "<runtime确认>", "request_key": "<16–64位字母数字或下划线短横线>" }`，支持 reboot/start/stop。成功返回 task_id/status=pending/action，HTTP 不调用上游变更。
 - **授权与门禁**：本人有效客户身份、实例归属、active/已交付/未到期、真实产品能力和任务/退款门禁；模拟登录写操作本批拒绝。on 开放 stop/reboot，off 开放 start；重复请求/旧确认/冲突 409，越权资源 404，错误 Token 作用域 401。
 - **结果**：任务 success 仅证明命令被上游接受，状态查询与 OS 健康独立；丢响应或崩溃只读调查，无法证明结果则进入管理员待核验，不能盲目重启。管理员任务 action 筛选支持 power；super_admin 按原证据/令牌可 investigate/fulfill/close_unexecuted，无 retry/退款动作。
@@ -205,6 +205,7 @@
 ### 5. 实例自助重装系统（可选能力）
 - **读取**：`GET /api/v1/instances/{id}/reinstall`，返回 state（available/unsupported/unavailable）、available、blocked、images（id/name）、password_mode=upstream_generated、data_disk=no_format_requested、120 秒 operation_token 及最近 10 条 tasks。任务只投影 id/status/image_name/result/accepted/updated_at；accepted 仅是上游受理，不是完成。
 - **轻量跟踪**：同路径增加 `?view=tasks`，仅返回 blocked 与上述 tasks，继续校验本人、归属并 no-store；只读 MySQL，不调用驱动、不签发 operation_token、不返回镜像或凭据。缺省或 view=full 保持完整读取，其他 view（含数组）400。结束跟踪后须完整刷新取得新能力／确认，提交及 Worker 仍按原门禁重核。
+- **展示镜像**：同路径 `?view=images` 返回5分钟安全缓存的state／images／password_mode／data_disk／checked_at／cached及当前blocked／tasks，不返回available或操作令牌；仅供选择。实际提交先读取full实时准备，规则变化重新确认，提交与Worker仍实时核验。无效或数组view返回400；全部no-store。细节见[展示契约](M2_INSTANCE_DISPLAY_CACHE.md)。
 - **提交**：`POST /api/v1/instances/{id}/reinstall`，载荷 `{ "image_id": "1173023", "operation_token": "...", "request_key": "16-64位字母数字下划线或连字符", "confirmed_system_disk_erase": true }`。只允许本人会话；需先读能力，明确系统盘清空。客户自定义密码、端口和格式化数据盘字段均拒绝，不能静默忽略。响应为 task_id/status=pending，实例／能力变化、重复或冲突返回 409；权限不通过 401/403/404。
 - **跟踪**：仍 GET 原路径。result 区分 pending/running/accepted/executing/awaiting_credentials/query_unavailable/investigating/needs_review/execution_ended/success/not_executed。accepted/executing 是正常自助状态；空闲预检、明确受理、观察结构化重装类型后恢复空闲、原资源凭据及再次空闲齐备（魔方不再识别中文描述）才自动同步并结束原任务，status=success/result=execution_ended 只表示执行结束，不证明系统成功。未知／漏观察／超时才异常核验，不以单个 Active 或镜像变化回填。未决 `/credentials` 返回 409；同步后返回加密保存的当前凭据及 verification=upstream_reported（未验证登录）或 verified，响应 no-store。管理员任务新增脱敏 reinstall_result，不返回 payload。原交易、资源与账期保留，详见 [重装契约](M2_INSTANCE_REINSTALL.md)。
 - **管理员裁决**：现有 `/admin/tasks` action 筛选增加 reinstall；超级管理员经 `/admin/tasks/{id}/resolve` 只允许 investigate/fulfill/close_unexecuted。fulfill 除原资源／令牌／证据外须 `confirmed_reinstall_completed=true`、username、new_password（1–128 字节、实际验证的上游密码，不套用新购生成规则）；凭据不回显或进入审计。close_unexecuted 必须确认无执行／无延迟请求。禁止通用重试、退款或新购取消。

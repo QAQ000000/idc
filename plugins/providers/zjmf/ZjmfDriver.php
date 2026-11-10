@@ -7,7 +7,7 @@ use App\Plugins\Providers\{ConnectionConfigInterface, ServiceStatusDriverInterfa
 use App\Plugins\Providers\{UpstreamDriverInterface, RenewalDriverInterface, DriverExecutionResult as R, PreflightResult, ConfigurableDriverInterface, ConfigOptions, PasswordPolicy, PowerDriverInterface, PowerState, ConsoleDriverInterface, ConsoleTarget, ReinstallDriverInterface, ReinstallOptions};
 
 /** Magic Finance agent API. Stateless cart_data avoids clearing or sharing the upstream account's cart. */
-final class ZjmfDriver implements ConnectionConfigInterface, UpstreamDriverInterface, RenewalDriverInterface, ConfigurableDriverInterface, PowerDriverInterface, ConsoleDriverInterface, ReinstallDriverInterface, ServiceStatusDriverInterface, \App\Plugins\Providers\SnapshotRulesDriverInterface, \App\Plugins\Providers\LocalPreviewDriverInterface
+final class ZjmfDriver implements \App\Plugins\Providers\PowerObservationDriverInterface, ConnectionConfigInterface, UpstreamDriverInterface, RenewalDriverInterface, ConfigurableDriverInterface, PowerDriverInterface, ConsoleDriverInterface, ReinstallDriverInterface, ServiceStatusDriverInterface, \App\Plugins\Providers\SnapshotRulesDriverInterface, \App\Plugins\Providers\LocalPreviewDriverInterface
 {
     public function previewPrice(array $schema, string $cycle, array $options): ?PreflightResult
     {
@@ -60,7 +60,7 @@ final class ZjmfDriver implements ConnectionConfigInterface, UpstreamDriverInter
     }
     public function getDriverId(): string { return 'zjmf'; }
     public function getQueryAuthority(): string { return 'EVENTUAL_CONSISTENCY'; }
-    private function request(array $c, string $path, array $params = [], string $method = 'GET', ?string $token = null): array
+    private function request(array $c, string $path, array $params = [], string $method = 'GET', ?string $token = null, bool $retried = false): array
     {
         $url = rtrim($c['endpoint'], '/') . $path;
         if (!filter_var($url, FILTER_VALIDATE_URL) || !in_array(parse_url($url, PHP_URL_SCHEME), ['https','http'], true)
@@ -83,15 +83,29 @@ final class ZjmfDriver implements ConnectionConfigInterface, UpstreamDriverInter
             // No URL, credentials, input or response data in timing logs.
             error_log(json_encode(['event'=>'zjmf_read_timing','stage'=>$stage,'elapsed_ms'=>round((hrtime(true)-$started)/1e6,1),'http_status'=>$status,'transport_ok'=>$ok!==false],JSON_THROW_ON_ERROR));
         }
+        // Only known read-only endpoints may refresh authentication and repeat once.
+        $readOnly=in_array($path,['/cart/get_product_config','/cart/get_total','/cart/hostinfo','/host/header'],true)
+            || ($path==='/provision/default' && ($params['func']??null)==='status');
+        if ($ok!==false && $status===401 && $token!==null) {
+            (new TokenCache())->invalidate($c,$token);
+            if ($readOnly && !$retried) { return $this->request($c,$path,$params,$method,$this->token($c,true),true); }
+        }
         if ($ok === false || $status !== 200) { throw new \RuntimeException('Provider transport failed'); }
         $r = json_decode($body, true, 64, JSON_THROW_ON_ERROR);
         if (!is_array($r)) { throw new \RuntimeException('Invalid provider response'); }
+        if ($token!==null && in_array($r['status']??null,[401,405],true)) {
+            (new TokenCache())->invalidate($c,$token);
+            if ($readOnly && !$retried) { return $this->request($c,$path,$params,$method,$this->token($c,true),true); }
+        }
         return $r;
     }
-    private function token(array $c): string
+    private function token(array $c, bool $force=false): string
     {
+        $cache=new TokenCache();
+        if (!$force && ($cached=$cache->get($c))!==null) { return $cached; }
         $r = $this->request($c, '/zjmf_api_login', ['username' => $c['username'], 'password' => $c['password']], 'POST');
         if ((int)($r['status'] ?? 0) !== 200 || !is_string($r['jwt'] ?? null)) { throw new \RuntimeException('Provider authentication failed'); }
+        $cache->save($c,$r['jwt']);
         return $r['jwt'];
     }
     public function getFormSchema(int $remotePid, array $credentials): array
@@ -527,6 +541,19 @@ final class ZjmfDriver implements ConnectionConfigInterface, UpstreamDriverInter
         // task_type is a restricted projection of the cloud's machine-readable task.
         // Localized descriptions and generic process/idle transitions carry no operation identity.
         return ($state['status']??'')==='process' && ($state['task_type']??null)==='reinstall';
+    }
+
+    public function observePower(array $instance,array $credentials): PowerState
+    {
+        if (!preg_match('/^host:([1-9][0-9]{0,9})$/D',$instance['remote_instance_id']??'', $m)) { throw new \RuntimeException('Invalid power binding'); }
+        // The authenticated status endpoint itself checks account ownership and Active service.
+        // No resource/header credentials, capabilities, or action authority are needed for display.
+        $r=$this->request($credentials,'/provision/default',['id'=>$m[1],'func'=>'status','is_api'=>1],'POST',$this->token($credentials));
+        if (($r['status']??0)!==200) { throw new \RuntimeException('Power observation unavailable'); }
+        return new PowerState(match($r['data']['status']??'') {
+            'on'=>'on','off'=>'off','waiting','process','cold_migrate','hot_migrate','paused'=>'transitioning',
+            'not_support'=>'unsupported',default=>'unknown',
+        });
     }
 
     public function inspectPower(array $instance, array $credentials): PowerState

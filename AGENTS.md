@@ -1,5 +1,7 @@
 # JianYun (简云) · Agent 协同开发指南与工程宪法
 
+**实例展示缓存增量**：runtime的observation／state仅展示原绑定电源观察，完整full仅显式准备操作；重装images仅缓存安全投影，清盘确认前及提交／Worker仍实时核对。魔方Token按连接与密文凭据版本隔离、加密且最多5分钟；只读认证失败最多重试一次，变更不重放。同资源展示在途合并、旧发布者隔离，缓存不授权或解除MySQL门禁，27表无迁移，见[契约](docs/M2_INSTANCE_DISPLAY_CACHE.md)。
+
 **客户本地预览增量**：PRODUCT_LOCAL_PREVIEW默认关闭；有效完整快照通过可选LocalPreviewDriverInterface在本站后端计价，preview不调用上游，不支持／过期明确要求online。客户页面先预览，原calculate及checkout实时预检保留；本地确认独立用途并绑定金额、配置与完整履约上下文，409后强制在线重确认，原键恢复不改。无迁移，M2商品2实测及数据库误删后的恢复边界见[契约](docs/M2_LOCAL_PREVIEW.md)。
 
 **实例详情读取增量**：电源与重装先用原接口 `?view=tasks` 只读本站门禁，远端能力未加载／失败不等同任务占用；电源独立查，重装仅维护区展开时读镜像。稳定面板、15秒本地未决跟踪、原请求键／令牌及凭据离区清除保持；远端能力迟到需作废，27表无迁移，见[契约](docs/M2_INSTANCE_LOADING.md)。

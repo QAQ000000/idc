@@ -22,7 +22,8 @@ final class InstanceController
     public function runtime(string $id, \App\Services\InstancePowerService $s): \Illuminate\Http\JsonResponse
     {
         $view=request()->query('view','full');
-        if(!in_array($view,['full','tasks'],true)){throw new \App\Core\ApiException('Invalid runtime view');}
+        if(!in_array($view,['full','tasks','observation','state'],true)){throw new \App\Core\ApiException('Invalid runtime view');}
+        if(in_array($view,['observation','state'],true)){return ApiResponse::success((new \App\Services\InstanceDisplayService())->power((int)AuthMiddleware::user()['id'],Request::id($id),$view==='state'))->header('Cache-Control','no-store');}
         return ApiResponse::success($s->runtime((int)AuthMiddleware::user()['id'],Request::id($id),$view==='tasks'))->header('Cache-Control','no-store');
     }
     public function serviceStatus(string $id, \App\Services\InstanceServiceStatusService $s): \Illuminate\Http\JsonResponse
@@ -37,7 +38,8 @@ final class InstanceController
     public function reinstallOptions(string $id, \App\Services\InstanceReinstallService $s): \Illuminate\Http\JsonResponse
     {
         $view=request()->query('view','full');
-        if(!in_array($view,['full','tasks'],true)){throw new \App\Core\ApiException('Invalid reinstall view');}
+        if(!in_array($view,['full','tasks','images'],true)){throw new \App\Core\ApiException('Invalid reinstall view');}
+        if($view==='images'){return ApiResponse::success((new \App\Services\InstanceDisplayService())->images((int)AuthMiddleware::user()['id'],Request::id($id)))->header('Cache-Control','no-store');}
         return ApiResponse::success($s->view((int)AuthMiddleware::user()['id'],Request::id($id),$view==='tasks'))->header('Cache-Control','no-store');
     }
     public function reinstall(string $id, \App\Services\InstanceReinstallService $s): \Illuminate\Http\JsonResponse

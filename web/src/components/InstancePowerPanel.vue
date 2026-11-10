@@ -6,7 +6,7 @@ const props = defineProps<{ instanceId: number; externalBlocked?: boolean; pageU
 const emit = defineEmits<{ blocked: [value: boolean]; state: [value: { blocked: boolean; submitting: boolean; message: string }] }>();
 type Action = "start" | "stop" | "reboot";
 interface Runtime {
-  state: string; checked_at: string; actions: Action[]; blocked: boolean; operation_token: string;
+  state: string; checked_at: string | null; cached?: boolean; actions: Action[]; blocked: boolean; operation_token: string;
   tasks: { id: number; action: Action; status: string; result: string; created_at: string; updated_at: string }[];
 }
 type TaskView = Pick<Runtime, "blocked" | "tasks">;
@@ -27,7 +27,7 @@ function invalidateCapability() {
   capabilityVersion++;
   if (runtime.value) { runtime.value.actions = []; runtime.value.operation_token = ""; }
 }
-async function refresh(tasksOnly = false, manual = false) {
+async function refresh(tasksOnly = false, manual = false, prepare = false) {
   if (disposed) return;
   if (manual) { remotePollingUntil = 0; autoRefreshStopped.value = false; }
   if (busy.value) { if (!tasksOnly && !readingFull) fullRefreshQueued = true; return; }
@@ -36,7 +36,13 @@ async function refresh(tasksOnly = false, manual = false) {
   readingFull = !tracking; fullRefreshQueued = false; clearTimeout(timer); busy.value = true;
   const version = capabilityVersion;
   try {
-    const current = await api<Runtime | TaskView>(`/instances/${props.instanceId}/runtime${tracking ? "?view=tasks" : ""}`);
+    if (!tracking && !prepare && !runtime.value?.checked_at) {
+      try {
+        const observation = await api<Runtime>(`/instances/${props.instanceId}/runtime?view=observation`);
+        if (!disposed && version === capabilityVersion && !props.externalBlocked && !observation.blocked && observation.checked_at) runtime.value = { ...observation, actions: [], operation_token: "" };
+      } catch { /* Latest read below handles an unavailable observation. */ }
+    }
+    const current = await api<Runtime | TaskView>(`/instances/${props.instanceId}/runtime${tracking ? "?view=tasks" : prepare ? "" : "?view=state"}`);
     if (disposed) return;
     const wasTracking = localPending.value || !!intention.value;
     const changed = JSON.stringify(local.value?.tasks) !== JSON.stringify(current.tasks);
@@ -44,7 +50,12 @@ async function refresh(tasksOnly = false, manual = false) {
     localPending.value = current.tasks.some(t => ["pending", "running", "investigating"].includes(t.status));
     if (intention.value && current.tasks.some(t => intention.value!.taskId ? t.id === intention.value!.taskId : t.id > intention.value!.beforeTask)) intention.value = undefined;
     if (!tracking) {
-      error.value = ""; runtime.value = current as Runtime;
+      const previous = runtime.value;
+      error.value = ""; runtime.value = { actions: [], operation_token: "", ...current } as Runtime;
+      if (!prepare && runtime.value.state === "unknown") {
+        if (previous?.checked_at) runtime.value = { ...runtime.value, state: previous.state, checked_at: previous.checked_at, cached: true };
+        error.value = "最新运行状态暂不可确认；上次观察仅供参考，请稍后重试。";
+      }
       if (version !== capabilityVersion || props.externalBlocked || current.blocked) {
         invalidateCapability();
         if (!props.externalBlocked && !current.blocked) fullRefreshQueued = true;
@@ -76,13 +87,14 @@ async function refresh(tasksOnly = false, manual = false) {
 async function submit(action: Action) {
   if (busy.value || error.value || blocked.value || props.externalBlocked || props.pageUnavailable || !runtime.value?.actions.includes(action)) return;
   clearTimeout(timer); busy.value = true; submitting.value = true; error.value = ""; notice.value = "";
-  const token = runtime.value.operation_token, beforeTask = Math.max(0, ...runtime.value.tasks.map(t => t.id));
+  const version = capabilityVersion, token = runtime.value.operation_token, beforeTask = Math.max(0, ...runtime.value.tasks.map(t => t.id));
   try {
     confirming = true;
     await ElMessageBox.confirm(action === "start" ? "确认启动此实例？" : `确认${actionLabels[action]}此实例？连接和业务可能中断，请先保存工作。`, `确认${actionLabels[action]}`, { confirmButtonText: "确认提交一次", cancelButtonText: "取消", type: "warning" });
   } catch { submitting.value = false; busy.value = false; await refresh(); return; }
   finally { confirming = false; }
   if (disposed) return;
+  if (version !== capabilityVersion || props.externalBlocked || props.pageUnavailable) { submitting.value = false; busy.value = false; invalidateCapability(); error.value = "操作条件已变化，请重新准备并确认。"; await refresh(true); return; }
   intention.value = { requestKey: crypto.randomUUID(), beforeTask, unknown: false };
   try {
     const task = await api<{ task_id: number }>(`/instances/${props.instanceId}/power`, { method: "POST", body: { action, operation_token: token, request_key: intention.value.requestKey } });
@@ -112,19 +124,20 @@ defineExpose({ refresh: () => refresh(false, true) });
     <el-alert v-if="error" :title="error" type="error" :closable="false" role="alert" />
     <el-alert v-if="notice" :title="notice" type="info" :closable="false" />
     <el-alert v-if="autoRefreshStopped" title="短时自动查询已结束，当前结果尚未确认，可手动刷新运行状态。" type="info" :closable="false" />
-    <p v-if="busy && !submitting" class="muted" role="status">{{ readingFull ? '正在查询运行状态与能力…' : '正在核对本站任务与门禁…' }}</p>
+    <p v-if="busy && !submitting" class="muted" role="status">{{ readingFull ? '正在查询最新运行状态…' : '正在核对本站任务与门禁…' }}</p>
     <p v-else-if="!runtime && blocked" class="muted">正在跟踪本站未决操作；门禁解除后重新查询运行状态。</p>
     <template v-if="runtime">
-      <p class="runtime-state"><el-tag>{{ states[runtime.state] }}</el-tag> <span class="muted">{{ runtime.checked_at }} UTC</span></p>
+      <p class="runtime-state"><el-tag>{{ states[runtime.state] }}</el-tag> <span class="muted">{{ runtime.checked_at ? `${runtime.checked_at} UTC` : "尚无有效观察" }}{{ runtime.cached ? " · 上次观察" : "" }}</span></p>
       <el-alert v-if="local?.blocked" title="存在排队、未决操作或资金冻结，请等待原任务处理，必要时联系管理员核验。" type="warning" :closable="false" />
       <el-alert v-else-if="externalBlocked" title="重装或其他未决任务正在核验，电源操作暂不可用。" type="warning" :closable="false" />
       <div class="actions">
+        <el-button v-if="!runtime.actions.length" :disabled="busy || blocked || externalBlocked || pageUnavailable" @click="refresh(false, false, true)">准备电源操作</el-button>
         <el-button v-for="action in runtime.actions" :key="action" :disabled="busy || !!error || blocked || externalBlocked || pageUnavailable" :type="action === 'start' ? 'primary' : 'warning'" @click="submit(action)">{{ actionLabels[action] }}</el-button>
       </div>
       <p v-for="task in (local?.tasks || []).filter(t => ['pending', 'running', 'investigating'].includes(t.status) || t.result === 'needs_review')" :key="task.id" class="operation-notice" role="status">电源任务 #{{ task.id }} · {{ results[task.result] }}</p>
       <details class="auxiliary-details">
         <summary>电源操作记录与说明</summary>
-        <p class="muted">运行状态与交付、暂停状态分别记录。命令被接受不代表系统已完成启动或重启；结果未知时不会自动重发。</p>
+        <p class="muted">运行状态与交付、暂停状态分别记录。上次观察不代表当前状态；准备电源操作时重新获取能力和确认，缓存不能授权操作。命令被接受不代表系统已完成启动或重启；结果未知时不会自动重发。</p>
         <el-table :data="local?.tasks || []" empty-text="暂无电源操作记录">
           <el-table-column prop="id" label="任务" width="85" />
           <el-table-column label="操作" width="85"><template #default="{ row }">{{ actionLabels[row.action as Action] }}</template></el-table-column>

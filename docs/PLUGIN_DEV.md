@@ -1,5 +1,7 @@
 # JianYun (简云) · 模块化插件与驱动开发手册 (Plugin Development Guide)
 
+**实例展示与连接作用域**：新增可选 `PowerObservationDriverInterface::observePower(instance, credentials): PowerState`，只投影原绑定资源的观察，不返回动作授权；不支持者显示unsupported，无需新增空实现。`ProviderService`在凭据中注入内部保留键 `_connection_scope`（连接ID／驱动／地址／密文凭据修订的HMAC），插件不得发送或公开该字段。魔方按此隔离加密Token缓存，最多300秒并服从上游exp减30秒；未知期限不缓存。仅白名单只读接口允许认证失效重试一次，任何变更不重放。完整准备／提交／Worker校验不缓存，见[契约](M2_INSTANCE_DISPLAY_CACHE.md)。
+
 **客户本地预览可选契约**：LocalPreviewDriverInterface::previewPrice(schema,cycle,options): ?PreflightResult为纯本地计算，不可网络调用／读取凭据／写表；不支持返回null，金额／配置／上下文沿原DTO。魔方复用LocalPriceCalculator及与实时预检完全相同的priceContext；核心不直接引用插件，见[契约](M2_LOCAL_PREVIEW.md)。
 
 **完整快照发布可选契约**：SnapshotRulesDriverInterface::snapshotContent仅剔除可证明无成交语义的观察字段，未知字段保守保留；validateSnapshotRules(schema,options,quotes)负责完整周期矩阵／政策／生成规则以及默认组合两类在线金额一致性，任何不支持则整次拒绝发布，不能部分猜算。魔方复用已验计价器，核心不引用插件类；运行时间与库存不进入内容，详见[发布契约](M2_PRODUCT_REFRESH.md)。

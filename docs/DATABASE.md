@@ -1,5 +1,7 @@
 # JianYun (简云) · 数据库设计字典 (Database Schema)
 
+**实例展示缓存（2026-11-10）**：电源观察／安全镜像投影及加密上游Token仅存短期Redis，任务和资金门禁仍读MySQL；无新增业务事实副本、表、DDL或迁移，仍27表，见[契约](M2_INSTANCE_DISPLAY_CACHE.md)。
+
 **客户本地预览**：复用products.config_cache及独立product.refresh.<id>成功观察，不持久化组合缓存／预览单／确认副本，不增表、列、迁移；原报价与账单／实例冻结、原请求键及资金Outbox事务保持。M2误删恢复不补造历史收款，见[契约](M2_LOCAL_PREVIEW.md)。
 
 **计划刷新增量**：原products.config_cache增加可缺省0的snapshot_revision，实际销售快照内容变化递增，未知旧任务／账单不改。system_settings原表group=catalog、key=product.refresh.<本地ID>保存最后尝试／成功／失效UTC秒、结果和快照hash；不复制完整快照或永久历史表，不进入报价／编辑指纹。27表／DDL无变化，无迁移，见[契约](M2_PRODUCT_REFRESH.md)。

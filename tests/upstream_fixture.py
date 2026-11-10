@@ -118,9 +118,22 @@ class Handler(BaseHTTPRequestHandler):
             r = {'creates': state['creates'], 'hosts': len(state['hosts']), 'renew_calls': state['renew_calls'], 'renew_payments': state['renew_payments'], 'last_config': state.get('last_config', {}), 'last_qty': state.get('last_qty'), 'power_calls': state['power_calls'], 'reinstall_calls': state['reinstall_calls'], 'last_reinstall': state.get('last_reinstall', {})}
         elif path == '/__request_counts':
             r = dict(state['request_counts'])
+        elif path == '/__token_mode':
+            state['token_mode'] = p['mode'][0]
+            state['token_current'] = 'revoked'
+            r = {'ok': True}
+        elif path == '/__display_delay':
+            state['display_delay'] = min(2, float(p.get('seconds', ['0'])[0]))
+            r = {'ok': True}
         elif path == '/zjmf_api_login':
-            r = {'status': 200, 'jwt': 'isolated-test-token'}
-        elif self.headers.get('Authorization') != 'Bearer isolated-test-token':
+            token = 'isolated-test-token'
+            if state.get('token_mode', 'opaque') != 'opaque':
+                exp = int(time.time()) + (20 if state['token_mode'] == 'short' else 7200)
+                payload = base64.urlsafe_b64encode(json.dumps({'exp': exp}).encode()).decode().rstrip('=')
+                token = 'test.' + payload + '.' + str(time.time_ns())
+                state['token_current'] = token
+            r = {'status': 200, 'jwt': token}
+        elif self.headers.get('Authorization') != 'Bearer ' + (state.get('token_current', '') if state.get('token_mode', 'opaque') != 'opaque' else 'isolated-test-token'):
             r = {'status': 405}
         elif path == '/cart/get_product_config':
             data = {'products': {'id': 391}, 'config_groups': [], 'customfields': [], 'advanced': []}
@@ -335,6 +348,7 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 r = {'status': 406 if state['reinstall_mode'] == 'business_error' else 200, 'msg': 'NEVER-EXPOSE-REINSTALL-SECRET'}
             elif func == 'status':
+                time.sleep(state.get('display_delay', 0))
                 if state['power_mode'] == 'unavailable':
                     self.send_error(503)
                     return

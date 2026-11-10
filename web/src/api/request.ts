@@ -10,7 +10,7 @@ export class ApiError extends Error {
 }
 export async function api<T>(
   path: string,
-  options: { method?: string; body?: unknown; scope?: "admin" } = {},
+  options: { method?: string; body?: unknown; scope?: "admin"; signal?: AbortSignal } = {},
 ): Promise<T> {
   const key = options.scope === "admin" ? "jianyun_admin_token" : "jianyun_token";
   const token = sessionStorage.getItem(key);
@@ -18,6 +18,7 @@ export async function api<T>(
   try {
     response = await fetch("/api/v1" + path, {
       method: options.method || "GET",
+      signal: options.signal,
       headers: {
         "Content-Type": "application/json",
         ...(token ? { Authorization: "Bearer " + token } : {}),
@@ -57,6 +58,12 @@ export interface Product {
   stock: number;
   prices: Record<string, string>;
   configurable: boolean;
+  upstream_stock?: StockObservation;
+}
+export interface StockObservation {
+  state: "in_stock" | "sold_out" | "unlimited" | "unknown";
+  quantity: number | null;
+  checked_at: string | null;
 }
 export interface Invoice {
   invoice_id: number;
@@ -137,6 +144,7 @@ export interface ProductConfiguration {
   defaults: Record<string, string>;
 }
 export interface Quote {
+  upstream_stock?: StockObservation;
   total: string;
   recurring_price: string;
   quote_token: string;

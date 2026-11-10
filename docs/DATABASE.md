@@ -1,5 +1,7 @@
 # JianYun (简云) · 数据库设计字典 (Database Schema)
 
+**库存展示增量**：upstream_stock是5分钟Redis观察的即时投影，不是products.stock、config_cache或MySQL新列；stock继续是本地销售配额，目录／核价都不覆盖它。观察不进入账单／实例冻结配置、报价签名或任务载荷；缓存故障不改变财务与预检。27表／DDL／迁移保持，见[契约](M2_CHECKOUT_RESPONSIVENESS.md)。
+
 **整数数量增量**：原products.config_cache及原账单／实例／任务driver_context可选configuration_quantities冻结安全integer字段（范围／步长／区间ID）；config_options保留实际数量字符串，枚举仍为子项ID。无列／表／DDL／迁移，仍27表，历史不重写，见[契约](M2_INTEGER_QUANTITIES.md)。
 
 **枚举依赖增量**：products.config_cache.schema保留原规则JSON，公开投影不回传原数据；invoices.price_snapshot／instances.config_snapshot和tasks.payload的driver_context增加可选configuration_rules（目标字段与通用dependencies），原schema_hash绑定语义。无依赖旧快照／旧hash保持，无新列／表／DDL／迁移，仍27表，见[契约](M2_ENUM_DEPENDENCIES.md)。

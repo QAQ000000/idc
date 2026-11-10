@@ -4,18 +4,24 @@ namespace App\Services;
 
 use App\Core\{ApiException, Database, Money, Security};
 use App\Plugins\Providers\{ProviderRegistry, ConfigurableDriverInterface, ConfigOptions, PasswordPolicy};
+use App\Plugins\Providers\{StockObservation, UpstreamOutOfStock};
 use PDO;
 
 final class CatalogService
 {
     public function products(): array
     {
-        $rows = Database::getInstance()->query("SELECT p.id, p.name, p.type, p.stock, p.config_cache FROM products p JOIN providers r ON r.id = p.provider_id WHERE p.status = 'active' AND r.status = 1 AND p.commission_rate = 0 ORDER BY p.order_num DESC, p.id DESC")->fetchAll();
-        return array_map(static function (array $row): array {
+        $rows = Database::getInstance()->query("SELECT p.id, p.name, p.type, p.stock, p.config_cache, p.provider_id, p.remote_pid FROM products p JOIN providers r ON r.id = p.provider_id WHERE p.status = 'active' AND r.status = 1 AND p.commission_rate = 0 ORDER BY p.order_num DESC, p.id DESC")->fetchAll();
+        $bindings=[];
+        foreach ($rows as $row) { $bindings[(int)$row['id']]=[(int)$row['provider_id'],(int)$row['remote_pid']]; }
+        $observations=(new StockObservationService())->readMany($bindings);
+        return array_map(static function (array $row) use ($observations): array {
             $cache = json_decode($row['config_cache'] ?? '{}', true, 64, JSON_THROW_ON_ERROR);
             unset($row['config_cache']);
             $row['prices'] = $cache['prices'] ?? [];
             $row['configurable'] = (bool)($cache['configurable'] ?? false);
+            $row['upstream_stock']=$observations[(int)$row['id']];
+            unset($row['provider_id'],$row['remote_pid']);
             return $row;
         }, $rows);
     }
@@ -44,7 +50,7 @@ final class CatalogService
         $stmt->execute([$id]); $product = $stmt->fetch();
         if (!$product || $product['status'] !== 'active' || (int)$product['provider_status'] !== 1) { throw new ApiException('Product unavailable', 404, 404); }
         if (bccomp($product['commission_rate'], '0', 2) !== 0) { throw new ApiException('Commission engine not enabled',409,409); }
-        if ((int)$product['stock'] === 0) { throw new ApiException('Out of stock',409,1002); }
+        if ((int)$product['stock'] === 0) { throw new ApiException('本地销售配额已用完，暂不可购买',409,1002); }
         $cache = json_decode($product['config_cache'] ?? '{}',true,64,JSON_THROW_ON_ERROR);
         if (!in_array($cycle,['monthly','annually'],true) || !isset($cache['prices'][$cycle])) { throw new ApiException('Unsupported billing cycle'); }
         $configurable = (bool)($cache['configurable'] ?? false);
@@ -82,7 +88,14 @@ final class CatalogService
             [$driver,$credentials] = (new ProviderService())->resolve((int)$p['provider_id']);
             $r = $driver->preflightPrice((int)$p['remote_pid'],$cycle,$q['config_options'],$credentials);
             $amount = Money::positive($r->amount); $recurring = Money::positive($r->recurringAmount ?? $amount);
-        } catch (\Throwable) { throw new ApiException('Upstream preflight unavailable; no order created',409,409); }
+        } catch (UpstreamOutOfStock) {
+            (new StockObservationService())->remember((int)$p['provider_id'],(int)$p['remote_pid'],new StockObservation('sold_out',0));
+            throw new ApiException('上游已确认售罄，请稍后重新核价；未创建新订单',409,1003);
+        } catch (\Throwable) {
+            (new StockObservationService())->remember((int)$p['provider_id'],(int)$p['remote_pid'],null);
+            throw new ApiException('上游查询失败，库存暂未确认；请重新核价，未创建新订单',409,1004);
+        }
+        (new StockObservationService())->remember((int)$p['provider_id'],(int)$p['remote_pid'],$r->stock);
         $cache = json_decode($p['config_cache'],true,64,JSON_THROW_ON_ERROR);
         $schemaChanged = ($cache['configurable']??false) && ($r->context['schema_hash']??'')!==ConfigOptions::hash($this->form($p,$cache));
         if ($r->currency!=='CNY' || $r->config!==$q['config_options'] || $schemaChanged
@@ -102,6 +115,8 @@ final class CatalogService
         $expires=time()+300;
         $q['quote_token']=$expires.'.'.$this->signature($q,$preflight,$expires);
         $q['quote_expires_at']=gmdate('Y-m-d H:i:s',$expires);
+        $p=$q['product'];
+        $q['upstream_stock']=(new StockObservationService())->read((int)$p['provider_id'],(int)$p['remote_pid']);
         unset($q['product']); return $q;
     }
     public function assertConfirmed(array $quote, ?array $preflight, mixed $token): void

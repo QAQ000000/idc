@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { api, message, type Product } from "../api/request";
 import { useSite } from "../stores/site";
+import ProductStock from "../components/ProductStock.vue";
 const site = useSite();
 const router = useRouter();
 const products = ref<Product[]>([]),
@@ -175,9 +176,9 @@ onMounted(load);
           <el-tag :type="canOrder(product) ? 'success' : 'info'" effect="plain">
             {{
               Number(product.stock) === 0
-                ? "暂时售罄"
+                ? "本地配额已用完"
                 : canOrder(product)
-                  ? "可购买"
+                  ? "可核价"
                   : "暂不可售"
             }}
           </el-tag>
@@ -211,15 +212,7 @@ onMounted(load);
           </p>
         </div>
         <div class="product-card-footer">
-          <span class="muted">
-            {{
-              Number(product.stock) === -1
-                ? "按需选购"
-                : Number(product.stock) === 0
-                  ? "请稍后再来"
-                  : "剩余 " + product.stock + " 件"
-            }}
-          </span>
+          <ProductStock :quota="product.stock" :observation="product.upstream_stock" />
           <el-button
             type="primary"
             :disabled="!canOrder(product)"

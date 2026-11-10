@@ -112,7 +112,7 @@ M2 已实现以上最小接口。变配与快照仍为后续能力；重装通�
 
 | DTO | 当前字段与语义 |
 |---|---|
-| `PreflightResult` | `amount` 十进制字符串、`config` 已验证配置、`currency`（首链仅 CNY）、可空 `recurringAmount` 表示独立的周期续费成本；旧驱动省略时保持原同价行为。`context` 驱动必需且不含秘密的履约参数（随订单冻结）。预检在数据库事务外完成，锁内比对商品指纹及报价，不接受客户端价格。 |
+| `PreflightResult` | `amount` 十进制字符串、`config` 已验证配置、`currency`（首链仅 CNY）、可空 `recurringAmount` 表示独立的周期续费成本；旧驱动省略时保持原同价行为。可选 `stock: StockObservation` 仅为展示观察（in_stock／sold_out／unlimited／unknown及可空数量），不进入context、报价签名或任务；旧驱动省略显示暂未确认。明确售罄可抛通用 `UpstreamOutOfStock`，不能把传输错误当售罄。`context` 驱动必需且不含秘密的履约参数（随订单冻结）。预检在数据库事务外完成，锁内比对商品指纹及报价，不接受客户端价格。 |
 | `DriverExecutionResult` | `status` 为 `succeeded/pending/unknown/not_executed/rejected`；可含 `remoteInstanceId`、`ipAddress`、`operationId`、固定脱敏 `code`；可选真实 `username/password` 仅经受控交付写入，密码立即 AES 加密，不存任务或日志。 |
 
 `not_executed` 必须证明没有资产、扣款和可延迟执行请求，才可退避重试；`rejected` 是确认未执行且需人工处理的拒绝。超时、非 JSON、异常与最终一致性查无均为 unknown。成功必须真实可用并返回远端 ID，CDN 不要求 IP。`orderData` 包含服务端快照的远端 PID、账期、上游金额、配置、订单命名空间、原任务键、冻结的 driver_context，以及已知 operation_id；密码仅执行时解密。调查不能再次调用 create 或支付。

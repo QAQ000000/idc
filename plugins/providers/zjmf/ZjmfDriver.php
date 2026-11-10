@@ -2,6 +2,7 @@
 declare(strict_types=1);
 namespace Plugins\providers\zjmf;
 use App\Core\Money;
+use App\Plugins\Providers\{StockObservation, UpstreamOutOfStock};
 use App\Plugins\Providers\{ConnectionConfigInterface, ServiceStatusDriverInterface, ServiceStatus};
 use App\Plugins\Providers\{UpstreamDriverInterface, RenewalDriverInterface, DriverExecutionResult as R, PreflightResult, ConfigurableDriverInterface, ConfigOptions, PasswordPolicy, PowerDriverInterface, PowerState, ConsoleDriverInterface, ConsoleTarget, ReinstallDriverInterface, ReinstallOptions};
 
@@ -45,7 +46,13 @@ final class ZjmfDriver implements ConnectionConfigInterface, UpstreamDriverInter
             CURLOPT_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS, CURLOPT_NOPROXY => '*',
             CURLOPT_WRITEFUNCTION => static function ($handle, string $chunk) use (&$body): int { if (strlen($body) + strlen($chunk) > 2097152) { return 0; } $body .= $chunk; return strlen($chunk); }]);
         if ($method === 'POST') { curl_setopt($curl, CURLOPT_POSTFIELDS, http_build_query($params)); }
+        $started = hrtime(true);
         $ok = curl_exec($curl); $status = curl_getinfo($curl, CURLINFO_RESPONSE_CODE); curl_close($curl);
+        $stage=['/zjmf_api_login'=>'login','/cart/get_product_config'=>'configuration','/cart/get_total'=>'price'][$path]??null;
+        if ($stage !== null) {
+            // No URL, credentials, input or response data in timing logs.
+            error_log(json_encode(['event'=>'zjmf_read_timing','stage'=>$stage,'elapsed_ms'=>round((hrtime(true)-$started)/1e6,1),'http_status'=>$status,'transport_ok'=>$ok!==false],JSON_THROW_ON_ERROR));
+        }
         if ($ok === false || $status !== 200) { throw new \RuntimeException('Provider transport failed'); }
         $r = json_decode($body, true, 64, JSON_THROW_ON_ERROR);
         if (!is_array($r)) { throw new \RuntimeException('Invalid provider response'); }
@@ -144,8 +151,16 @@ final class ZjmfDriver implements ConnectionConfigInterface, UpstreamDriverInter
         $r = $this->request($credentials, '/cart/get_total', ['pid' => $remotePid, 'billingcycle' => $billingCycle, 'qty' => 1, 'configoption'=>$config], 'POST', $token);
         $p = $r['products'] ?? [];
         if ((int)($r['status'] ?? 0) !== 200 || ($r['currency']['code'] ?? '') !== 'CNY'
-            || ($p['billingcycle'] ?? '') !== $billingCycle || ((int)($p['stock_control'] ?? 0) === 1 && (int)($p['qty'] ?? 0) < 1)
+            || ($p['billingcycle'] ?? '') !== $billingCycle
             || !empty($p['type'])) { throw new \RuntimeException('Provider quote unavailable or promotional pricing unsupported'); }
+        $control=$p['stock_control']??null; $qty=$p['qty']??null;
+        $stock=new StockObservation('unknown');
+        if (in_array($control,[0,'0'],true)) { $stock=new StockObservation('unlimited'); }
+        elseif (in_array($control,[1,'1'],true)) {
+            if ((!is_int($qty) && !is_string($qty)) || !preg_match('/^[0-9]{1,9}$/D',(string)$qty)) { throw new \RuntimeException('Invalid controlled stock'); }
+            if ((int)$qty===0) { throw new UpstreamOutOfStock(); }
+            $stock=new StockObservation('in_stock',(int)$qty);
+        }
         $amount = Money::positive((string)($p['total'] ?? ''));
         // Legacy fixed snapshots retain their historical equal first/renewal price fallback.
         if ($form && !isset($p['signal_price'])) { throw new \RuntimeException('Recurring price missing'); }
@@ -157,7 +172,7 @@ final class ZjmfDriver implements ConnectionConfigInterface, UpstreamDriverInter
         foreach($form as $field){if(isset($field['dependencies'])){$rules[]=['id'=>$field['id'],'dependencies'=>$field['dependencies']];}}
         return new PreflightResult($amount, $config, context: $this->inputContext($schema['data']??[]) + ['schema_hash'=>ConfigOptions::hash($form)]
             + ($rules ? ['configuration_rules'=>$rules] : [])
-            + ($quantities ? ['configuration_quantities'=>$quantities] : []), recurringAmount: $recurring);
+            + ($quantities ? ['configuration_quantities'=>$quantities] : []), recurringAmount: $recurring, stock: $stock);
     }
     private function hostname(array $o): string
     {

@@ -13,6 +13,7 @@ import {
 } from "../api/request";
 import CheckoutSummary from "../components/CheckoutSummary.vue";
 import ConfigOptionRenderer from "../components/ConfigOptionRenderer.vue";
+import ProductStock from "../components/ProductStock.vue";
 const compact = ref(window.matchMedia("(max-width: 1023px)").matches);
 const summaryOpen = ref(false), bottomBar = ref<HTMLElement>();
 const barHeight = ref(0), viewportBottom = ref(0);
@@ -162,6 +163,10 @@ let checkoutKey = crypto.randomUUID(),
   quoteVersion = 0,
   disposed = false,
   timer: ReturnType<typeof setInterval> | undefined;
+let quoteTimer: ReturnType<typeof setTimeout> | undefined;
+let quoteActive = false;
+let quoteController: AbortController | undefined;
+let pendingQuote: { version: number; manual: boolean; ready: boolean; id: string; cycle: string; options: Record<string, string> } | undefined;
 watch(
   [cycle, hostname, password, useBalance, selected],
   () => {
@@ -169,7 +174,9 @@ watch(
   },
   { flush: "sync" },
 );
-async function quote(manual = false) {
+function quote(manual = false, delay = 0) {
+  if (quoteTimer) clearTimeout(quoteTimer);
+  pendingQuote = undefined;
   const version = ++quoteVersion;
   confirmed.value = null;
   quoteError.value = "";
@@ -180,25 +187,52 @@ async function quote(manual = false) {
     quoteError.value = "请填写有效的数量和选配，再获取并确认报价。";
     return;
   }
+  pendingQuote = { version, manual, ready: delay === 0, id: String(route.params.id), cycle: cycle.value, options: { ...selected.value } };
+  if (delay) quoteTimer = setTimeout(() => { if (pendingQuote?.version === version) { pendingQuote.ready = true; void runQuote(); } }, delay);
+  else void runQuote();
+}
+async function runQuote() {
+  if (disposed || quoteActive || !pendingQuote?.ready) return;
+  const request = pendingQuote;
+  pendingQuote = undefined;
+  quoteActive = true;
+  quoteController = new AbortController();
+  const { version, manual } = request;
   try {
     const result = await api<Quote>(
-      "/products/" + route.params.id + "/calculate",
+      "/products/" + request.id + "/calculate",
       {
         method: "POST",
-        body: { billing_cycle: cycle.value, config_options: selected.value },
+        signal: quoteController.signal,
+        body: { billing_cycle: request.cycle, config_options: request.options },
       },
     );
     if (version === quoteVersion && !disposed) {
       confirmed.value = result;
+      if (product.value && result.upstream_stock) product.value.upstream_stock = result.upstream_stock;
       now.value = Date.now();
       if (manual)
         quoteNotice.value =
           "报价已更新，请重新核对首期价、续费价和配置后确认提交。";
     }
   } catch (e) {
-    if (version === quoteVersion && !disposed) quoteError.value = message(e);
+    if (version === quoteVersion && !disposed) {
+      quoteError.value = message(e);
+      // Cheap local observation only; never retry the failed upstream quote automatically.
+      try {
+        const found = (await api<Product[]>("/products")).find(p => p.id === Number(request.id));
+        if (version === quoteVersion && !disposed && product.value && found) {
+          product.value.stock = found.stock;
+          product.value.upstream_stock = found.upstream_stock;
+        }
+      } catch { /* Keep the quote error and mark display evidence unknown. */
+        if (version === quoteVersion && !disposed && product.value) product.value.upstream_stock = { state: "unknown", quantity: null, checked_at: null };
+      }
+    }
   } finally {
+    quoteActive = false;
     if (version === quoteVersion && !disposed) quoting.value = false;
+    void runQuote();
   }
 }
 async function load() {
@@ -209,13 +243,14 @@ async function load() {
   confirmed.value = null;
   ++quoteVersion;
   try {
-    const found = (await api<Product[]>("/products")).find(
+    const [products, form] = await Promise.all([
+      api<Product[]>("/products"),
+      api<ProductConfiguration>("/products/" + route.params.id + "/config"),
+    ]);
+    const found = products.find(
       (p) => p.id === Number(route.params.id),
     );
     if (!found) throw new Error("产品不存在或已下架");
-    const form = await api<ProductConfiguration>(
-      "/products/" + route.params.id + "/config",
-    );
     if (disposed) return;
     product.value = found;
     configuration.value = form;
@@ -226,7 +261,8 @@ async function load() {
       ]),
     );
     cycle.value = Object.keys(found.prices)[0] || "monthly";
-    await quote();
+    loading.value = false;
+    quote();
   } catch (e) {
     if (!disposed) {
       product.value = null;
@@ -239,7 +275,7 @@ async function load() {
 watch(
   [cycle, selected],
   () => {
-    if (!loading.value) void quote();
+    if (!loading.value) quote(false, 400);
   },
   { flush: "sync" },
 );
@@ -319,6 +355,9 @@ onBeforeUnmount(() => {
   barObserver?.disconnect();
   disposed = true;
   ++quoteVersion;
+  pendingQuote = undefined;
+  quoteController?.abort();
+  if (quoteTimer) clearTimeout(quoteTimer);
   if (timer) clearInterval(timer);
   password.value = "";
 });
@@ -351,6 +390,7 @@ onBeforeUnmount(() => {
             <template #header>
               <h2>{{ product.name }}</h2>
             </template>
+            <ProductStock :quota="product.stock" :observation="product.upstream_stock" />
             <el-form-item label="付款周期">
               <el-select v-model="cycle" aria-label="付款周期" :disabled="busy">
                 <el-option

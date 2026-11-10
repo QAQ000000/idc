@@ -172,6 +172,10 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 total, recurring = prices
             r = {'status': 200, 'currency': {'code': 'CNY'}, 'products': {'billingcycle': p['billingcycle'][0], 'stock_control': 1 if p.get('pid') == ['563'] else 0, 'qty': 0 if p.get('pid') == ['563'] else 81, 'total': total, 'signal_price': recurring}}
+            if state['config_mode'] in ['stock_one', 'stock_two', 'stock_empty', 'stock_bad']:
+                r['products'].update(stock_control=1, qty={'stock_one': 1, 'stock_two': 2, 'stock_empty': 0, 'stock_bad': 'invalid'}[state['config_mode']])
+            if state['config_mode'] == 'stock_unlimited_zero':
+                r['products'].update(stock_control=0, qty=0)
         elif path == '/cart/settle':
             quantity_prices = quantity_quote(p, 'cart_data[configoptions][') if p.get('cart_data[pid]') == ['2563'] else None
             if p.get('cart_data[pid]') == ['2563'] and quantity_prices is None:

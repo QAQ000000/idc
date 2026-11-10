@@ -39,6 +39,7 @@ final class ProductSnapshotService
             $prices=[]; $recurring=[]; $costs=[];
             foreach ($cycles as $cycle) {
                 $quote=$driver->preflightPrice($remotePid,$cycle,$config,$credentials);
+                (new StockObservationService())->remember($providerId,$remotePid,$quote->stock);
                 if ($quote->currency!=='CNY' || $quote->config!==$config || ($form && ($quote->context['schema_hash']??'')!==ConfigOptions::hash($form))) { throw new ApiException('Schema changed during import',409,409); }
                 $costs[$cycle]=['first'=>Money::positive($quote->amount),'recurring'=>Money::positive($quote->recurringAmount??$quote->amount)];
                 $prices[$cycle]=Money::markup($costs[$cycle]['first'],$markupType,$markupValue);

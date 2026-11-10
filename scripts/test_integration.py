@@ -145,6 +145,7 @@ def main():
             run_checks(php, 'tests/configurable.php', env, r'\d+ configurable checks passed\.')
             run_checks(php, 'tests/enum_linkage.php', env, r'Enum linkage checks: \d+')
             run_checks(php, 'tests/integer_quantity.php', env, r'Integer quantity checks: \d+')
+            run_checks(php, 'tests/checkout_responsiveness.php', env, r'Checkout responsiveness checks: \d+')
             run_checks(php, 'tests/admin.php', env, r'Admin checks: \d+')
             run_checks(php, 'tests/admin_products.php', env, r'Admin product checks: \d+')
             run_checks(php, 'tests/power.php', env, r'Power checks: \d+')

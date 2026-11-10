@@ -130,7 +130,7 @@
 
 ### 1. 获取在售商品列表
 - **请求**：`GET /api/v1/products?type={cloud|dedicated|cdn}`
-- **响应**：商品卡片列表（包含名称、默认配置参考价格 prices、configurable、类型、库存状态）。
+- **响应**：商品卡片列表（包含名称、默认配置参考价格 prices、configurable、类型、stock本地销售配额及upstream_stock上游观察）。`upstream_stock={state,quantity,checked_at}`：state为in_stock／sold_out／unlimited／unknown，可靠数量才非null，checked_at为UTC核对时间；缺失／过期／缓存故障为unknown且时间null。目录仅批读短期缓存，不调用上游。stock=-1为本地不限额，不能和上游未启用库存控制混为一谈。
 
 ### 2. 获取商品配置项表单 (动态渲染)
 - **请求**：`GET /api/v1/products/{id}/config`
@@ -139,7 +139,7 @@
 ### 3. 下单前原子算价与预检 (Pre-flight Check)
 - **请求**：`POST /api/v1/products/{id}/calculate`
 - **载荷**：`{ "billing_cycle": "monthly", "config_options": { "276853": "1173030" } }（示意；实际必须提交全部必填选项）`
-- **响应**：返回核验后的十进制字符串 total、recurring_price、config_options、configuration、billing_cycle 和 quote_token；确认令牌有效 5 分钟。当前不支持优惠券。
+- **响应**：返回核验后的十进制字符串 total、recurring_price、config_options、configuration、billing_cycle、upstream_stock 和 quote_token；确认令牌有效 5 分钟。upstream_stock不进入签名，不是库存预留。HTTP409的code=1002表示本地配额用完、1003表示上游明确售罄、1004表示上游查询／协议失败且库存未知；后两类会更新短期观察，失败后可GET目录只读核对，不自动重试核价。当前不支持优惠券。兼容及页面行为见[本批契约](M2_CHECKOUT_RESPONSIVENESS.md)。
 
 ### 4. 提交订单并生成账单
 - **请求**：`POST /api/v1/orders/checkout`

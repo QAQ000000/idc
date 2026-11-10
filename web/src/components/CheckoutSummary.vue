@@ -24,7 +24,8 @@ const emit = defineEmits<{ requote: []; "update:useBalance": [value: boolean] }>
       </el-descriptions-item>
     </el-descriptions>
     <p v-else class="muted">固定套餐，无额外选配。</p>
-    <div v-loading="quoting" class="quote-prices">
+    <div class="quote-prices" :aria-busy="quoting">
+      <p v-if="quoting" role="status">正在核价…</p>
       <p class="field-label">首期应付</p>
       <p class="renewal-price">¥{{ confirmed?.total || "—" }}</p>
       <div class="price-line">

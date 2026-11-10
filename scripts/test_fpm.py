@@ -238,3 +238,18 @@ def verify(socket_path, root):
     print('PASS: isolated PHP-FPM admin account permissions and own security, without cross-request identity leakage')
 
     print('PASS: isolated PHP-FPM support create/replay/public reply/closure and identity separation')
+
+    status, products = request(socket_path, root, 'GET', '/api/v1/products')
+    assert status == 200
+    preview_id = next(p['id'] for p in products['data'] if p['name'] == '本地预览（隔离数量验收）')
+    status, form = request(socket_path, root, 'GET', f'/api/v1/products/{preview_id}/config')
+    assert status == 200
+    selection = {'billing_cycle': 'monthly', 'config_options': form['data']['defaults']}
+    for identity in [None, admin_token, client_token]:
+        status, preview = request(socket_path, root, 'POST', f'/api/v1/products/{preview_id}/preview', selection, token=identity)
+        assert status == 200 and preview['data']['pricing_mode'] == 'local_preview'
+        assert preview['data']['total'] == '257.00' and preview['data']['quote_token'].startswith('lp1.')
+        assert not any(key in preview['data'] for key in ['product', 'schema', 'credentials', 'pricing_hash'])
+    invalid = {'billing_cycle': 'monthly', 'config_options': dict(selection['config_options'], **{'277296': '6'})}
+    assert request(socket_path, root, 'POST', f'/api/v1/products/{preview_id}/preview', invalid)[0] == 400
+    print('PASS: isolated PHP-FPM local preview current snapshot, public identities and invalid selections')

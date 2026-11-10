@@ -29,6 +29,12 @@ Worker 被终止后不会清理或重置业务占用；过期 running 租约只�
 
 停止timer／service会保留旧快照与running观察；不要重置任务。关注journal中的每商品失败和详情snapshot_refresh新鲜度，命令结束不等于所有商品刷新成功。定时器正常、异常中断／恢复可用独立验收`python3 scripts/test_integration.py --product-refresh-runtime`（另设REDIS_SERVER）验证，不接触M2单元。
 
+### 2026-11-10 M2本地预览及数据库恢复
+
+M2已显式纳入本地商品2并开启PRODUCT_LOCAL_PREVIEW；只安装新增products.service／timer，按原runtime.env更新配置缓存，客户端仍保留calculate和checkout在线复核。实页7次preview／0次calculate、6组选配含防抖890–922ms，见[客户预览记录](M2_LOCAL_PREVIEW.md#页面实测)。
+
+期间原M2数据库容器被误删，用户授权重新部署；已从11月9日15:12:22完整备份恢复27表／5触发器，独立jianyun-m2-mysql以仓库外mysql-data持久目录和原回环端口运行。**备份之后的资金／任务缺口尚未核对**，原金融Worker、schedule.timer与mail Worker已停止并禁用自动启动；HTTP／前端和只读商品刷新可验。此状态取代下文历史“原Worker已运行”的当前运行结论。重新开启业务进程前核对真实收款／资源／账期及通知订阅，不能自动按旧数据补扣、重发或声称历史记录完整。私有恢复证据不进入Git，无真实购买、退款或上游写入。
+
 ## 到期状态核对接入（M2 已验收）
 
 无迁移、unit、Redis任务或新调度。原 outbox:work 每轮先充值提示及履约任务；两者均无工作才核对一个临期／暂停／核验资源，同资源至少15分钟、空候选进程内退避15秒。金融繁忙会延后核对，不能承诺精确15分钟SLA；--once 保持原唤醒／Outbox行为，不追加状态核对。显式单资源命令 `php artisan instances:reconcile-status ID` 仍会写运营观察，须按环境授权执行，不作纯查看命令。

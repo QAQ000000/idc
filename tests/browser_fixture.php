@@ -59,4 +59,8 @@ $enumProduct=(new App\Services\ProductSnapshotService())->save(['provider_id'=>$
 echo json_encode(['enum_fixture_product'=>$enumProduct['product_id']],JSON_THROW_ON_ERROR),PHP_EOL;
 $quantityProduct=(new App\Services\ProductSnapshotService())->save(['provider_id'=>$provider,'remote_pid'=>2563,'name'=>'整数数量＋枚举（合成协议验收）','type'=>'cloud','billing_cycles'=>['monthly']]);
 echo json_encode(['quantity_fixture_product'=>$quantityProduct['product_id']],JSON_THROW_ON_ERROR),PHP_EOL;
+$previewProduct=(new App\Services\ProductSnapshotService())->save(['provider_id'=>$provider,'remote_pid'=>389,'name'=>'本地预览（隔离数量验收）','type'=>'cloud','billing_cycles'=>['monthly']]);
+config(['jianyun.product_refresh_ids'=>(string)$previewProduct['product_id']]);
+(new App\Services\ProductRefreshService())->runBatch();
+echo json_encode(['preview_fixture_product'=>$previewProduct['product_id']],JSON_THROW_ON_ERROR),PHP_EOL;
 echo "Browser fixtures ready.\n";

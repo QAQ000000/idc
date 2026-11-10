@@ -82,6 +82,8 @@ const error = ref(""),
   busy = ref(false),
   now = ref(Date.now()),
   quoteNotice = ref("");
+const onlineConfirmationRequired = ref(false), realtimePricing = ref(false);
+const quoteLoadingLabel = computed(() => realtimePricing.value ? "正在实时核价…" : "正在计算选配预览…");
 const passwordPolicy = computed(
   () => confirmed.value?.password_policy ?? { min_length: 12, max_length: 72 },
 );
@@ -121,8 +123,9 @@ const summaryProps = computed(() => ({
   cycleLabel: cycleLabel.value, quoting: quoting.value, busy: busy.value,
   quoteError: quoteError.value, quoteExpired: quoteExpired.value,
   quoteNotice: quoteNotice.value, canSubmit: canSubmit.value,
+  quoteLoadingLabel: quoteLoadingLabel.value,
 }));
-const quoteStatus = computed(() => quoting.value ? "正在重新报价…" : quoteError.value ? "报价失败，请重试" : quoteExpired.value ? "报价已失效，请重新计算" : confirmed.value ? `报价有效 · 剩余 ${Math.max(0, Math.ceil((expires.value - now.value) / 1000))} 秒` : "等待有效报价");
+const quoteStatus = computed(() => busy.value ? "正在实时复核并提交…" : quoting.value ? quoteLoadingLabel.value : quoteError.value ? "报价失败，请重试" : quoteExpired.value ? "报价已失效，请重新计算" : confirmed.value ? `${confirmed.value.pricing_mode === "local_preview" ? "选配预览 · 提交时实时复核" : "实时报价"} · 剩余 ${Math.max(0, Math.ceil((expires.value - now.value) / 1000))} 秒` : "等待有效报价");
 const passwordSets: Record<string, string> = {
   upper: "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
   lower: "abcdefghijklmnopqrstuvwxyz",
@@ -166,7 +169,7 @@ let checkoutKey = crypto.randomUUID(),
 let quoteTimer: ReturnType<typeof setTimeout> | undefined;
 let quoteActive = false;
 let quoteController: AbortController | undefined;
-let pendingQuote: { version: number; manual: boolean; ready: boolean; id: string; cycle: string; options: Record<string, string> } | undefined;
+let pendingQuote: { version: number; manual: boolean; ready: boolean; id: string; cycle: string; options: Record<string, string>; online: boolean } | undefined;
 watch(
   [cycle, hostname, password, useBalance, selected],
   () => {
@@ -182,12 +185,13 @@ function quote(manual = false, delay = 0) {
   quoteError.value = "";
   quoteNotice.value = "";
   quoting.value = true;
+  realtimePricing.value = onlineConfirmationRequired.value;
   if (!configurationComplete(configuration.value.fields, selected.value)) {
     quoting.value = false;
     quoteError.value = "请填写有效的数量和选配，再获取并确认报价。";
     return;
   }
-  pendingQuote = { version, manual, ready: delay === 0, id: String(route.params.id), cycle: cycle.value, options: { ...selected.value } };
+  pendingQuote = { version, manual, ready: delay === 0, id: String(route.params.id), cycle: cycle.value, options: { ...selected.value }, online: onlineConfirmationRequired.value };
   if (delay) quoteTimer = setTimeout(() => { if (pendingQuote?.version === version) { pendingQuote.ready = true; void runQuote(); } }, delay);
   else void runQuote();
 }
@@ -199,14 +203,15 @@ async function runQuote() {
   quoteController = new AbortController();
   const { version, manual } = request;
   try {
-    const result = await api<Quote>(
-      "/products/" + request.id + "/calculate",
-      {
-        method: "POST",
-        signal: quoteController.signal,
-        body: { billing_cycle: request.cycle, config_options: request.options },
-      },
-    );
+    const parameters = { method: "POST", signal: quoteController.signal,
+      body: { billing_cycle: request.cycle, config_options: request.options } };
+    const preview = request.online ? { pricing_mode: "online_required" as const } : await api<Quote | { pricing_mode: "online_required" }>("/products/" + request.id + "/preview", parameters);
+    if (version !== quoteVersion || disposed) return;
+    let result: Quote;
+    if (preview.pricing_mode === "online_required") {
+      realtimePricing.value = true;
+      result = await api<Quote>("/products/" + request.id + "/calculate", parameters);
+    } else result = preview;
     if (version === quoteVersion && !disposed) {
       confirmed.value = result;
       if (product.value && result.upstream_stock) product.value.upstream_stock = result.upstream_stock;
@@ -275,6 +280,7 @@ async function load() {
 watch(
   [cycle, selected],
   () => {
+    onlineConfirmationRequired.value = false;
     if (!loading.value) quote(false, 400);
   },
   { flush: "sync" },
@@ -329,6 +335,7 @@ async function submit() {
         message(e) +
         "；如请求结果不明，请保持原配置重试或先到我的账单查找原单，勿重新购买。";
       if (e instanceof ApiError && e.status === 409) {
+        onlineConfirmationRequired.value = true;
         confirmed.value = null;
         quoteError.value =
           "当前报价或购买条件需要重新确认，请重新获取报价后核对；刷新报价不会自动提交订单。";

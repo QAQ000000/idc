@@ -1,8 +1,10 @@
 # JianYun (简云) · Agent 协同开发指南与工程宪法
 
-**商品计划刷新**：仅PRODUCT_REFRESH_IDS明确纳入的本地商品，每批最多2个、每商品10分钟间隔，独立可选oneshot／timer与MySQL会话互斥，不阻塞原财务调度。完整规则与默认组合对价、复读及发布版本检查都通过才整体替换；无变化不写商品，变化递增原JSON修订号。时间／结果独立存system_settings，库存仍Redis观察；客户仍在线核价，无迁移，见[契约](docs/M2_PRODUCT_REFRESH.md)。
+**客户本地预览增量**：PRODUCT_LOCAL_PREVIEW默认关闭；有效完整快照通过可选LocalPreviewDriverInterface在本站后端计价，preview不调用上游，不支持／过期明确要求online。客户页面先预览，原calculate及checkout实时预检保留；本地确认独立用途并绑定金额、配置与完整履约上下文，409后强制在线重确认，原键恢复不改。无迁移，M2商品2实测及数据库误删后的恢复边界见[契约](docs/M2_LOCAL_PREVIEW.md)。
 
-**本地计价对照边界**：魔方插件提供只读计价器／对价CLI，完整支持条件不满足则整组在线回退，线上失败不能改用本地价格。客户calculate／checkout、确认指纹、原请求键和Worker预检保持；诊断hash不能充当成交凭据，未启用计划刷新或客户本地预览。真实与隔离证据分开，见[契约](docs/M2_LOCAL_PRICING.md)。
+**商品计划刷新**：仅PRODUCT_REFRESH_IDS明确纳入的本地商品，每批最多2个、每商品10分钟间隔，独立可选oneshot／timer与MySQL会话互斥，不阻塞原财务调度。完整规则与默认组合对价、复读及发布版本检查都通过才整体替换；无变化不写商品，变化递增原JSON修订号。时间／结果独立存system_settings，库存仍Redis观察；客户calculate／checkout仍在线，选配预览按本批契约启用，无迁移，见[契约](docs/M2_PRODUCT_REFRESH.md)。
+
+**本地计价对照边界**：魔方插件提供只读计价器／对价CLI，完整支持条件不满足则整组在线回退，线上失败不能改用本地价格。客户calculate／checkout、确认指纹、原请求键和Worker预检保持；诊断hash不能充当成交凭据；原计价验证批未启用的计划刷新／客户预览已由后续独立批次承接。真实与隔离证据分开，见[契约](docs/M2_LOCAL_PRICING.md)。
 
 **选购响应与库存增量**：本地表单先显示，核价400ms防抖、单在途和最新候选，旧响应无效。StockObservation仅为5分钟Redis展示观察，目录批读，不能覆盖products.stock、进入报价指纹／快照／任务或替代下单及Worker预检；明确缺货与查询失败分别提示。魔方库存语义和脱敏阶段耗时留在插件，兼容／验收见[契约](docs/M2_CHECKOUT_RESPONSIVENESS.md)。
 

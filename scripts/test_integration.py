@@ -72,6 +72,7 @@ def main():
         PHP_CLI_SERVER_WORKERS="4", CORS_ALLOWED_ORIGINS="https://console.example.test",
         TRUSTED_PROXIES="127.0.0.1,::1",
         PRODUCT_REFRESH_IDS="",
+        PRODUCT_LOCAL_PREVIEW="true",
     )
     processes = []
     container_created = False
@@ -153,6 +154,7 @@ def main():
             run_checks(php, 'tests/admin.php', env, r'Admin checks: \d+')
             run_checks(php, 'tests/admin_products.php', env, r'Admin product checks: \d+')
             run_checks(php, 'tests/product_refresh.php', env, r'Product refresh checks: \d+')
+            run_checks(php, 'tests/local_preview.php', env, r'Local preview checks: \d+')
             run_checks(php, 'tests/power.php', env, r'Power checks: \d+')
             run_checks(php, 'tests/console.php', env, r'Console checks: \d+')
             run_checks(php, 'tests/reinstall.php', env, r'Reinstall checks: \d+')

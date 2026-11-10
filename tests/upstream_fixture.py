@@ -143,6 +143,8 @@ class Handler(BaseHTTPRequestHandler):
                     data['config_groups'][0]['options'][1]['sub'][1]['pricings'][0]['monthly'] = '1.00'
                 if state['config_mode'] == 'refresh_stock':
                     data['products'].update(stock_control=1, qty=9, upstream_qty=9)
+                if state['config_mode'] == 'preview_generation':
+                    data['products']['host'] = {'show': 1, 'prefix': 'changed', 'rule': {'num': 1, 'len_num': 12}}
             if p.get('pid') == ['14']:
                 data = copy.deepcopy(CONFIG_SCHEMA)
                 if state['config_mode'] == 'schema':

@@ -11,6 +11,7 @@ Route::post('auth/password/reset',[ApiController::class,'resetPassword']);
 Route::get('products', [ApiController::class, 'products']);
 Route::get('products/{id}/config', [ApiController::class, 'configuration']);
 Route::post('products/{id}/calculate', [ApiController::class, 'calculate']);
+Route::post('products/{id}/preview', [ApiController::class, 'preview']);
 Route::middleware('client')->group(function (): void {
     Route::get('tickets', [\App\Http\Controllers\TicketController::class, 'index']);
     Route::get('tickets/instances', [\App\Http\Controllers\TicketController::class, 'instances']);

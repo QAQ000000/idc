@@ -34,6 +34,12 @@ final class ApiController
     {
         return ApiResponse::success($catalog->configuration(Request::id($id)));
     }
+    public function preview(string $id,CatalogService $catalog): JsonResponse
+    {
+        $body=Request::body();$options=$body['config_options']??[];
+        if (!is_array($options)) { throw new ApiException('Invalid config_options'); }
+        return ApiResponse::success($catalog->preview(Request::id($id),Request::text($body,'billing_cycle',1,20),$options))->header('Cache-Control','no-store');
+    }
     public function checkout(BillingService $billing): JsonResponse { return ApiResponse::success($billing->checkout((int)AuthMiddleware::user()['id'], Request::body())); }
     public function invoice(string $id, BillingService $billing): JsonResponse { return ApiResponse::success($billing->invoice((int)AuthMiddleware::user()['id'], Request::id($id))); }
     public function invoices(BillingService $billing):JsonResponse { return ApiResponse::success($billing->listing((int)AuthMiddleware::user()['id'],request()->query())); }

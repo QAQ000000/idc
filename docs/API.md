@@ -1,5 +1,7 @@
 # JianYun (简云) · RESTful API 契约与接口字典 (API Specification)
 
+**客户本地预览**：新增公开POST /products/{id}/preview，输入同calculate，无上游请求。成功返回原安全Quote字段及pricing_mode=local_preview；否则仅{pricing_mode:"online_required"}，无金额／令牌。calculate追加pricing_mode=online，原在线语义不变。lp1确认仅在checkout在线复核一致后有效，原请求键查回优先。接口不公开原矩阵／成本／上游身份，见[契约](M2_LOCAL_PREVIEW.md)。
+
 **快照计划刷新**：无新增HTTP写接口；管理员商品详情增加只读snapshot_refresh={result,last_attempt_at,last_success_at,valid_until,fresh,pricing_mode:"online"}，时间为可空UTC Unix秒，缺失观察为never／fresh=false。只有匹配当前快照且未过期才新鲜；权限沿原管理员读权限，不输出原始规则、成本、凭据或刷新hash。客户calculate／checkout仍实时核价、原确认及原键恢复保持，见[契约](M2_PRODUCT_REFRESH.md)。
 
 **本地计价验证边界**：本批仅有魔方插件只读CLI对价入口，无新增HTTP API；客户calculate／checkout继续在线核价及原quote_token，诊断pricing_hash不可作为下单确认。规则不支持整组回退，在线失败不返回本地价，见[契约](M2_LOCAL_PRICING.md)。

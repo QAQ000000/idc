@@ -5,6 +5,7 @@ defineProps<{
   summary: { label: string; value: string }[]; cycleLabel: string;
   quoting: boolean; busy: boolean; quoteError: string; quoteExpired: boolean;
   quoteNotice: string; canSubmit: boolean; useBalance: boolean;
+  quoteLoadingLabel: string;
 }>();
 const emit = defineEmits<{ requote: []; "update:useBalance": [value: boolean] }>();
 </script>
@@ -25,7 +26,7 @@ const emit = defineEmits<{ requote: []; "update:useBalance": [value: boolean] }>
     </el-descriptions>
     <p v-else class="muted">固定套餐，无额外选配。</p>
     <div class="quote-prices" :aria-busy="quoting">
-      <p v-if="quoting" role="status">正在核价…</p>
+      <p v-if="quoting" role="status">{{ quoteLoadingLabel }}</p>
       <p class="field-label">首期应付</p>
       <p class="renewal-price">¥{{ confirmed?.total || "—" }}</p>
       <div class="price-line">
@@ -35,6 +36,7 @@ const emit = defineEmits<{ requote: []; "update:useBalance": [value: boolean] }>
         </strong>
       </div>
       <p v-if="confirmed" class="muted">
+        {{ confirmed.pricing_mode === "local_preview" ? "选配预览，提交时实时复核。" : "已实时核价。" }}
         确认报价截止：{{ confirmed.quote_expires_at }} UTC
       </p>
     </div>
@@ -74,7 +76,7 @@ const emit = defineEmits<{ requote: []; "update:useBalance": [value: boolean] }>
       }}
     </p>
     <p class="muted">
-      确认报价有效 5 分钟；新购账单报价保留 30
+      确认报价最长有效 5 分钟；新购账单报价保留 30
       分钟。租期从交付成功起算，已付款不代表已经开通。
     </p>
     <el-button

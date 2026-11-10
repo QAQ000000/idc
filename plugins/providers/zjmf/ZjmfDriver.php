@@ -7,8 +7,16 @@ use App\Plugins\Providers\{ConnectionConfigInterface, ServiceStatusDriverInterfa
 use App\Plugins\Providers\{UpstreamDriverInterface, RenewalDriverInterface, DriverExecutionResult as R, PreflightResult, ConfigurableDriverInterface, ConfigOptions, PasswordPolicy, PowerDriverInterface, PowerState, ConsoleDriverInterface, ConsoleTarget, ReinstallDriverInterface, ReinstallOptions};
 
 /** Magic Finance agent API. Stateless cart_data avoids clearing or sharing the upstream account's cart. */
-final class ZjmfDriver implements ConnectionConfigInterface, UpstreamDriverInterface, RenewalDriverInterface, ConfigurableDriverInterface, PowerDriverInterface, ConsoleDriverInterface, ReinstallDriverInterface, ServiceStatusDriverInterface, \App\Plugins\Providers\SnapshotRulesDriverInterface
+final class ZjmfDriver implements ConnectionConfigInterface, UpstreamDriverInterface, RenewalDriverInterface, ConfigurableDriverInterface, PowerDriverInterface, ConsoleDriverInterface, ReinstallDriverInterface, ServiceStatusDriverInterface, \App\Plugins\Providers\SnapshotRulesDriverInterface, \App\Plugins\Providers\LocalPreviewDriverInterface
 {
+    public function previewPrice(array $schema, string $cycle, array $options): ?PreflightResult
+    {
+        $now=time();$row=$schema['product_pricings'][0]??[];
+        $result=(new LocalPriceCalculator())->evaluate(['schema'=>$schema,'fetched_at'=>$now,
+            'currency'=>['id'=>$row['currency']??null,'code'=>$row['code']??null]],$cycle,$options,$now);
+        if (!$result['supported']) { return null; }
+        return new PreflightResult($result['first'],$result['config_options'],context:$this->priceContext($schema,$this->describeForm($schema)),recurringAmount:$result['recurring']);
+    }
     public function snapshotContent(array $schema): array
     {
         // Unknown fields are retained conservatively. Only known observations may be excluded.
@@ -187,12 +195,15 @@ final class ZjmfDriver implements ConnectionConfigInterface, UpstreamDriverInter
         $recurring = Money::positive((string)($p['signal_price'] ?? $amount));
         // Magic/DCIM provisioning accepts at most 20 bytes, even when settle accepts more.
         // Keep the local 12-byte minimum. This is not the product's generation length.
-        $rules=[]; $quantities=[];
+        return new PreflightResult($amount, $config, context:$this->priceContext($schema['data']??[],$form),recurringAmount:$recurring,stock:$stock);
+    }
+    private function priceContext(array $schema,array $form): array
+    {
+        $rules=[];$quantities=[];
         foreach($form as $field){if($field['type']==='integer'){$quantities[]=$field;}}
         foreach($form as $field){if(isset($field['dependencies'])){$rules[]=['id'=>$field['id'],'dependencies'=>$field['dependencies']];}}
-        return new PreflightResult($amount, $config, context: $this->inputContext($schema['data']??[]) + ['schema_hash'=>ConfigOptions::hash($form)]
-            + ($rules ? ['configuration_rules'=>$rules] : [])
-            + ($quantities ? ['configuration_quantities'=>$quantities] : []), recurringAmount: $recurring, stock: $stock);
+        return $this->inputContext($schema)+['schema_hash'=>ConfigOptions::hash($form)]
+            +($rules?['configuration_rules'=>$rules]:[])+($quantities?['configuration_quantities'=>$quantities]:[]);
     }
     private function hostname(array $o): string
     {

@@ -4,7 +4,7 @@ namespace App\Services;
 
 use App\Core\{ApiException, Database, Money, Security};
 use App\Plugins\Providers\{ProviderRegistry, ConfigurableDriverInterface, ConfigOptions, PasswordPolicy};
-use App\Plugins\Providers\{StockObservation, UpstreamOutOfStock};
+use App\Plugins\Providers\{StockObservation, UpstreamOutOfStock, LocalPreviewDriverInterface};
 use PDO;
 
 final class CatalogService
@@ -108,6 +108,37 @@ final class CatalogService
     {
         return Security::requestFingerprint(json_encode([self::fingerprint($quote['product']),$quote['billing_cycle'],$quote['config_options'],$quote['total'],$quote['recurring_price'],$preflight,$expires],JSON_THROW_ON_ERROR));
     }
+    private function previewSignature(array $quote,?array $preflight,int $expires): string
+    {
+        return Security::requestFingerprint(json_encode(['catalog-local-preview-v1',self::fingerprint($quote['product']),
+            $quote['billing_cycle'],$quote['config_options'],$quote['total'],$quote['recurring_price'],$preflight['context']??null,$expires],JSON_THROW_ON_ERROR));
+    }
+    /** Never contacts an upstream; absence of a supported fresh result explicitly requests online pricing. */
+    public function preview(int $id,string $cycle,array $options): array
+    {
+        $q=$this->quote(Database::getInstance(),$id,$cycle,$options);$p=$q['product'];
+        $online=['pricing_mode'=>'online_required'];
+        if (config('jianyun.product_local_preview')!==true) { return $online; }
+        $cache=json_decode($p['config_cache'],true,64,JSON_THROW_ON_ERROR);
+        $observation=(new ProductRefreshService())->observation($id,$cache);
+        if (!$observation['fresh']) { return $online; }
+        try {
+            $driver=ProviderRegistry::installed()->get($p['driver']);
+            if (!$driver instanceof LocalPreviewDriverInterface) { return $online; }
+            $r=$driver->previewPrice($cache['schema']??[],$cycle,$q['config_options']);
+            if (!$r || $r->currency!=='CNY' || $r->config!==$q['config_options']
+                || ($r->context['schema_hash']??null)!==ConfigOptions::hash($this->form($p,$cache))) { return $online; }
+            $preflight=['amount'=>Money::positive($r->amount),'recurring'=>Money::positive($r->recurringAmount??$r->amount),
+                'context'=>$r->context,'fingerprint'=>self::fingerprint($p)];
+        } catch (\Throwable) { return $online; }
+        $q=$this->quote(Database::getInstance(),$id,$cycle,$options,false,$preflight);
+        $expires=min(time()+300,$observation['valid_until']);
+        if ($expires<=time()) { return $online; }
+        $q['quote_token']='lp1.'.$expires.'.'.$this->previewSignature($q,$preflight,$expires);
+        $q['quote_expires_at']=gmdate('Y-m-d H:i:s',$expires);$q['pricing_mode']='local_preview';
+        $q['upstream_stock']=(new StockObservationService())->read((int)$p['provider_id'],(int)$p['remote_pid']);
+        unset($q['product']);return $q;
+    }
     public function calculate(int $id, string $cycle, array $options): array
     {
         $preflight=$this->preflight($id,$cycle,$options);
@@ -115,6 +146,7 @@ final class CatalogService
         $expires=time()+300;
         $q['quote_token']=$expires.'.'.$this->signature($q,$preflight,$expires);
         $q['quote_expires_at']=gmdate('Y-m-d H:i:s',$expires);
+        $q['pricing_mode']='online';
         $p=$q['product'];
         $q['upstream_stock']=(new StockObservationService())->read((int)$p['provider_id'],(int)$p['remote_pid']);
         unset($q['product']); return $q;
@@ -124,6 +156,11 @@ final class CatalogService
         $cache=json_decode($quote['product']['config_cache'],true,64,JSON_THROW_ON_ERROR);
         // Old fixed-product API clients remain compatible; all configurable checkouts require confirmation.
         if ($token===null && !($cache['configurable']??false)) { return; }
+        if (is_string($token) && preg_match('/^lp1\.([0-9]{10})\.([a-f0-9]{64})$/D',$token,$m)) {
+            if ((int)$m[1]>=time() && (int)$m[1]<=time()+300 && $preflight!==null
+                && hash_equals($this->previewSignature($quote,$preflight,(int)$m[1]),$m[2])) { return; }
+            throw new ApiException('预览价格或配置已变化，请实时核价并重新确认；未创建新订单',409,409);
+        }
         if (!is_string($token) || !preg_match('/^([0-9]{10})\.([a-f0-9]{64})$/D',$token,$m)
             || (int)$m[1]<time() || (int)$m[1]>time()+300 || !hash_equals($this->signature($quote,$preflight,(int)$m[1]),$m[2])) {
             throw new ApiException('Quote expired or changed; calculate and confirm again',409,409);

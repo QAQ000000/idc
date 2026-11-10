@@ -130,7 +130,7 @@ final class ProductRefreshService
             return ['product_id'=>$id,'result'=>$meta['result']];
         });
     }
-    /** Read-only operator projection; never used as a local-price authorization. */
+    /** Read-only freshness projection; supported local previews require a matching valid snapshot. */
     public function observation(int $id,array $cache): array
     {
         $m=$this->metadata(Database::getInstance(),$id);

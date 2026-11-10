@@ -144,6 +144,7 @@ export interface ProductConfiguration {
   defaults: Record<string, string>;
 }
 export interface Quote {
+  pricing_mode: "local_preview" | "online";
   upstream_stock?: StockObservation;
   total: string;
   recurring_price: string;

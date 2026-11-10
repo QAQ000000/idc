@@ -13,6 +13,7 @@ import copy
 CONFIG_SCHEMA = json.loads((Path(__file__).parent / "fixtures/zjmf-product-14.json").read_text())
 ENUM_SCHEMA = json.loads((Path(__file__).parent / "fixtures/zjmf-enum-linkage.json").read_text())
 FULL_QUANTITY_SCHEMA = json.loads((Path(__file__).parent / "fixtures/zjmf-product-563.json").read_text())
+PRICING_SAMPLE = json.loads((Path(__file__).parent / "fixtures/zjmf-pricing-samples.json").read_text())["samples"][0]
 # Synthetic sale protocol: real 563 quantities plus the existing synthetic enum graph.
 QUANTITY_SCHEMA = copy.deepcopy(ENUM_SCHEMA)
 QUANTITY_SCHEMA["products"]["id"] = 2563
@@ -122,6 +123,8 @@ class Handler(BaseHTTPRequestHandler):
             r = {'status': 405}
         elif path == '/cart/get_product_config':
             data = {'products': {'id': 391}, 'config_groups': [], 'customfields': [], 'advanced': []}
+            if p.get('pid') == ['389']:
+                data = copy.deepcopy(PRICING_SAMPLE['schema'])
             if p.get('pid') == ['14']:
                 data = copy.deepcopy(CONFIG_SCHEMA)
                 if state['config_mode'] == 'schema':
@@ -144,6 +147,16 @@ class Handler(BaseHTTPRequestHandler):
             r = {'status': 200, 'data': data}
         elif path == '/cart/get_total':
             total, recurring = '0.01', '0.01'
+            if p.get('pid') == ['389']:
+                opts = {k[13:-1]: v[0] for k, v in p.items() if k.startswith('configoption[')}
+                case = next((c for c in PRICING_SAMPLE['cases'] if c['config_options'] == opts), None)
+                if case is None or p.get('qty') != ['1']:
+                    self.send_error(422, 'Unrecorded pricing comparison configuration')
+                    return
+                # Independent fixed supplier capture, not a second implementation of the calculator.
+                total, recurring = case['first'], case['recurring']
+                if state['config_mode'] == 'pricing_mismatch':
+                    recurring = '999.99'
             if p.get('pid') == ['14']:
                 opts = {k[13:-1]: v[0] for k, v in p.items() if k.startswith('configoption[')}
                 fields = [o for g in CONFIG_SCHEMA['config_groups'] for o in g['options']]

@@ -1,5 +1,7 @@
 # JianYun (简云) · RESTful API 契约与接口字典 (API Specification)
 
+**本地计价验证边界**：本批仅有魔方插件只读CLI对价入口，无新增HTTP API；客户calculate／checkout继续在线核价及原quote_token，诊断pricing_hash不可作为下单确认。规则不支持整组回退，在线失败不返回本地价，见[契约](M2_LOCAL_PRICING.md)。
+
 **整数数量配置增量**：原商品configuration、calculate与管理员preview接口的fields新增type=integer（choices=[]），提供minimum／maximum／step／step_base=0／allow_endpoints／ranges（id／minimum／maximum）；defaults及config_options仍为数字字符串，字段ID作为键，值为数量而非子项ID。原下单／预览确认校验范围、步长和指纹，非法输入400、配置／报价漂移409；configuration摘要value为数量字符串。无新接口，见[契约](M2_INTEGER_QUANTITIES.md)。
 
 **枚举依赖增量**：原商品config与后台preview的fields可带dependencies数组（field、operator=in/not_in、values、effect=allow/exclude、choices，ID均字符串），父字段先于子字段。原calculate／checkout拒绝非法组合，不自动替换配置；schema_hash及quote_token包含规则，改变须重新确认。无新增路由，其他字段与成功请求键恢复保持，见[契约](M2_ENUM_DEPENDENCIES.md)。

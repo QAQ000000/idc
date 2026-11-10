@@ -1,5 +1,7 @@
 # JianYun (简云) · 系统全景架构设计文档
 
+**插件本地计价验证**：LocalPriceCalculator／PriceComparison与CLI均在魔方插件内，核心不直接引用或新增能力抽象；临时完整规则信封不写商品表，在线结果始终为权威。客户calculate／checkout、原指纹及Outbox不改，诊断价格hash不参与成交；定时同步与客户预览留待对价后接入，见[契约](M2_LOCAL_PRICING.md)。
+
 **选购库存观察**：通用PreflightResult追加可空StockObservation，魔方专用stock_control／qty语义只在插件解析。StockObservationService在Redis暂存5分钟，目录一次MGET批读、不遍历上游；缓存故障／过期显示未知。观察不写MySQL配额、配置快照、报价指纹或Outbox，不代替下单及Worker预检；前端合并核价与耗时记录见[契约](M2_CHECKOUT_RESPONSIVENESS.md)。
 
 **整数数量配置增量**：魔方专用类型15／18只在插件投影为通用integer字段，核心ConfigOptions校验范围／步长／区间；原报价／账单／实例／任务JSON承接configuration_quantities，无配置拆表或新任务。qty=1、历史及未知调查保持，见[契约](M2_INTEGER_QUANTITIES.md)。

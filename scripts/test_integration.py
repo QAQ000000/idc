@@ -113,6 +113,7 @@ def main():
                        CONSOLE_TEST_LOOPBACK='1', CONSOLE_TEST_WS_URL=f'ws://127.0.0.1:{console_port}/vnc?token=SECRET')
             run_checks(php, 'tests/unit.php', env, r'\d+ unit checks passed\.')
             run_checks(php, 'tests/plugins.php', env, r'\d+ plugin checks passed\.')
+            run_checks(php, 'tests/local_pricing.php', env, r'Local pricing checks: \d+')
             with (directory / "http.log").open("w") as log:
                 processes.append(subprocess.Popen([php, "-S", f"127.0.0.1:{http_port}", "-t", "public", "public/index.php"], cwd=ROOT, env=env, stdout=log, stderr=log, start_new_session=True))
             deadline = time.monotonic() + 10
@@ -140,6 +141,7 @@ def main():
                     if time.monotonic() > deadline:
                         raise RuntimeError('Upstream test fixture not ready')
                     time.sleep(0.1)
+            run_checks(php, 'tests/local_pricing_http.php', env, r'Local pricing HTTP checks: \d+')
             run_checks(php, 'tests/m2.php', env, r'M2 checks: \d+')
             run_checks(php, 'tests/renewal.php', env, r'Renewal checks: \d+')
             run_checks(php, 'tests/configurable.php', env, r'\d+ configurable checks passed\.')

@@ -1,0 +1,2318 @@
+{
+  "source": "Reduced public pricing fields from previously saved read-only quotations; no current stock or sale authorization. Nonzero setup/multiplier boundary cases are synthetic tests, not supplier evidence.",
+  "samples": [
+    {
+      "schema": {
+        "flag": false,
+        "customfields": [],
+        "advanced": [],
+        "products": {
+          "id": 389,
+          "api_type": "zjmf_api",
+          "pay_type": "{\"pay_type\":\"recurring\",\"pay_hour_cycle\":\"720\",\"pay_day_cycle\":\"30\",\"pay_ontrial_status\":0,\"pay_ontrial_cycle\":\"0\",\"pay_ontrial_num\":\"1\",\"pay_ontrial_condition\":[],\"pay_ontrial_cycle_type\":\"day\",\"pay_ontrial_num_rule\":\"0\",\"clientscount_rule\":0}",
+          "pay_method": "prepayment",
+          "upstream_price_type": "percent",
+          "upstream_price_value": "100.00",
+          "prorata_billing": 0,
+          "prorata_charge_next_month": 0,
+          "tax": 0
+        },
+        "product_pricings": [
+          {"type": "product", "currency": 1, "relid": 389, "monthly": "1.00", "annually": "12.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+        ],
+        "config_groups": [
+          {
+            "options": [
+              {
+                "id": 277291,
+                "option_name": "area|区域",
+                "option_type": 12,
+                "qty_minimum": 0,
+                "qty_maximum": 0,
+                "qty_stage": 0,
+                "hidden": 0,
+                "linkage_pid": 0,
+                "linkage_top_pid": 0,
+                "unit": "",
+                "sub": [
+                  {
+                    "id": 1174880,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "1|CN^镇江电信(铂金8259CL)",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1174880, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": 277292,
+                "option_name": "os|操作系统",
+                "option_type": 5,
+                "qty_minimum": 0,
+                "qty_maximum": 0,
+                "qty_stage": 0,
+                "hidden": 0,
+                "linkage_pid": 0,
+                "linkage_top_pid": 0,
+                "unit": "",
+                "sub": [
+                  {
+                    "id": 1174881,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "12|CentOS^CentOS-7.6.1810-x64",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1174881, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1174882,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "15|Debian^Debian-10.3.3-x64",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1174882, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1174883,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "71|CentOS^CentOS-9-Stream-x64",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1174883, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1174884,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "40|Ubuntu^Ubuntu-20.04.1-x64",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1174884, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1174885,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "68|Ubuntu^Ubuntu-22.04-x64",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1174885, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1174886,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "63|CentOS^CentOS-8-Stream-x64",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1174886, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1174887,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "19|Windows^Windows-2012R2-Datacenter-cn",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1174887, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1174888,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "21|Windows^Windows-2019-Datacenter-cn",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1174888, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1174889,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "84|预设应用^宝塔面板deb11",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1174889, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1174890,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "64|Windows^Windows-2022-Datacenter-cn",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1174890, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1174891,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "66|Debian^Debian-11.1-x64",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1174891, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1174892,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "81|Debian^Debian-12.0_x64",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1174892, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1174893,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "89|Ubuntu^Ubuntu-24.04.1-x64",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1174893, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1174894,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "39|Windows^Windows10-cn",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1174894, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1174895,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "95|Windows^Windows11-cn",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1174895, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1174896,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "99|Debian^Debian-13.2_x64",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1174896, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": 277293,
+                "option_name": "cpu|CPU",
+                "option_type": 6,
+                "qty_minimum": 0,
+                "qty_maximum": 0,
+                "qty_stage": 0,
+                "hidden": 0,
+                "linkage_pid": 0,
+                "linkage_top_pid": 0,
+                "unit": "",
+                "sub": [
+                  {
+                    "id": 1174897,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "16|16核",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1174897, "monthly": "33.00", "annually": "396.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1174898,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "4|4核",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1174898, "monthly": "3.00", "annually": "36.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1174899,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "8|8核",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1174899, "monthly": "13.00", "annually": "156.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": 277294,
+                "option_name": "memory|内存",
+                "option_type": 8,
+                "qty_minimum": 0,
+                "qty_maximum": 0,
+                "qty_stage": 0,
+                "hidden": 0,
+                "linkage_pid": 0,
+                "linkage_top_pid": 0,
+                "unit": "",
+                "sub": [
+                  {
+                    "id": 1174900,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "32768|32G",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1174900, "monthly": "133.00", "annually": "1596.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1174901,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "2048|2G",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1174901, "monthly": "1.00", "annually": "12.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1174902,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "4096|4G",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1174902, "monthly": "8.00", "annually": "96.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1174903,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "8192|8G",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1174903, "monthly": "23.00", "annually": "276.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1174904,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "16384|16G",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1174904, "monthly": "43.00", "annually": "516.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": 277295,
+                "option_name": "bw|带宽",
+                "option_type": 10,
+                "qty_minimum": 0,
+                "qty_maximum": 0,
+                "qty_stage": 1,
+                "hidden": 0,
+                "linkage_pid": 0,
+                "linkage_top_pid": 0,
+                "unit": "",
+                "sub": [
+                  {
+                    "id": 1174905,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "30|30Mbps",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1174905, "monthly": "60.00", "annually": "720.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1174906,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "15|15Mbps",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1174906, "monthly": "3.00", "annually": "36.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1174907,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "20|20Mbps",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1174907, "monthly": "10.00", "annually": "120.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1174908,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "25|25Mbps",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1174908, "monthly": "22.00", "annually": "264.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1174909,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "50|50Mbps",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1174909, "monthly": "120.00", "annually": "1440.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": 277296,
+                "option_name": "ip_num|IP数量",
+                "option_type": 15,
+                "qty_minimum": 1,
+                "qty_maximum": 5,
+                "qty_stage": 1,
+                "hidden": 0,
+                "linkage_pid": 0,
+                "linkage_top_pid": 0,
+                "unit": "",
+                "sub": [
+                  {
+                    "id": 1174910,
+                    "qty_minimum": 1,
+                    "qty_maximum": 1,
+                    "option_name": "|IP数量",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1174910, "monthly": "30.00", "annually": "360.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1174911,
+                    "qty_minimum": 2,
+                    "qty_maximum": 5,
+                    "option_name": "|IP数量",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1174911, "monthly": "40.00", "annually": "480.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": 277297,
+                "option_name": "data_disk_size|数据盘",
+                "option_type": 13,
+                "qty_minimum": 0,
+                "qty_maximum": 0,
+                "qty_stage": 1,
+                "hidden": 0,
+                "linkage_pid": 0,
+                "linkage_top_pid": 0,
+                "unit": "",
+                "sub": [
+                  {
+                    "id": 1174912,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "40|40G",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1174912, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1174913,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "60|60G",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1174913, "monthly": "20.00", "annually": "240.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1174914,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "100|100G",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1174914, "monthly": "40.00", "annually": "480.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1174915,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "150|150G",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1174915, "monthly": "60.00", "annually": "720.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1174916,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "200|200G",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1174916, "monthly": "80.00", "annually": "960.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": 277298,
+                "option_name": "flow_limit|流量",
+                "option_type": 10,
+                "qty_minimum": 0,
+                "qty_maximum": 0,
+                "qty_stage": 1,
+                "hidden": 0,
+                "linkage_pid": 0,
+                "linkage_top_pid": 0,
+                "unit": "",
+                "sub": [
+                  {
+                    "id": 1174917,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "0|无限(长期占用另外计费)",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1174917, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": 277299,
+                "option_name": "system_disk_size|系统盘",
+                "option_type": 13,
+                "qty_minimum": 0,
+                "qty_maximum": 0,
+                "qty_stage": 0,
+                "hidden": 0,
+                "linkage_pid": 0,
+                "linkage_top_pid": 0,
+                "unit": "",
+                "sub": [
+                  {
+                    "id": 1174918,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "40|40G",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1174918, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1174919,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "60|60G",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1174919, "monthly": "10.00", "annually": "120.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1174920,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "100|100G",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1174920, "monthly": "20.00", "annually": "240.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": 277300,
+                "option_name": "network_type|网络类型",
+                "option_type": 10,
+                "qty_minimum": 0,
+                "qty_maximum": 0,
+                "qty_stage": 0,
+                "hidden": 0,
+                "linkage_pid": 0,
+                "linkage_top_pid": 0,
+                "unit": "",
+                "sub": [
+                  {
+                    "id": 1174921,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "normal|经典网络",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1174921, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1174922,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "vpc|VPC网络",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1174922, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": 277301,
+                "option_name": "in_bw|下行带宽",
+                "option_type": 10,
+                "qty_minimum": 0,
+                "qty_maximum": 0,
+                "qty_stage": 1,
+                "hidden": 0,
+                "linkage_pid": 0,
+                "linkage_top_pid": 0,
+                "unit": "",
+                "sub": [
+                  {
+                    "id": 1174923,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "50|50Mbps",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1174923, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  }
+                ]
+              }
+            ],
+            "id": 29242
+          }
+        ],
+        "config_links": [
+          29242
+        ]
+      },
+      "currency": {
+        "id": 1,
+        "code": "CNY"
+      },
+      "cases": [
+        {
+          "name": "default",
+          "config_options": {
+            "277291": "1174880",
+            "277292": "1174881",
+            "277293": "1174897",
+            "277294": "1174900",
+            "277295": "1174905",
+            "277296": "1",
+            "277297": "1174912",
+            "277298": "1174917",
+            "277299": "1174918",
+            "277300": "1174921",
+            "277301": "1174923"
+          },
+          "first": "257.00",
+          "recurring": "257.00"
+        },
+        {
+          "name": "cross_277296",
+          "config_options": {
+            "277291": "1174880",
+            "277292": "1174881",
+            "277293": "1174897",
+            "277294": "1174900",
+            "277295": "1174905",
+            "277296": "2",
+            "277297": "1174912",
+            "277298": "1174917",
+            "277299": "1174918",
+            "277300": "1174921",
+            "277301": "1174923"
+          },
+          "first": "297.00",
+          "recurring": "297.00"
+        },
+        {
+          "name": "low-spec-1IP",
+          "config_options": {
+            "277291": "1174880",
+            "277292": "1174885",
+            "277293": "1174898",
+            "277294": "1174901",
+            "277295": "1174906",
+            "277296": "1",
+            "277297": "1174912",
+            "277298": "1174917",
+            "277299": "1174918",
+            "277300": "1174921",
+            "277301": "1174923"
+          },
+          "first": "38.00",
+          "recurring": "38.00"
+        },
+        {
+          "name": "low-spec-2IP",
+          "config_options": {
+            "277291": "1174880",
+            "277292": "1174885",
+            "277293": "1174898",
+            "277294": "1174901",
+            "277295": "1174906",
+            "277296": "2",
+            "277297": "1174912",
+            "277298": "1174917",
+            "277299": "1174918",
+            "277300": "1174921",
+            "277301": "1174923"
+          },
+          "first": "78.00",
+          "recurring": "78.00"
+        }
+      ]
+    },
+    {
+      "schema": {
+        "flag": false,
+        "customfields": [],
+        "advanced": [
+          {
+            "id": 7461,
+            "config_id": 278142,
+            "sub_id": {
+              "1178980": {
+                "qty_minimum": "0",
+                "qty_maximum": "0"
+              }
+            },
+            "relation": "seq",
+            "type": "condition",
+            "relation_id": 0,
+            "upstream_id": 38469
+          },
+          {
+            "id": 7462,
+            "config_id": 278141,
+            "sub_id": {
+              "1178975": {
+                "qty_minimum": "0",
+                "qty_maximum": "0"
+              }
+            },
+            "relation": "seq",
+            "type": "result",
+            "relation_id": 7461,
+            "upstream_id": 38470
+          }
+        ],
+        "products": {
+          "id": 563,
+          "api_type": "zjmf_api",
+          "pay_type": "{\"pay_type\":\"recurring\",\"pay_hour_cycle\":\"720\",\"pay_day_cycle\":\"30\",\"pay_ontrial_status\":0,\"pay_ontrial_cycle\":\"0\",\"pay_ontrial_num\":\"1\",\"pay_ontrial_condition\":[],\"pay_ontrial_cycle_type\":\"day\",\"pay_ontrial_num_rule\":\"0\",\"clientscount_rule\":0}",
+          "pay_method": "prepayment",
+          "upstream_price_type": "percent",
+          "upstream_price_value": "100.00",
+          "prorata_billing": 0,
+          "prorata_charge_next_month": 0,
+          "tax": 0
+        },
+        "product_pricings": [
+          {"type": "product", "currency": 1, "relid": 563, "monthly": "299.00", "annually": "3588.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+        ],
+        "config_groups": [
+          {
+            "options": [
+              {
+                "id": 278141,
+                "option_name": "CPU",
+                "option_type": 6,
+                "qty_minimum": 0,
+                "qty_maximum": 0,
+                "qty_stage": 1,
+                "hidden": 0,
+                "linkage_pid": 0,
+                "linkage_top_pid": 0,
+                "unit": "",
+                "sub": [
+                  {
+                    "id": 1178975,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "E5-26XX V2 * 2 (不可选)",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1178975, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1178976,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "E5-2650 V2 * 2 (32C)",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1178976, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1178977,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "E5-2667 V2 * 2 (32C)",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1178977, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1178978,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "E5-2660 V2 * 2 (40C)",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1178978, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1178979,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "E5-2670 V2 * 2 (40C)",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1178979, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": 278142,
+                "option_name": "area|区域",
+                "option_type": 12,
+                "qty_minimum": 0,
+                "qty_maximum": 0,
+                "qty_stage": 0,
+                "hidden": 0,
+                "linkage_pid": 0,
+                "linkage_top_pid": 0,
+                "unit": "",
+                "sub": [
+                  {
+                    "id": 1178980,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "1|CN^湖北武当云谷数据中心",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1178980, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": 278143,
+                "option_name": "os|操作系统",
+                "option_type": 5,
+                "qty_minimum": 0,
+                "qty_maximum": 0,
+                "qty_stage": 0,
+                "hidden": 0,
+                "linkage_pid": 0,
+                "linkage_top_pid": 0,
+                "unit": "",
+                "sub": [
+                  {
+                    "id": 1178981,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "1|Windows^Windows Server 2008R2 中文 数据中心版 64位",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1178981, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1178982,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "3|Windows^Windows Server 2012R2 中文 数据中心版 64位",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1178982, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1178983,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "8|Windows^Windows 10 中文 专业版 64位",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1178983, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1178984,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "9|CentOS^CentOS-6.5 64位",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1178984, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1178985,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "10|CentOS^CentOS-6.9 64位",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1178985, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1178986,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "11|CentOS^CentOS-7.4 64位",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1178986, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1178987,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "12|Ubuntu^Ubuntu-14.04-Server-LTS 64位",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1178987, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1178988,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "13|Ubuntu^Ubuntu-Server-16.04.3-LTS 64位",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1178988, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1178989,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "30|Debian^Debian-9.9.0-Stretch 64位",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1178989, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1178990,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "31|Debian^Debian-8.11-jessie 64位",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1178990, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1178991,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "32|Debian^Debian-10.0-buster 64位",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1178991, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1178992,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "33|CentOS^CentOS-8 64位",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1178992, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1178993,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "37|Ubuntu^Ubuntu-Server-18.04.3-LTS 64位",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1178993, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1178994,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "45|CentOS^CentOS-6.8 64位 原版",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1178994, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1178995,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "46|CentOS^CentOS-6.10 64位 原版",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1178995, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1178996,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "52|CentOS^CentOS-7.6 64位 原版",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1178996, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1178997,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "65|Windows^Windows Server 2016 中文 数据中心版 64位 KB4534306补丁版",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1178997, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1178998,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "66|Windows^Windows Server 2019 中文 数据中心版 64位 KB4534306补丁版",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1178998, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1178999,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "77|CentOS^CentOS-9 64位",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1178999, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179000,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "86|Debian^Debian-11.3.0-bullseye 64位",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179000, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179001,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "87|Windows^Windows Server 2022 中文 数据中心版 64位 KB4534306补丁版",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179001, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179002,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "88|CentOS^CentOS-8-Stream-x86_64",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179002, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179003,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "89|CentOS^CentOS-8.4 64位",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179003, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179004,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "101|Ubuntu^Ubuntu-Server-20.04.5-LTS-x86_64",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179004, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179005,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "76|Ubuntu^Ubuntu-Server-22.04-LTS-x86_64",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179005, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179006,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "112|CentOS^CentOS-7.9-x86_64",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179006, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179007,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "111|Debian^Debian-12.4.0-bookworm 64位",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179007, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179008,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "125|Ubuntu^Ubuntu-Server-24.04.1-LTS-x86_64",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179008, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179009,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "126|其他^Proxmox-VE8.3",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179009, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": 278144,
+                "option_name": "ip_num|IP数量",
+                "option_type": 15,
+                "qty_minimum": 1,
+                "qty_maximum": 4,
+                "qty_stage": 1,
+                "hidden": 0,
+                "linkage_pid": 0,
+                "linkage_top_pid": 0,
+                "unit": "",
+                "sub": [
+                  {
+                    "id": 1179010,
+                    "qty_minimum": 1,
+                    "qty_maximum": 1,
+                    "option_name": "1|1个",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179010, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179011,
+                    "qty_minimum": 2,
+                    "qty_maximum": 4,
+                    "option_name": "2|2个+",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179011, "monthly": "60.00", "annually": "720.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": 278145,
+                "option_name": "out_bw|带宽",
+                "option_type": 18,
+                "qty_minimum": 50,
+                "qty_maximum": 1000,
+                "qty_stage": 10,
+                "hidden": 0,
+                "linkage_pid": 0,
+                "linkage_top_pid": 0,
+                "unit": "",
+                "sub": [
+                  {
+                    "id": 1179012,
+                    "qty_minimum": 50,
+                    "qty_maximum": 50,
+                    "option_name": "50|50Mbps",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179012, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179013,
+                    "qty_minimum": 51,
+                    "qty_maximum": 1000,
+                    "option_name": "51|50Mbps+",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179013, "monthly": "10.00", "annually": "120.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": 278146,
+                "option_name": "内存",
+                "option_type": 8,
+                "qty_minimum": 0,
+                "qty_maximum": 0,
+                "qty_stage": 1,
+                "hidden": 0,
+                "linkage_pid": 0,
+                "linkage_top_pid": 0,
+                "unit": "",
+                "sub": [
+                  {
+                    "id": 1179014,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "64G DDR3",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179014, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": 278147,
+                "option_name": "硬盘",
+                "option_type": 13,
+                "qty_minimum": 0,
+                "qty_maximum": 0,
+                "qty_stage": 1,
+                "hidden": 0,
+                "linkage_pid": 0,
+                "linkage_top_pid": 0,
+                "unit": "",
+                "sub": [
+                  {
+                    "id": 1179015,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "480G SSD",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179015, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": 278148,
+                "option_name": "port|链接端口",
+                "option_type": 2,
+                "qty_minimum": 0,
+                "qty_maximum": 0,
+                "qty_stage": 1,
+                "hidden": 0,
+                "linkage_pid": 0,
+                "linkage_top_pid": 0,
+                "unit": "",
+                "sub": [
+                  {
+                    "id": 1179016,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "auto|随机端口/防止爆破",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179016, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179017,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "22|Linux默认22端口",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179017, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179018,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "3389|Windows默认3389端口",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179018, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": 278149,
+                "option_name": "bw|流入宽带",
+                "option_type": 10,
+                "qty_minimum": 0,
+                "qty_maximum": 0,
+                "qty_stage": 1,
+                "hidden": 0,
+                "linkage_pid": 0,
+                "linkage_top_pid": 0,
+                "unit": "",
+                "sub": [
+                  {
+                    "id": 1179019,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "300|300Mbps",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179019, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": 278150,
+                "option_name": "ddos|防御",
+                "option_type": 6,
+                "qty_minimum": 0,
+                "qty_maximum": 0,
+                "qty_stage": 1,
+                "hidden": 0,
+                "linkage_pid": 0,
+                "linkage_top_pid": 0,
+                "unit": "",
+                "sub": [
+                  {
+                    "id": 1179020,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "400G",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179020, "monthly": "0.00", "annually": "0.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  }
+                ]
+              }
+            ],
+            "id": 29338
+          },
+          {
+            "options": [
+              {
+                "id": 278151,
+                "option_name": "market_template|游戏镜像",
+                "option_type": 1,
+                "qty_minimum": 0,
+                "qty_maximum": 0,
+                "qty_stage": 0,
+                "hidden": 0,
+                "linkage_pid": 0,
+                "linkage_top_pid": 0,
+                "unit": "",
+                "sub": [
+                  {
+                    "id": 1179021,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "mcsm_generic|通用^通用控制台",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179021, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179022,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "m2dee2d63ec|MC^EndStone MC Server",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179022, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179023,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "me0b61acb2a|MC^EndStone MC 服务端",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179023, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179024,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "mcde4bdbaf0|MC^[FabricMC] Minecraft 1.2",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179024, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179025,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "m9e853e9ab5|MC^[FabricMC] Minecraft 1.2",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179025, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179026,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "m005d7e8e08|MC^[FabricMC] Minecraft 1.2",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179026, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179027,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "mbbbd0eb8a2|MC^[FabricMC] Minecraft 1.2",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179027, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179028,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "mea8df8ee94|MC^[FabricMC] Minecraft 1.2",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179028, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179029,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "mf476bd8622|MC^[FabricMC] Minecraft 26.",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179029, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179030,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "m548bc0310b|MC^[Folia] Minecraft 1.21.1",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179030, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179031,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "mfcade208ff|MC^[Folia] Minecraft 1.21.8",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179031, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179032,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "me59c18a30c|MC^[Folia] Minecraft 26.1.2",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179032, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179033,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "m20781b3f1f|MC^[Forge] Minecraft 1.19.2",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179033, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179034,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "m4d36c7f85f|MC^[Forge] Minecraft 1.20.1",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179034, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179035,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "m05fad4b929|MC^[Forge] Minecraft 1.20.1",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179035, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179036,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "m01e9cf5ba8|MC^[Forge] Minecraft 1.20.1",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179036, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179037,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "m0359537983|MC^[Forge] Minecraft 1.20.1",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179037, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179038,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "m424b730b5c|MC^[Forge] Minecraft 1.20.6",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179038, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179039,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "ma7873b7231|MC^[Forge] Minecraft 1.21.1",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179039, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179040,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "m46f7793e79|MC^[Forge] Minecraft 1.21.1",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179040, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179041,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "m4be44f359d|MC^[Forge] Minecraft 1.21.1",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179041, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179042,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "m0dcd1b9c14|MC^[Forge] Minecraft 1.21.1",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179042, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179043,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "md9e73b8750|MC^[Forge] Minecraft 1.21.1",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179043, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179044,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "me9ac2a7bab|MC^[Forge] Minecraft 1.21.1",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179044, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179045,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "mc1a1b133da|MC^[Forge] Minecraft 1.21.4",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179045, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179046,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "mfe5a024463|MC^[Forge] Minecraft 1.21.4",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179046, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179047,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "m26de0bb99d|MC^[Forge] Minecraft 1.21.8",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179047, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179048,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "m2e7946a9b9|MC^[Forge] Minecraft 1.21.8",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179048, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179049,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "m4759621dce|MC^[Forge] Minecraft 26.1.2",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179049, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179050,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "m501c636af0|MC^[Forge] Minecraft 26.1.2",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179050, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179051,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "m15c35d4070|MC^[NeoForge] Minecraft 1.2",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179051, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179052,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "m047ba68f0f|MC^[NeoForge] Minecraft 1.2",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179052, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179053,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "m6ea0620ae0|MC^[NeoForge] Minecraft 1.2",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179053, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179054,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "mc8427c38b8|MC^[NeoForge] Minecraft 1.2",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179054, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179055,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "m691c431c55|MC^[NeoForge] Minecraft 1.2",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179055, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179056,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "m4cb953c5a3|MC^[NeoForge] Minecraft 1.2",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179056, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179057,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "m0801a9db10|MC^[NeoForge] Minecraft 1.2",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179057, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179058,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "m12f4fd6182|MC^[NeoForge] Minecraft 1.2",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179058, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179059,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "m64e4ed164a|MC^[NeoForge] Minecraft 1.2",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179059, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179060,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "m6e5313e94c|MC^[NeoForge] Minecraft 1.2",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179060, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179061,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "mcb67c44ea3|MC^[NeoForge] Minecraft 26.",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179061, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179062,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "ma0f27be5ea|MC^[NeoForge] Minecraft 26.",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179062, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179063,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "mefb1ee7f52|MC^[PaperMC] Minecraft 1.20",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179063, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179064,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "m523280be6b|MC^[PaperMC] Minecraft 1.21",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179064, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179065,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "m589e397e43|MC^[PaperMC] Minecraft 1.21",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179065, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179066,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "m79ea7c9412|MC^[PaperMC] Minecraft 1.21",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179066, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179067,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "m521b1ca94a|MC^[PaperMC] Minecraft 1.21",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179067, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179068,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "mf4deb6959a|MC^[PaperMC] Minecraft 1.21",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179068, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179069,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "ma5e4dc746a|MC^[PaperMC] Minecraft 1.21",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179069, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179070,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "m72725a5005|MC^[PaperMC] Minecraft 1.21",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179070, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179071,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "m8eb1b56829|MC^[PaperMC] Minecraft 1.21",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179071, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179072,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "mf6789297f1|MC^[PaperMC] Minecraft 1.21",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179072, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179073,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "mea189fbd34|MC^[PaperMC] Minecraft 26.1",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179073, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179074,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "me9157e2d9e|MC^[PurpurMC] Minecraft 1.2",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179074, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179075,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "md45496ec78|MC^[PurpurMC] Minecraft 1.2",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179075, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179076,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "mef2312dcf5|MC^[PurpurMC] Minecraft 1.2",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179076, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179077,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "m6a87149a11|MC^[PurpurMC] Minecraft 1.2",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179077, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179078,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "m391151abe7|MC^[PurpurMC] Minecraft 26.",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179078, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179079,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "m672031e65a|MC^[Vanilla] Minecraft 1.21",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179079, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179080,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "m61da57e7d1|MC^[Vanilla] Minecraft 1.21",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179080, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179081,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "m3dd95ad1c1|MC^[Vanilla] Minecraft 1.21",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179081, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179082,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "m0b6bb33bf8|MC^[Vanilla] Minecraft 1.21",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179082, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179083,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "m5b67fdfa69|MC^[Vanilla] Minecraft 26.1",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179083, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179084,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "mc1721f4b04|Palworld^Palworld Official Server",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179084, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179085,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "m84853a3df0|Palworld^幻兽帕鲁官方服务器",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179085, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179086,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "m6bae041198|SCUM^SCUM Server",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179086, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179087,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "m3aa711a874|SCUM^人渣 服务器",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179087, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179088,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "m212f729623|Squad^Squad Server",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179088, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179089,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "mcbc8c0e5ba|Squad^战术小队 服务器",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179089, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179090,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "m8387a330b5|Steam^Factorio Docker Server",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179090, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179091,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "mfd1e94afb5|Steam^Factorio 服务器",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179091, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179092,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "m75ed6bf3b3|Steam^Hytale Server",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179092, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179093,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "m7d30281003|Steam^Hytale Server",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179093, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179094,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "m738ca3a4e4|Steam^Rust Docker Server",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179094, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179095,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "me01d3f8c97|Steam^Rust 服务器",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179095, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179096,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "mecbe8dc704|Steam^SCP:SL Official Server",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179096, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179097,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "m416aafc426|Steam^SCP秘密实验室 服务器",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179097, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179098,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "m683f4bdf4a|Steam^SCP秘密实验室 服务器",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179098, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179099,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "mef75a09003|Steam^Sons Of The Forest Offic",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179099, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179100,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "macdafa8ed3|Steam^Squad Docker Server",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179100, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179101,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "me4f6ee7aa7|Steam^战术小队 官方服务器",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179101, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179102,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "mfb432f6bb2|Steam^森林之子 服务器",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179102, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179103,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "ma82178a9cc|Terraria^Terraria Server",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179103, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179104,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "md8cf41f426|Terraria^Terraria_windows_x86",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179104, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179105,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "m31ab6fa56d|Terraria^泰拉瑞亚服务器",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179105, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179106,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "mc572e3199b|Zombie Survi^Project Zomboid",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179106, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  },
+                  {
+                    "id": 1179107,
+                    "qty_minimum": 0,
+                    "qty_maximum": 0,
+                    "option_name": "m48f280efb8|Zombie Survi^僵尸毁灭工程",
+                    "hidden": 0,
+                    "pricings": [
+                      {"type": "configoptions", "currency": 1, "relid": 1179107, "monthly": "0.00", "annually": "-1.00", "msetupfee": "0.00", "asetupfee": "0.00", "code": "CNY"}
+                    ]
+                  }
+                ]
+              }
+            ],
+            "id": 29339
+          }
+        ],
+        "config_links": [
+          29338,
+          29339
+        ]
+      },
+      "currency": {
+        "id": 1,
+        "code": "CNY"
+      },
+      "cases": [
+        {
+          "name": "default",
+          "config_options": {
+            "278141": "1178975",
+            "278142": "1178980",
+            "278143": "1178981",
+            "278144": "1",
+            "278145": "50",
+            "278146": "1179014",
+            "278147": "1179015",
+            "278148": "1179016",
+            "278149": "1179019",
+            "278150": "1179020",
+            "278151": "1179021"
+          },
+          "first": "299.00",
+          "recurring": "299.00"
+        },
+        {
+          "name": "cross_278144",
+          "config_options": {
+            "278141": "1178975",
+            "278142": "1178980",
+            "278143": "1178981",
+            "278144": "2",
+            "278145": "50",
+            "278146": "1179014",
+            "278147": "1179015",
+            "278148": "1179016",
+            "278149": "1179019",
+            "278150": "1179020",
+            "278151": "1179021"
+          },
+          "first": "359.00",
+          "recurring": "359.00"
+        },
+        {
+          "name": "cross_278145",
+          "config_options": {
+            "278141": "1178975",
+            "278142": "1178980",
+            "278143": "1178981",
+            "278144": "1",
+            "278145": "60",
+            "278146": "1179014",
+            "278147": "1179015",
+            "278148": "1179016",
+            "278149": "1179019",
+            "278150": "1179020",
+            "278151": "1179021"
+          },
+          "first": "399.00",
+          "recurring": "399.00"
+        }
+      ]
+    }
+  ]
+}

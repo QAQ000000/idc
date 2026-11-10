@@ -132,6 +132,10 @@ M0 已接入 Laravel 13/PHP 8.4，并建立唯一 `web/` 前端工程。现有�
 
 前端验证：`npm --prefix web run lint`、`npm --prefix web run typecheck`、`npm --prefix web run build`。本轮已在浏览器验证访客转登录返回、注册、下单、余额付款、取消、越权拒绝、余额不足与 390px 页面布局。需要人工浏览器复验时，可运行 `python3 scripts/test_integration.py --browser`，它只在隔离库创建演示账号并暂时关闭该库的登录/注册验证码；按回车后清理环境。默认集成测试仍验证启用验证码的真实生成与单次验签。浏览器环境不是公开体验站或生产配置。
 
+### PHP 格式与框架复用
+
+安装开发依赖后执行 `composer lint`（`vendor/bin/pint --test`），修改格式用 `composer format`。Pint 版本由锁文件固定；采用 Laravel 预设的保守格式规则，关闭改写语法标记、导入和字面量的规则，避免格式整理混入自动重构。业务修改提交前与原有专项检查一起运行，不连接业务库。
+
 ### 隔离集成测试
 
 ```bash

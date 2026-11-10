@@ -173,6 +173,7 @@
 常用验证命令（从仓库根目录执行）：
 
 ```bash
+composer lint
 php tests/unit.php
 php tests/plugins.php
 python3 scripts/test_integration.py

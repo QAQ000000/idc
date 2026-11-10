@@ -1,13 +1,14 @@
 <?php
+
 use App\Http\Controllers\ApiController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('site', [\App\Http\Controllers\SiteSettingsController::class, 'publicConfig']);
 Route::get('captcha/config', [ApiController::class, 'captcha']);
-Route::post('auth/register', [ApiController::class, 'register'])->middleware(['customer.throttle:register','captcha:register']);
-Route::post('auth/login', [ApiController::class, 'login'])->middleware(['customer.throttle:login','captcha:login']);
-Route::post('auth/password/forgot',[ApiController::class,'forgot'])->middleware('captcha:password_reset');
-Route::post('auth/password/reset',[ApiController::class,'resetPassword']);
+Route::post('auth/register', [ApiController::class, 'register'])->middleware(['customer.throttle:register', 'captcha:register']);
+Route::post('auth/login', [ApiController::class, 'login'])->middleware(['customer.throttle:login', 'captcha:login']);
+Route::post('auth/password/forgot', [ApiController::class, 'forgot'])->middleware('captcha:password_reset');
+Route::post('auth/password/reset', [ApiController::class, 'resetPassword']);
 Route::get('products', [ApiController::class, 'products']);
 Route::get('products/{id}/config', [ApiController::class, 'configuration']);
 Route::post('products/{id}/calculate', [ApiController::class, 'calculate']);
@@ -24,7 +25,7 @@ Route::middleware('client')->group(function (): void {
     Route::post('wallet/recharges', [\App\Http\Controllers\WalletController::class, 'recharge']);
     Route::get('wallet/transactions', [\App\Http\Controllers\WalletController::class, 'transactions']);
     Route::get('auth/me', [ApiController::class, 'me']);
-    Route::post('auth/password',[ApiController::class,'changePassword']);
+    Route::post('auth/password', [ApiController::class, 'changePassword']);
     Route::post('orders/checkout', [ApiController::class, 'checkout']);
     Route::get('invoices', [ApiController::class, 'invoices']);
     Route::get('invoices/{id}', [ApiController::class, 'invoice']);
@@ -91,7 +92,7 @@ Route::middleware('admin')->group(function (): void {
     Route::post('admin/instances/{id}/manual-adjustment/preview', [\App\Http\Controllers\ManualAdjustmentController::class, 'preview']);
     Route::post('admin/instances/{id}/manual-adjustment/settle', [\App\Http\Controllers\ManualAdjustmentController::class, 'settle']);
     Route::get('admin/finance/invoices/{id}', [\App\Http\Controllers\FinanceController::class, 'show']);
-    Route::get('admin/finance/{kind}', [\App\Http\Controllers\FinanceController::class, 'index'])->whereIn('kind',['invoices','receipts','transactions']);
+    Route::get('admin/finance/{kind}', [\App\Http\Controllers\FinanceController::class, 'index'])->whereIn('kind', ['invoices', 'receipts', 'transactions']);
     Route::get('admin/providers', [\App\Http\Controllers\AdminProductController::class, 'providers']);
     Route::get('admin/products', [\App\Http\Controllers\AdminProductController::class, 'index']);
     Route::post('admin/products/preview', [\App\Http\Controllers\AdminProductController::class, 'preview']);

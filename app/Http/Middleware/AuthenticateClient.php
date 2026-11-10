@@ -1,5 +1,7 @@
 <?php
+
 declare(strict_types=1);
+
 namespace App\Http\Middleware;
 
 use Closure;
@@ -12,6 +14,7 @@ final class AuthenticateClient
     public function handle(Request $request, Closure $next): Response
     {
         (new AuthMiddleware())->handle();
+
         return $next($request);
     }
 }

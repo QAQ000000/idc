@@ -1,5 +1,7 @@
 <?php
+
 declare(strict_types=1);
+
 namespace App\Services;
 
 use App\Core\{ApiException, Database, Request, Security};
@@ -12,6 +14,7 @@ final class AuthService
         $email = $this->email($input);
         $password = Request::text($input, 'password', 12, 72);
         $hash = Security::hashPassword($password);
+
         return Database::transaction(function (PDO $db) use ($email, $hash, $input): array {
             $affiliate = null;
             if (isset($input['affiliate_code']) && $input['affiliate_code'] !== '') {
@@ -19,7 +22,7 @@ final class AuthService
                 $stmt = $db->prepare("SELECT id FROM users WHERE affiliate_code = ? AND status = 'active'");
                 $stmt->execute([$code]);
                 $affiliate = $stmt->fetchColumn();
-                if (!$affiliate) {
+                if (! $affiliate) {
                     throw new ApiException('Invalid affiliate code');
                 }
             }
@@ -32,7 +35,8 @@ final class AuthService
                 }
                 throw $e;
             }
-            return $this->session($db, (int)$db->lastInsertId());
+
+            return $this->session($db, (int) $db->lastInsertId());
         });
     }
 
@@ -46,15 +50,16 @@ final class AuthService
         $snapshot = $stmt->fetch();
         // 昂贵哈希在行锁外完成，不存在账号仍执行相同成本校验。
         $hash = $snapshot['password'] ?? '$2y$12$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2uheWG/igi.';
-        if (str_contains($password, "\0") || !Security::verifyPassword($password, $hash) || !$snapshot) {
+        if (str_contains($password, "\0") || ! Security::verifyPassword($password, $hash) || ! $snapshot) {
             throw new ApiException('Invalid email or password', 401, 401);
         }
         $newHash = password_needs_rehash($hash, PASSWORD_BCRYPT, ['cost' => 12]) ? Security::hashPassword($password) : null;
+
         return Database::transaction(function (PDO $db) use ($snapshot, $newHash): array {
             $stmt = $db->prepare('SELECT id, password, status FROM users WHERE id = ? FOR UPDATE');
             $stmt->execute([$snapshot['id']]);
             $user = $stmt->fetch();
-            if (!$user || !hash_equals($snapshot['password'], $user['password'])) {
+            if (! $user || ! hash_equals($snapshot['password'], $user['password'])) {
                 throw new ApiException('Account credentials changed; log in again', 409, 409);
             }
             if ($user['status'] !== 'active') {
@@ -65,16 +70,18 @@ final class AuthService
             }
             $db->prepare('UPDATE users SET last_login_at = UTC_TIMESTAMP(), last_login_ip = ? WHERE id = ?')
                 ->execute([Security::getClientIp(), $user['id']]);
-            return $this->session($db, (int)$user['id']);
+
+            return $this->session($db, (int) $user['id']);
         });
     }
 
     private function email(array $input): string
     {
         $email = strtolower(trim(Request::text($input, 'email', 3, 100)));
-        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        if (! filter_var($email, FILTER_VALIDATE_EMAIL)) {
             throw new ApiException('Invalid email');
         }
+
         return $email;
     }
 
@@ -83,8 +90,10 @@ final class AuthService
         $stmt = $db->prepare('SELECT id, email, balance,auth_version FROM users WHERE id = ?');
         $stmt->execute([$id]);
         $user = $stmt->fetch();
-        $version=(int)$user['auth_version'];unset($user['auth_version']);
+        $version = (int) $user['auth_version'];
+        unset($user['auth_version']);
         $user['role'] = 'client';
-        return ['token' => Security::generateToken(['uid' => $id, 'sub_type' => 'user','av'=>$version]), 'user' => $user];
+
+        return ['token' => Security::generateToken(['uid' => $id, 'sub_type' => 'user', 'av' => $version]), 'user' => $user];
     }
 }

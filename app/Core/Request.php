@@ -1,5 +1,7 @@
 <?php
+
 declare(strict_types=1);
+
 namespace App\Core;
 
 final class Request
@@ -7,7 +9,7 @@ final class Request
     public static function body(): array
     {
         $request = app('request');
-        if (!str_starts_with(strtolower($request->header('Content-Type', '')), 'application/json')) {
+        if (! str_starts_with(strtolower($request->header('Content-Type', '')), 'application/json')) {
             throw new ApiException('Content-Type must be application/json', 415, 400);
         }
         $raw = $request->getContent();
@@ -16,9 +18,10 @@ final class Request
         }
         try {
             $object = json_decode($raw, false, 32, JSON_THROW_ON_ERROR);
-            if (!$object instanceof \stdClass) {
+            if (! $object instanceof \stdClass) {
                 throw new ApiException('JSON body must be an object');
             }
+
             return json_decode($raw, true, 32, JSON_THROW_ON_ERROR);
         } catch (\JsonException) {
             throw new ApiException('Invalid JSON body');
@@ -28,17 +31,19 @@ final class Request
     public static function text(array $body, string $key, int $min = 1, int $max = 100): string
     {
         $value = $body[$key] ?? null;
-        if (!is_string($value) || strlen($value) < $min || strlen($value) > $max) {
+        if (! is_string($value) || strlen($value) < $min || strlen($value) > $max) {
             throw new ApiException("Invalid {$key}");
         }
+
         return $value;
     }
 
     public static function id(mixed $value): int
     {
-        if ((!is_int($value) && !is_string($value)) || !preg_match('/^[1-9][0-9]{0,9}$/D', (string)$value)) {
+        if ((! is_int($value) && ! is_string($value)) || ! preg_match('/^[1-9][0-9]{0,9}$/D', (string) $value)) {
             throw new ApiException('Invalid resource ID');
         }
-        return (int)$value;
+
+        return (int) $value;
     }
 }

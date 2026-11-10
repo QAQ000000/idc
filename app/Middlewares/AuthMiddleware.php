@@ -9,8 +9,11 @@ use App\Core\Database;
 class AuthMiddleware
 {
     private static ?array $currentUser = null;
+
     private static bool $isImpersonated = false;
+
     private static ?int $operatorAdminId = null;
+
     private static int $authVersion = 0;
 
     public static function reset(): void
@@ -25,13 +28,13 @@ class AuthMiddleware
     {
         self::reset();
         $authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
-        if (!preg_match('/Bearer\s+(\S+)/i', $authHeader, $matches)) {
+        if (! preg_match('/Bearer\s+(\S+)/i', $authHeader, $matches)) {
             throw new ApiException('Unauthorized: Missing or invalid token', 401, 401);
         }
 
         $token = $matches[1];
         $payload = Security::verifyToken($token);
-        if (!$payload || empty($payload['uid'])) {
+        if (! $payload || empty($payload['uid'])) {
             throw new ApiException('Unauthorized: Token expired or invalid', 401, 401);
         }
 
@@ -45,18 +48,18 @@ class AuthMiddleware
         $stmt->execute([$payload['uid']]);
         $user = $stmt->fetch();
 
-        if (!$user) {
+        if (! $user) {
             throw new ApiException('User not found', 401, 401);
         }
 
         if ($user['status'] === 'suspended') {
             throw new ApiException('Account suspended', 403, 403);
         }
-        Security::assertUserVersion($payload,(int)$user['auth_version']);
-        self::$authVersion=(int)$user['auth_version'];
+        Security::assertUserVersion($payload, (int) $user['auth_version']);
+        self::$authVersion = (int) $user['auth_version'];
         unset($user['auth_version']);
 
-        self::$isImpersonated = !empty($payload['is_impersonated']);
+        self::$isImpersonated = ! empty($payload['is_impersonated']);
         self::$operatorAdminId = $payload['operator_admin_id'] ?? null;
 
         // 模拟登录（Impersonation）风控：敏感读拦截 + 写操作严格白名单
@@ -75,7 +78,7 @@ class AuthMiddleware
             // 2. 写操作采用白名单制：仅允许排障必需的实例电源操作与工单回复
             if ($method !== 'GET' && $method !== 'OPTIONS' && $method !== 'HEAD') {
                 $allowedWriteRegex = '#^/api/v1/(instances/\d+/power|tickets(/\d+/replies)?)$#i';
-                if (!preg_match($allowedWriteRegex, $uri)) {
+                if (! preg_match($allowedWriteRegex, $uri)) {
                     throw new ApiException(
                         'Forbidden: Impersonated sessions are read-only except for instance power actions and ticket replies',
                         403,
@@ -88,6 +91,7 @@ class AuthMiddleware
         $user['is_impersonated'] = self::$isImpersonated;
         $user['operator_admin_id'] = self::$operatorAdminId;
         self::$currentUser = $user;
+
         return true;
     }
 
@@ -95,7 +99,11 @@ class AuthMiddleware
     {
         return self::$currentUser;
     }
-    public static function authVersion():int { return self::$authVersion; }
+
+    public static function authVersion(): int
+    {
+        return self::$authVersion;
+    }
 
     public static function isImpersonated(): bool
     {

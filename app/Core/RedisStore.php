@@ -1,5 +1,7 @@
 <?php
+
 declare(strict_types=1);
+
 namespace App\Core;
 
 use Illuminate\Support\Facades\Redis;
@@ -10,6 +12,7 @@ final class RedisStore
     public function command(string ...$args): mixed
     {
         $result = Redis::connection()->client()->rawCommand(...$args);
+
         return $result === false ? null : $result;
     }
 }

@@ -1,5 +1,7 @@
 <?php
+
 declare(strict_types=1);
+
 namespace App\Support;
 
 use App\Core\Database;
@@ -15,6 +17,7 @@ final class SchemaSql
         foreach (file($file) as $line) {
             if (preg_match('/^DELIMITER\s+(\S+)/', trim($line), $match)) {
                 $delimiter = $match[1];
+
                 continue;
             }
             $buffer .= $line;

@@ -1,5 +1,7 @@
 <?php
+
 declare(strict_types=1);
+
 namespace App\Http\Controllers;
 
 use App\Core\Request;
@@ -12,10 +14,11 @@ final class AdminAuthController
 {
     public function login(AdminAuthService $service): JsonResponse
     {
-        return ApiResponse::success($service->login(Request::body()))->header('Cache-Control','no-store');
+        return ApiResponse::success($service->login(Request::body()))->header('Cache-Control', 'no-store');
     }
+
     public function me(): JsonResponse
     {
-        return ApiResponse::success(AdminAuthMiddleware::admin())->header('Cache-Control','no-store');
+        return ApiResponse::success(AdminAuthMiddleware::admin())->header('Cache-Control', 'no-store');
     }
 }

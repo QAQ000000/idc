@@ -12,7 +12,11 @@ class AdminAuthMiddleware
     private static ?array $currentAdmin = null;
 
     private static int $authVersion = 0;
-    public static function authVersion(): int { return self::$authVersion; }
+
+    public static function authVersion(): int
+    {
+        return self::$authVersion;
+    }
 
     public static function reset(): void
     {
@@ -24,13 +28,13 @@ class AdminAuthMiddleware
     {
         self::reset();
         $authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
-        if (!preg_match('/Bearer\s+(\S+)/i', $authHeader, $matches)) {
+        if (! preg_match('/Bearer\s+(\S+)/i', $authHeader, $matches)) {
             throw new ApiException('Unauthorized: Missing or invalid admin token', 401, 401);
         }
 
         $token = $matches[1];
         $payload = Security::verifyToken($token);
-        if (!$payload || empty($payload['uid']) || ($payload['sub_type'] ?? '') !== 'admin') {
+        if (! $payload || empty($payload['uid']) || ($payload['sub_type'] ?? '') !== 'admin') {
             throw new ApiException('Unauthorized: Invalid admin credentials or token expired', 401, 401);
         }
 
@@ -39,7 +43,7 @@ class AdminAuthMiddleware
         $stmt->execute([$payload['uid']]);
         $admin = $stmt->fetch();
 
-        if (!$admin) {
+        if (! $admin) {
             throw new ApiException('Admin user not found', 401, 401);
         }
 
@@ -47,13 +51,14 @@ class AdminAuthMiddleware
             throw new ApiException('Admin account disabled', 403, 403);
         }
 
-        $version = array_key_exists('av',$payload) ? $payload['av'] : 0;
-        if ($admin['second_factor_configured'] || !is_int($version) || $version !== AdminAuthService::sessionVersion($db,(int)$admin['id'])) {
-            throw new ApiException('Administrator session revoked; log in again',401,401);
+        $version = array_key_exists('av', $payload) ? $payload['av'] : 0;
+        if ($admin['second_factor_configured'] || ! is_int($version) || $version !== AdminAuthService::sessionVersion($db, (int) $admin['id'])) {
+            throw new ApiException('Administrator session revoked; log in again', 401, 401);
         }
         unset($admin['second_factor_configured']);
         self::$authVersion = $version;
         self::$currentAdmin = $admin;
+
         return true;
     }
 

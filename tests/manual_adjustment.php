@@ -1,114 +1,407 @@
 <?php
+
 declare(strict_types=1);
 require dirname(__DIR__).'/bootstrap.php';
-set_exception_handler(static function(Throwable $e):never{fwrite(STDERR,get_class($e).': '.$e->getMessage()."\n".$e->getTraceAsString()."\n");exit(1);});
+set_exception_handler(static function (Throwable $e): never {
+    fwrite(STDERR, get_class($e).': '.$e->getMessage()."\n".$e->getTraceAsString()."\n");
+    exit(1);
+});
 use App\Core\{Database,ApiException,Security};
 use App\Services\{AdminAuthService,AuthService,BillingService,ConnectionSetupService,FinanceQueryService,InstanceRenewalPriceService,ManualAdjustmentService,OutboxWorker,RenewalService};
-if(config('app.env')!=='test'||config('database.connections.mysql.database')!=='jianyun_test'){throw new RuntimeException('Isolated database required');}
-$db=Database::getInstance();$checks=0;
-function maCheck(bool $ok,string $label):void{global $checks;if(!$ok){throw new RuntimeException('FAIL adjustment: '.$label);}$checks++;echo "PASS adjustment: $label\n";}
-function maReject(callable $f,int $status,string $label):void{try{$f();}catch(ApiException $e){maCheck($e->httpStatus===$status,$label);return;}throw new RuntimeException('Expected rejection: '.$label);}
-function maVal(string $sql,array $params=[]):mixed{global $db;$s=$db->prepare($sql);$s->execute($params);return $s->fetchColumn();}
-function maRow(string $table,int $id):array{global $db;$s=$db->prepare('SELECT * FROM '.$table.' WHERE id=?');$s->execute([$id]);return $s->fetch();}
-function maAll():array{global $db;$out=[];foreach(['users','instances','invoices','tasks','transactions','payment_records','admin_audit_logs'] as $t){$out[$t]=$db->query('SELECT * FROM '.$t.' ORDER BY id')->fetchAll();}return $out;}
-function maOp(array $v):mixed{return match($v['op']){'settle'=>(new ManualAdjustmentService())->settle($v['admin'],$v['instance'],$v['input']),'pay'=>(new BillingService())->pay($v['user'],$v['invoice'],true),default=>throw new RuntimeException('Unknown child operation')};}
-if(($argv[1]??'')==='--child'){
- $v=json_decode(stream_get_contents(STDIN),true,64,JSON_THROW_ON_ERROR);echo 'READY:'.$db->query('SELECT CONNECTION_ID()')->fetchColumn()."\n";fflush(STDOUT);
- try{echo json_encode(['status'=>200,'result'=>maOp($v)],JSON_THROW_ON_ERROR)."\n";}catch(ApiException $e){echo json_encode(['status'=>$e->httpStatus],JSON_THROW_ON_ERROR)."\n";}exit;
+
+if (config('app.env') !== 'test' || config('database.connections.mysql.database') !== 'jianyun_test') {
+    throw new RuntimeException('Isolated database required');
 }
-function maSpawn(array $v):array{
- $p=proc_open([PHP_BINARY,__FILE__,'--child'],[['pipe','r'],['pipe','w'],['pipe','w']],$pipes,dirname(__DIR__));fwrite($pipes[0],json_encode($v,JSON_THROW_ON_ERROR));fclose($pipes[0]);stream_set_timeout($pipes[1],10);$ready=trim(fgets($pipes[1])?:'');if(!preg_match('/^READY:(\d+)$/D',$ready,$m)){throw new RuntimeException('No child connection');}return [$p,$pipes,(int)$m[1]];
+$db = Database::getInstance();
+$checks = 0;
+function maCheck(bool $ok, string $label): void
+{
+    global $checks;
+    if (! $ok) {
+        throw new RuntimeException('FAIL adjustment: '.$label);
+    }$checks++;
+    echo "PASS adjustment: $label\n";
 }
-function maWait(array $c):void{global $db;$end=microtime(true)+8;do{if(maVal('SELECT trx_state FROM information_schema.innodb_trx WHERE trx_mysql_thread_id=?',[$c[2]])==='LOCK WAIT'){return;}usleep(200000);}while(microtime(true)<$end);stream_set_blocking($c[1][1],false);stream_set_blocking($c[1][2],false);throw new RuntimeException('No lock contention: '.stream_get_contents($c[1][1]).stream_get_contents($c[1][2]));}
-function maFinish(array $c):array{[$p,$pipes]=$c;$out=stream_get_contents($pipes[1]);$err=stream_get_contents($pipes[2]);fclose($pipes[1]);fclose($pipes[2]);if(proc_close($p)!==0){throw new RuntimeException($err.$out);}return json_decode(trim($out),true,64,JSON_THROW_ON_ERROR);}
-function maLock(int $id):void{global $db;$s=$db->prepare('SELECT id FROM instances WHERE id=? FOR UPDATE');$s->execute([$id]);$s->fetch();}
-function maHttp(string $path,?string $token=null,string $method='GET',?array $body=null):array{
- $c=curl_init(getenv('TEST_BASE_URL').'/api/v1'.$path);$headers='';curl_setopt_array($c,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_CUSTOMREQUEST=>$method,CURLOPT_TIMEOUT=>20,CURLOPT_HTTPHEADER=>array_filter(['Content-Type: application/json',$token?'Authorization: Bearer '.$token:null]),CURLOPT_HEADERFUNCTION=>static function($c,$line)use(&$headers){$headers.=$line;return strlen($line);}]);if($body!==null){curl_setopt($c,CURLOPT_POSTFIELDS,json_encode($body,JSON_THROW_ON_ERROR));}$raw=curl_exec($c);$code=curl_getinfo($c,CURLINFO_RESPONSE_CODE);curl_close($c);return [$code,json_decode($raw,true,64,JSON_THROW_ON_ERROR),$headers];
+function maReject(callable $f, int $status, string $label): void
+{
+    try {
+        $f();
+    } catch (ApiException $e) {
+        maCheck($e->httpStatus === $status, $label);
+
+        return;
+    }throw new RuntimeException('Expected rejection: '.$label);
 }
-file_get_contents(getenv('UPSTREAM_TEST_URL').'/__mode?mode=normal');file_get_contents(getenv('UPSTREAM_TEST_URL').'/__renew_mode?mode=normal');file_get_contents(getenv('UPSTREAM_TEST_URL').'/__service_mode?mode=normal');
+function maVal(string $sql, array $params = []): mixed
+{
+    global $db;
+    $s = $db->prepare($sql);
+    $s->execute($params);
+
+    return $s->fetchColumn();
+}
+function maRow(string $table, int $id): array
+{
+    global $db;
+    $s = $db->prepare('SELECT * FROM '.$table.' WHERE id=?');
+    $s->execute([$id]);
+
+    return $s->fetch();
+}
+function maAll(): array
+{
+    global $db;
+    $out = [];
+    foreach (['users', 'instances', 'invoices', 'tasks', 'transactions', 'payment_records', 'admin_audit_logs'] as $t) {
+        $out[$t] = $db->query('SELECT * FROM '.$t.' ORDER BY id')->fetchAll();
+    }
+
+    return $out;
+}
+function maOp(array $v): mixed
+{
+    return match ($v['op']) {
+        'settle' => (new ManualAdjustmentService())->settle($v['admin'], $v['instance'], $v['input']),'pay' => (new BillingService())->pay($v['user'], $v['invoice'], true),default => throw new RuntimeException('Unknown child operation')
+    };
+}
+if (($argv[1] ?? '') === '--child') {
+    $v = json_decode(stream_get_contents(STDIN), true, 64, JSON_THROW_ON_ERROR);
+    echo 'READY:'.$db->query('SELECT CONNECTION_ID()')->fetchColumn()."\n";
+    fflush(STDOUT);
+    try {
+        echo json_encode(['status' => 200, 'result' => maOp($v)], JSON_THROW_ON_ERROR)."\n";
+    } catch (ApiException $e) {
+        echo json_encode(['status' => $e->httpStatus], JSON_THROW_ON_ERROR)."\n";
+    }exit;
+}
+function maSpawn(array $v): array
+{
+    $p = proc_open([PHP_BINARY, __FILE__, '--child'], [['pipe', 'r'], ['pipe', 'w'], ['pipe', 'w']], $pipes, dirname(__DIR__));
+    fwrite($pipes[0], json_encode($v, JSON_THROW_ON_ERROR));
+    fclose($pipes[0]);
+    stream_set_timeout($pipes[1], 10);
+    $ready = trim(fgets($pipes[1]) ?: '');
+    if (! preg_match('/^READY:(\d+)$/D', $ready, $m)) {
+        throw new RuntimeException('No child connection');
+    }
+
+    return [$p, $pipes, (int) $m[1]];
+}
+function maWait(array $c): void
+{
+    global $db;
+    $end = microtime(true) + 8;
+    do {
+        if (maVal('SELECT trx_state FROM information_schema.innodb_trx WHERE trx_mysql_thread_id=?', [$c[2]]) === 'LOCK WAIT') {
+            return;
+        }usleep(200000);
+    } while (microtime(true) < $end);
+    stream_set_blocking($c[1][1], false);
+    stream_set_blocking($c[1][2], false);
+    throw new RuntimeException('No lock contention: '.stream_get_contents($c[1][1]).stream_get_contents($c[1][2]));
+}
+function maFinish(array $c): array
+{
+    [$p,$pipes] = $c;
+    $out = stream_get_contents($pipes[1]);
+    $err = stream_get_contents($pipes[2]);
+    fclose($pipes[1]);
+    fclose($pipes[2]);
+    if (proc_close($p) !== 0) {
+        throw new RuntimeException($err.$out);
+    }
+
+    return json_decode(trim($out), true, 64, JSON_THROW_ON_ERROR);
+}
+function maLock(int $id): void
+{
+    global $db;
+    $s = $db->prepare('SELECT id FROM instances WHERE id=? FOR UPDATE');
+    $s->execute([$id]);
+    $s->fetch();
+}
+function maHttp(string $path, ?string $token = null, string $method = 'GET', ?array $body = null): array
+{
+    $c = curl_init(getenv('TEST_BASE_URL').'/api/v1'.$path);
+    $headers = '';
+    curl_setopt_array($c, [CURLOPT_RETURNTRANSFER => true, CURLOPT_CUSTOMREQUEST => $method, CURLOPT_TIMEOUT => 20, CURLOPT_HTTPHEADER => array_filter(['Content-Type: application/json', $token ? 'Authorization: Bearer '.$token : null]), CURLOPT_HEADERFUNCTION => static function ($c, $line) use (&$headers) {
+        $headers .= $line;
+
+        return strlen($line);
+    }]);
+    if ($body !== null) {
+        curl_setopt($c, CURLOPT_POSTFIELDS, json_encode($body, JSON_THROW_ON_ERROR));
+    }$raw = curl_exec($c);
+    $code = curl_getinfo($c, CURLINFO_RESPONSE_CODE);
+    curl_close($c);
+
+    return [$code, json_decode($raw, true, 64, JSON_THROW_ON_ERROR), $headers];
+}
+file_get_contents(getenv('UPSTREAM_TEST_URL').'/__mode?mode=normal');
+file_get_contents(getenv('UPSTREAM_TEST_URL').'/__renew_mode?mode=normal');
+file_get_contents(getenv('UPSTREAM_TEST_URL').'/__service_mode?mode=normal');
 $db->exec("UPDATE tasks SET status='success',lease_until=NULL WHERE status IN ('pending','running','investigating')");
-$auth=new AdminAuthService();$admins=[];$tokens=[];
-foreach(['super_admin','finance','support','operator'] as $role){$admins[$role]=$auth->create(['username'=>'adjust-'.$role,'email'=>'adjust-'.$role.'@example.test','password'=>'AdjustAdmin!2026','role'=>$role]);$tokens[$role]=Security::generateToken(['uid'=>$admins[$role],'sub_type'=>'admin']);}
-$aid=$admins['super_admin'];$at=$tokens['super_admin'];$svc=new ManualAdjustmentService();$billing=new BillingService();$prices=new InstanceRenewalPriceService();$worker=new OutboxWorker();$renew=new RenewalService();
-$user=(new AuthService())->register(['email'=>'manual-adjustment@example.test','password'=>'AdjustCustomer!2026']);$uid=(int)$user['user']['id'];(new App\Services\DemoService())->recharge($uid,'10000.00','adjust-wallet-fixture');
-require_once __DIR__.'/reset_payment_fixture.php';resetPaymentFixture();
-$setup=(new ConnectionSetupService())->install(['provider'=>['name'=>'adjust-fixture','driver'=>'zjmf','endpoint'=>getenv('UPSTREAM_TEST_URL'),'credentials'=>['username'=>'fixture','password'=>'fixture-secret']],
- 'product'=>['remote_pid'=>391,'name'=>'Manual adjustment fixture','type'=>'cdn','monthly_price'=>'0.01'],
- 'payment'=>['driver'=>'epay','endpoint'=>'http://127.0.0.1:82','pid'=>'adjust-fixture','notify_url'=>'http://127.0.0.1/notify','return_url'=>'http://127.0.0.1','credentials'=>['key'=>'adjust-secret']]]);$product=$setup['product_id'];
+$auth = new AdminAuthService();
+$admins = [];
+$tokens = [];
+foreach (['super_admin', 'finance', 'support', 'operator'] as $role) {
+    $admins[$role] = $auth->create(['username' => 'adjust-'.$role, 'email' => 'adjust-'.$role.'@example.test', 'password' => 'AdjustAdmin!2026', 'role' => $role]);
+    $tokens[$role] = Security::generateToken(['uid' => $admins[$role], 'sub_type' => 'admin']);
+}
+$aid = $admins['super_admin'];
+$at = $tokens['super_admin'];
+$svc = new ManualAdjustmentService();
+$billing = new BillingService();
+$prices = new InstanceRenewalPriceService();
+$worker = new OutboxWorker();
+$renew = new RenewalService();
+$user = (new AuthService())->register(['email' => 'manual-adjustment@example.test', 'password' => 'AdjustCustomer!2026']);
+$uid = (int) $user['user']['id'];
+(new App\Services\DemoService())->recharge($uid, '10000.00', 'adjust-wallet-fixture');
+require_once __DIR__.'/reset_payment_fixture.php';
+resetPaymentFixture();
+$setup = (new ConnectionSetupService())->install(['provider' => ['name' => 'adjust-fixture', 'driver' => 'zjmf', 'endpoint' => getenv('UPSTREAM_TEST_URL'), 'credentials' => ['username' => 'fixture', 'password' => 'fixture-secret']],
+    'product' => ['remote_pid' => 391, 'name' => 'Manual adjustment fixture', 'type' => 'cdn', 'monthly_price' => '0.01'],
+    'payment' => ['driver' => 'epay', 'endpoint' => 'http://127.0.0.1:82', 'pid' => 'adjust-fixture', 'notify_url' => 'http://127.0.0.1/notify', 'return_url' => 'http://127.0.0.1', 'credentials' => ['key' => 'adjust-secret']]]);
+$product = $setup['product_id'];
 $db->prepare("UPDATE products SET markup_type='fixed',markup_value='99.99',config_cache=JSON_SET(config_cache,'$.prices.monthly','100.00') WHERE id=?")->execute([$product]);
-function maResource():int{global $billing,$worker,$uid,$product,$db;$v=$billing->checkout($uid,['product_id'=>$product,'hostname'=>'Adjustment8','password'=>'AdjustRoot!2026','billing_cycle'=>'monthly','use_balance'=>true]);$worker->runOnce('adjust-create');$id=(int)$v['instance_id'];$db->prepare('UPDATE instances SET start_date=DATE_SUB(UTC_TIMESTAMP(),INTERVAL 25 DAY),due_date=DATE_ADD(DATE_SUB(UTC_TIMESTAMP(),INTERVAL 25 DAY),INTERVAL 1 MONTH),auto_renew=1 WHERE id=?')->execute([$id]);return $id;}
-function maPreview(int $id,string $price='200.00'):array{global $svc,$aid;return $svc->preview($aid,$id,['new_price'=>$price,'evidence'=>'ADJUST-TEST: operator completed the original resource change']);}
-function maInput(array $p):array{return ['preview_token'=>$p['preview_token'],'request_key'=>bin2hex(random_bytes(16)),'confirmed'=>true];}
-function maUnpaid(int $id):int{global $db,$uid;$i=maRow('instances',$id);$p=['provider_id'=>(int)$i['provider_id'],'remote_instance_id'=>$i['remote_instance_id'],'billing_cycle'=>'monthly','base_due_date'=>$i['due_date'],'target_due_date'=>maVal("SELECT DATE_FORMAT(DATE_ADD(?,INTERVAL 1 MONTH),'%Y-%m-%d %H:%i:%s')",[$i['due_date']]),'total'=>$i['override_price']??$i['recurring_price']];$db->prepare("INSERT INTO invoices(user_id,instance_id,type,total,price_snapshot,cycle_marker) VALUES(?,?,'renew',?,?,?)")->execute([$uid,$id,$p['total'],json_encode($p),RenewalService::marker($i)]);return (int)$db->lastInsertId();}
+function maResource(): int
+{
+    global $billing,$worker,$uid,$product,$db;
+    $v = $billing->checkout($uid, ['product_id' => $product, 'hostname' => 'Adjustment8', 'password' => 'AdjustRoot!2026', 'billing_cycle' => 'monthly', 'use_balance' => true]);
+    $worker->runOnce('adjust-create');
+    $id = (int) $v['instance_id'];
+    $db->prepare('UPDATE instances SET start_date=DATE_SUB(UTC_TIMESTAMP(),INTERVAL 25 DAY),due_date=DATE_ADD(DATE_SUB(UTC_TIMESTAMP(),INTERVAL 25 DAY),INTERVAL 1 MONTH),auto_renew=1 WHERE id=?')->execute([$id]);
+
+    return $id;
+}
+function maPreview(int $id, string $price = '200.00'): array
+{
+    global $svc,$aid;
+
+    return $svc->preview($aid, $id, ['new_price' => $price, 'evidence' => 'ADJUST-TEST: operator completed the original resource change']);
+}
+function maInput(array $p): array
+{
+    return ['preview_token' => $p['preview_token'], 'request_key' => bin2hex(random_bytes(16)), 'confirmed' => true];
+}
+function maUnpaid(int $id): int
+{
+    global $db,$uid;
+    $i = maRow('instances', $id);
+    $p = ['provider_id' => (int) $i['provider_id'], 'remote_instance_id' => $i['remote_instance_id'], 'billing_cycle' => 'monthly', 'base_due_date' => $i['due_date'], 'target_due_date' => maVal("SELECT DATE_FORMAT(DATE_ADD(?,INTERVAL 1 MONTH),'%Y-%m-%d %H:%i:%s')", [$i['due_date']]), 'total' => $i['override_price'] ?? $i['recurring_price']];
+    $db->prepare("INSERT INTO invoices(user_id,instance_id,type,total,price_snapshot,cycle_marker) VALUES(?,?,'renew',?,?,?)")->execute([$uid, $id, $p['total'], json_encode($p), RenewalService::marker($i)]);
+
+    return (int) $db->lastInsertId();
+}
 // Exact arithmetic and calendar facts, including values that would truncate or round incorrectly.
-maCheck(ManualAdjustmentService::prorate('100.01','100.00',1,2)==='0.01','half cent rounds upwards');
-maCheck(ManualAdjustmentService::prorate('100.01','100.00',1,3)==='0.00','sub-half cent rounds down');
-maCheck(ManualAdjustmentService::prorate('99999999.99','0.01',2678400,2678400)==='99999999.98','large amount remains exact without floats');
-maCheck(ManualAdjustmentService::prorate('1.00','100.00',1,2)==='0.00','decrease never creates automatic refund');
-maReject(fn()=>ManualAdjustmentService::prorate('2.00','1.00',0,1),409,'expired pricing window rejected');
-$id=maResource();$original=maRow('instances',$id);$origInvoice=(int)maVal("SELECT id FROM invoices WHERE instance_id=? AND type='new'",[$id]);
-$unpaid=maUnpaid($id);$v=$prices->detail($aid,$id);$prices->update($aid,$id,['override_price'=>'20.00','expected_version'=>$v['version'],'evidence'=>'TEST future-only pricing is not this period paid basis']);$unpaid=maUnpaid($id);
-$p=maPreview($id);maCheck($p['basis']['original_price']==='100.00'&&$p['coverage_before']==='100.00','future override never substitutes current paid price');
-maCheck($p['total']===ManualAdjustmentService::prorate('200.00','100.00',$p['remaining_seconds'],$p['period_seconds']),'quote uses actual original period seconds');
-$priceVersion=$prices->detail($aid,$id)['version'];$beforeBalance=maVal('SELECT balance FROM users WHERE id=?',[$uid]);$beforeSpent=maVal('SELECT total_spent FROM users WHERE id=?',[$uid]);$beforeTasks=(int)maVal('SELECT COUNT(*) FROM tasks');
-$input=maInput($p);$r=$svc->settle($aid,$id,$input);$invoice=$r['invoice_id'];$after=maRow('instances',$id);
-maCheck(maVal('SELECT status FROM invoices WHERE id=?',[$invoice])==='paid'&&maVal('SELECT type FROM invoices WHERE id=?',[$invoice])==='upgrade','settled manual upgrade is persisted');
-maCheck(maVal('SELECT balance FROM users WHERE id=?',[$uid])===bcsub($beforeBalance,$p['total'],2)&&maVal('SELECT total_spent FROM users WHERE id=?',[$uid])===bcadd($beforeSpent,$p['total'],2),'wallet and spent change exactly by preview amount');
-maCheck((int)maVal('SELECT COUNT(*) FROM transactions WHERE invoice_id=?',[$invoice])===1&&(int)maVal('SELECT COUNT(*) FROM payment_records WHERE invoice_id=?',[$invoice])===1,'positive adjustment has one ledger and balance receipt');
-maCheck((int)maVal('SELECT COUNT(*) FROM tasks')===$beforeTasks,'manual fulfillment never creates Outbox');
-maCheck($after['override_price']==='200.00'&&$after['recurring_price']===$original['recurring_price']&&$after['due_date']===$original['due_date']&&$after['start_date']===$original['start_date']&&$after['remote_instance_id']===$original['remote_instance_id']&&$after['config_snapshot']===$original['config_snapshot'],'future override changes while original resource entitlement and configuration stay intact');
-maCheck(maVal('SELECT status FROM invoices WHERE id=?',[$unpaid])==='cancelled'&&maVal('SELECT cycle_marker FROM invoices WHERE id=?',[$unpaid])===null,'old unpaid renewal cancelled and cycle marker released');
-maCheck($prices->detail($aid,$id)['version']!==$priceVersion,'manual adjustment invalidates future-only price versions');
-maCheck($billing->invoice($uid,$invoice)['fulfillment_status']==='manual_settled','customer detail derives explicit manual settlement');
-$list=$billing->listing($uid,['type'=>'upgrade']);maCheck($list['items'][0]['fulfillment_status']==='manual_settled','customer list derives explicit manual settlement');
-maCheck((new FinanceQueryService())->detail($admins['finance'],$invoice,[])['invoice']['fulfillment_status']==='manual_settled','financial detail shares original settlement projection');
-$all=maAll();$replay=$svc->settle($aid,$id,$input);maCheck($replay['replayed']&&(int)$replay['invoice_id']===$invoice&&maAll()===$all,'original request replay has no financial or business side effects');
-maReject(fn()=>$svc->settle($aid,$id,['preview_token'=>maPreview($id,'250.00')['preview_token'],'request_key'=>$input['request_key'],'confirmed'=>true]),409,'same key with another preview is refused');
+maCheck(ManualAdjustmentService::prorate('100.01', '100.00', 1, 2) === '0.01', 'half cent rounds upwards');
+maCheck(ManualAdjustmentService::prorate('100.01', '100.00', 1, 3) === '0.00', 'sub-half cent rounds down');
+maCheck(ManualAdjustmentService::prorate('99999999.99', '0.01', 2678400, 2678400) === '99999999.98', 'large amount remains exact without floats');
+maCheck(ManualAdjustmentService::prorate('1.00', '100.00', 1, 2) === '0.00', 'decrease never creates automatic refund');
+maReject(fn () => ManualAdjustmentService::prorate('2.00', '1.00', 0, 1), 409, 'expired pricing window rejected');
+$id = maResource();
+$original = maRow('instances', $id);
+$origInvoice = (int) maVal("SELECT id FROM invoices WHERE instance_id=? AND type='new'", [$id]);
+$unpaid = maUnpaid($id);
+$v = $prices->detail($aid, $id);
+$prices->update($aid, $id, ['override_price' => '20.00', 'expected_version' => $v['version'], 'evidence' => 'TEST future-only pricing is not this period paid basis']);
+$unpaid = maUnpaid($id);
+$p = maPreview($id);
+maCheck($p['basis']['original_price'] === '100.00' && $p['coverage_before'] === '100.00', 'future override never substitutes current paid price');
+maCheck($p['total'] === ManualAdjustmentService::prorate('200.00', '100.00', $p['remaining_seconds'], $p['period_seconds']), 'quote uses actual original period seconds');
+$priceVersion = $prices->detail($aid, $id)['version'];
+$beforeBalance = maVal('SELECT balance FROM users WHERE id=?', [$uid]);
+$beforeSpent = maVal('SELECT total_spent FROM users WHERE id=?', [$uid]);
+$beforeTasks = (int) maVal('SELECT COUNT(*) FROM tasks');
+$input = maInput($p);
+$r = $svc->settle($aid, $id, $input);
+$invoice = $r['invoice_id'];
+$after = maRow('instances', $id);
+maCheck(maVal('SELECT status FROM invoices WHERE id=?', [$invoice]) === 'paid' && maVal('SELECT type FROM invoices WHERE id=?', [$invoice]) === 'upgrade', 'settled manual upgrade is persisted');
+maCheck(maVal('SELECT balance FROM users WHERE id=?', [$uid]) === bcsub($beforeBalance, $p['total'], 2) && maVal('SELECT total_spent FROM users WHERE id=?', [$uid]) === bcadd($beforeSpent, $p['total'], 2), 'wallet and spent change exactly by preview amount');
+maCheck((int) maVal('SELECT COUNT(*) FROM transactions WHERE invoice_id=?', [$invoice]) === 1 && (int) maVal('SELECT COUNT(*) FROM payment_records WHERE invoice_id=?', [$invoice]) === 1, 'positive adjustment has one ledger and balance receipt');
+maCheck((int) maVal('SELECT COUNT(*) FROM tasks') === $beforeTasks, 'manual fulfillment never creates Outbox');
+maCheck($after['override_price'] === '200.00' && $after['recurring_price'] === $original['recurring_price'] && $after['due_date'] === $original['due_date'] && $after['start_date'] === $original['start_date'] && $after['remote_instance_id'] === $original['remote_instance_id'] && $after['config_snapshot'] === $original['config_snapshot'], 'future override changes while original resource entitlement and configuration stay intact');
+maCheck(maVal('SELECT status FROM invoices WHERE id=?', [$unpaid]) === 'cancelled' && maVal('SELECT cycle_marker FROM invoices WHERE id=?', [$unpaid]) === null, 'old unpaid renewal cancelled and cycle marker released');
+maCheck($prices->detail($aid, $id)['version'] !== $priceVersion, 'manual adjustment invalidates future-only price versions');
+maCheck($billing->invoice($uid, $invoice)['fulfillment_status'] === 'manual_settled', 'customer detail derives explicit manual settlement');
+$list = $billing->listing($uid, ['type' => 'upgrade']);
+maCheck($list['items'][0]['fulfillment_status'] === 'manual_settled', 'customer list derives explicit manual settlement');
+maCheck((new FinanceQueryService())->detail($admins['finance'], $invoice, [])['invoice']['fulfillment_status'] === 'manual_settled', 'financial detail shares original settlement projection');
+$all = maAll();
+$replay = $svc->settle($aid, $id, $input);
+maCheck($replay['replayed'] && (int) $replay['invoice_id'] === $invoice && maAll() === $all, 'original request replay has no financial or business side effects');
+maReject(fn () => $svc->settle($aid, $id, ['preview_token' => maPreview($id, '250.00')['preview_token'], 'request_key' => $input['request_key'], 'confirmed' => true]), 409, 'same key with another preview is refused');
 // High-water coverage prevents repeated billing across downgrade / upgrade operations.
-foreach(['150.00','200.00'] as $price){$p=maPreview($id,$price);maCheck($p['total']==='0.00'&&$p['coverage_after']==='200.00','covered price never decreases with zero adjustment');$r=$svc->settle($aid,$id,maInput($p));maCheck((int)maVal('SELECT COUNT(*) FROM transactions WHERE invoice_id=?',[$r['invoice_id']])===0&&(int)maVal('SELECT COUNT(*) FROM payment_records WHERE invoice_id=?',[$r['invoice_id']])===0,'zero adjustment persists audit without fake money');}
-$p=maPreview($id,'300.00');maCheck($p['coverage_before']==='200.00'&&$p['total']===ManualAdjustmentService::prorate('300.00','200.00',$p['remaining_seconds'],$p['period_seconds']),'later adjustment only charges previously uncovered difference');
+foreach (['150.00', '200.00'] as $price) {
+    $p = maPreview($id, $price);
+    maCheck($p['total'] === '0.00' && $p['coverage_after'] === '200.00', 'covered price never decreases with zero adjustment');
+    $r = $svc->settle($aid, $id, maInput($p));
+    maCheck((int) maVal('SELECT COUNT(*) FROM transactions WHERE invoice_id=?', [$r['invoice_id']]) === 0 && (int) maVal('SELECT COUNT(*) FROM payment_records WHERE invoice_id=?', [$r['invoice_id']]) === 0, 'zero adjustment persists audit without fake money');
+}
+$p = maPreview($id, '300.00');
+maCheck($p['coverage_before'] === '200.00' && $p['total'] === ManualAdjustmentService::prorate('300.00', '200.00', $p['remaining_seconds'], $p['period_seconds']), 'later adjustment only charges previously uncovered difference');
 // Transaction rollback and stale facts.
-$x=maResource();$p=maPreview($x);$i=maInput($p);$wallet=maVal('SELECT balance FROM users WHERE id=?',[$uid]);$db->prepare('UPDATE users SET balance=0 WHERE id=?')->execute([$uid]);$all=maAll();maReject(fn()=>$svc->settle($aid,$x,$i),409,'insufficient balance rejects settlement');maCheck(maAll()===$all,'insufficient balance leaves no invoice price audit or funds partial write');$db->prepare('UPDATE users SET balance=? WHERE id=?')->execute([$wallet,$uid]);
-$db->exec("CREATE TRIGGER test_adjustment_audit_fail BEFORE INSERT ON admin_audit_logs FOR EACH ROW BEGIN IF NEW.action='instance_manual_adjustment' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='isolated audit failure'; END IF; END");$all=maAll();try{$svc->settle($aid,$x,$i);throw new RuntimeException('Expected injected failure');}catch(PDOException){}finally{$db->exec('DROP TRIGGER test_adjustment_audit_fail');}maCheck(maAll()===$all,'audit failure rolls money invoice price and cancellation back together');
-maReject(fn()=>$svc->settle($aid,$x,array_replace($i,['confirmed'=>false])),400,'explicit completion and debit confirmation required');$tamper=$i;$tamper['preview_token'][10]=$tamper['preview_token'][10]==='a'?'b':'a';maReject(fn()=>$svc->settle($aid,$x,$tamper),409,'tampered preview refused');
-$parts=explode('.',$i['preview_token']);$payload=json_decode(base64_decode(strtr($parts[0],'-_','+/')),true);$payload['expires']=time()-1;$enc=rtrim(strtr(base64_encode(json_encode($payload)),'+/','-_'),'=');maReject(fn()=>$svc->settle($aid,$x,array_replace($i,['preview_token'=>$enc.'.'.Security::requestFingerprint($enc)])),409,'expired preview refused');
-$old=maPreview($x);$d=$prices->detail($aid,$x);$prices->update($aid,$x,['override_price'=>'2.00','expected_version'=>$d['version'],'evidence'=>'TEST concurrent future price edit']);maReject(fn()=>$svc->settle($aid,$x,maInput($old)),409,'concurrent future repricing invalidates preview');
+$x = maResource();
+$p = maPreview($x);
+$i = maInput($p);
+$wallet = maVal('SELECT balance FROM users WHERE id=?', [$uid]);
+$db->prepare('UPDATE users SET balance=0 WHERE id=?')->execute([$uid]);
+$all = maAll();
+maReject(fn () => $svc->settle($aid, $x, $i), 409, 'insufficient balance rejects settlement');
+maCheck(maAll() === $all, 'insufficient balance leaves no invoice price audit or funds partial write');
+$db->prepare('UPDATE users SET balance=? WHERE id=?')->execute([$wallet, $uid]);
+$db->exec("CREATE TRIGGER test_adjustment_audit_fail BEFORE INSERT ON admin_audit_logs FOR EACH ROW BEGIN IF NEW.action='instance_manual_adjustment' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='isolated audit failure'; END IF; END");
+$all = maAll();
+try {
+    $svc->settle($aid, $x, $i);
+    throw new RuntimeException('Expected injected failure');
+} catch (PDOException) {
+} finally {
+    $db->exec('DROP TRIGGER test_adjustment_audit_fail');
+}maCheck(maAll() === $all, 'audit failure rolls money invoice price and cancellation back together');
+maReject(fn () => $svc->settle($aid, $x, array_replace($i, ['confirmed' => false])), 400, 'explicit completion and debit confirmation required');
+$tamper = $i;
+$tamper['preview_token'][10] = $tamper['preview_token'][10] === 'a' ? 'b' : 'a';
+maReject(fn () => $svc->settle($aid, $x, $tamper), 409, 'tampered preview refused');
+$parts = explode('.', $i['preview_token']);
+$payload = json_decode(base64_decode(strtr($parts[0], '-_', '+/')), true);
+$payload['expires'] = time() - 1;
+$enc = rtrim(strtr(base64_encode(json_encode($payload)), '+/', '-_'), '=');
+maReject(fn () => $svc->settle($aid, $x, array_replace($i, ['preview_token' => $enc.'.'.Security::requestFingerprint($enc)])), 409, 'expired preview refused');
+$old = maPreview($x);
+$d = $prices->detail($aid, $x);
+$prices->update($aid, $x, ['override_price' => '2.00', 'expected_version' => $d['version'], 'evidence' => 'TEST concurrent future price edit']);
+maReject(fn () => $svc->settle($aid, $x, maInput($old)), 409, 'concurrent future repricing invalidates preview');
 // Known task and funding boundaries protect the original resource.
-foreach([['status','suspended'],['due_date',gmdate('Y-m-d H:i:s',time()-1)]] as [$field,$value]){$v=maRow('instances',$x)[$field];$db->prepare('UPDATE instances SET '.$field.'=? WHERE id=?')->execute([$value,$x]);maCheck(!$svc->detail($aid,$x)['editable'],'unavailable period or service blocks preview');$db->prepare('UPDATE instances SET '.$field.'=? WHERE id=?')->execute([$v,$x]);}
-$db->prepare("INSERT INTO tasks(instance_id,idempotency_key,action,payload) VALUES(?,?,'power','{}')")->execute([$x,'adjust-task-blocker']);$t=(int)$db->lastInsertId();maReject(fn()=>maPreview($x),409,'pending power operation blocks financial adjustment');$db->prepare("UPDATE tasks SET status='failed',last_error='MANUAL_AUDIT_REQUIRED:UNKNOWN' WHERE id=?")->execute([$t]);maReject(fn()=>maPreview($x),409,'unknown result retains business occupancy');$db->prepare("UPDATE tasks SET status='success',last_error=NULL WHERE id=?")->execute([$t]);
-$orig=(int)maVal("SELECT id FROM invoices WHERE instance_id=? AND type='new'",[$x]);$db->prepare("UPDATE invoices SET status='refund_pending' WHERE id=?")->execute([$orig]);maReject(fn()=>maPreview($x),409,'refund freeze blocks settlement');$db->prepare("UPDATE invoices SET status='paid' WHERE id=?")->execute([$orig]);
-$db->prepare('UPDATE products SET commission_rate=1 WHERE id=?')->execute([$product]);maReject(fn()=>maPreview($x),409,'unsupported commission is explicit');$db->prepare('UPDATE products SET commission_rate=0 WHERE id=?')->execute([$product]);
+foreach ([['status', 'suspended'], ['due_date', gmdate('Y-m-d H:i:s', time() - 1)]] as [$field,$value]) {
+    $v = maRow('instances', $x)[$field];
+    $db->prepare('UPDATE instances SET '.$field.'=? WHERE id=?')->execute([$value, $x]);
+    maCheck(! $svc->detail($aid, $x)['editable'], 'unavailable period or service blocks preview');
+    $db->prepare('UPDATE instances SET '.$field.'=? WHERE id=?')->execute([$v, $x]);
+}
+$db->prepare("INSERT INTO tasks(instance_id,idempotency_key,action,payload) VALUES(?,?,'power','{}')")->execute([$x, 'adjust-task-blocker']);
+$t = (int) $db->lastInsertId();
+maReject(fn () => maPreview($x), 409, 'pending power operation blocks financial adjustment');
+$db->prepare("UPDATE tasks SET status='failed',last_error='MANUAL_AUDIT_REQUIRED:UNKNOWN' WHERE id=?")->execute([$t]);
+maReject(fn () => maPreview($x), 409, 'unknown result retains business occupancy');
+$db->prepare("UPDATE tasks SET status='success',last_error=NULL WHERE id=?")->execute([$t]);
+$orig = (int) maVal("SELECT id FROM invoices WHERE instance_id=? AND type='new'", [$x]);
+$db->prepare("UPDATE invoices SET status='refund_pending' WHERE id=?")->execute([$orig]);
+maReject(fn () => maPreview($x), 409, 'refund freeze blocks settlement');
+$db->prepare("UPDATE invoices SET status='paid' WHERE id=?")->execute([$orig]);
+$db->prepare('UPDATE products SET commission_rate=1 WHERE id=?')->execute([$product]);
+maReject(fn () => maPreview($x), 409, 'unsupported commission is explicit');
+$db->prepare('UPDATE products SET commission_rate=0 WHERE id=?')->execute([$product]);
 // Historical ambiguity is refused instead of using today's price.
-$origSnap=maVal('SELECT price_snapshot FROM invoices WHERE id=?',[$orig]);$db->prepare("UPDATE invoices SET price_snapshot=JSON_SET(price_snapshot,'$.recurring_price','99.00') WHERE id=?")->execute([$orig]);maReject(fn()=>maPreview($x),409,'inseparable initial fees cannot be guessed');$db->prepare('UPDATE invoices SET price_snapshot=? WHERE id=?')->execute([$origSnap,$orig]);
-$due=maRow('instances',$x)['due_date'];$db->prepare('UPDATE instances SET due_date=DATE_ADD(due_date,INTERVAL 1 MONTH) WHERE id=?')->execute([$x]);maReject(fn()=>maPreview($x),409,'unproven or multi-period entitlement refuses automatic proration');$db->prepare('UPDATE instances SET due_date=? WHERE id=?')->execute([$due,$x]);
+$origSnap = maVal('SELECT price_snapshot FROM invoices WHERE id=?', [$orig]);
+$db->prepare("UPDATE invoices SET price_snapshot=JSON_SET(price_snapshot,'$.recurring_price','99.00') WHERE id=?")->execute([$orig]);
+maReject(fn () => maPreview($x), 409, 'inseparable initial fees cannot be guessed');
+$db->prepare('UPDATE invoices SET price_snapshot=? WHERE id=?')->execute([$origSnap, $orig]);
+$due = maRow('instances', $x)['due_date'];
+$db->prepare('UPDATE instances SET due_date=DATE_ADD(due_date,INTERVAL 1 MONTH) WHERE id=?')->execute([$x]);
+maReject(fn () => maPreview($x), 409, 'unproven or multi-period entitlement refuses automatic proration');
+$db->prepare('UPDATE instances SET due_date=? WHERE id=?')->execute([$due, $x]);
 // Calendar-specific current renewal using frozen endpoints, not fixed 30-day approximation.
-$cal=maResource();$now=gmdate('Y-m-d H:i:s');$base=gmdate('Y-m-01 00:00:00');$end=maVal("SELECT DATE_FORMAT(DATE_ADD(?,INTERVAL 1 MONTH),'%Y-%m-%d %H:%i:%s')",[$base]);$ci=maRow('instances',$cal);$cp=['base_due_date'=>$base,'target_due_date'=>$end,'provider_id'=>(int)$ci['provider_id'],'remote_instance_id'=>$ci['remote_instance_id'],'billing_cycle'=>'monthly','total'=>'120.00'];
-$db->prepare('UPDATE instances SET start_date=DATE_SUB(?,INTERVAL 2 MONTH),due_date=? WHERE id=?')->execute([$base,$end,$cal]);
-$db->prepare("INSERT INTO invoices(user_id,instance_id,type,total,status,price_snapshot) VALUES(?,?,'renew','120.00','paid',?)")->execute([$uid,$cal,json_encode($cp)]);$cv=(int)$db->lastInsertId();$db->prepare("INSERT INTO tasks(instance_id,invoice_id,idempotency_key,action,status,payload) VALUES(?,?,?,'renew','success',?)")->execute([$cal,$cv,'adjust-calendar-'.$cal,json_encode($cp)]);
-$p=maPreview($cal,'240.00');maCheck($p['basis']['invoice_id']===$cv&&$p['basis']['original_price']==='120.00'&&$p['period_seconds']===strtotime($end.' UTC')-strtotime($base.' UTC'),'renewal price basis uses frozen full calendar interval');
-maCheck(maVal("SELECT DATE_FORMAT(DATE_ADD(?,INTERVAL 1 MONTH),'%Y-%m-%d %H:%i:%s')",['2027-01-31 12:00:00'])==='2027-02-28 12:00:00'&&maVal("SELECT DATE_FORMAT(DATE_ADD(?,INTERVAL 1 YEAR),'%Y-%m-%d %H:%i:%s')",['2024-02-29 12:00:00'])==='2025-02-28 12:00:00','database calendar semantics preserve month-end and leap-year rule');
+$cal = maResource();
+$now = gmdate('Y-m-d H:i:s');
+$base = gmdate('Y-m-01 00:00:00');
+$end = maVal("SELECT DATE_FORMAT(DATE_ADD(?,INTERVAL 1 MONTH),'%Y-%m-%d %H:%i:%s')", [$base]);
+$ci = maRow('instances', $cal);
+$cp = ['base_due_date' => $base, 'target_due_date' => $end, 'provider_id' => (int) $ci['provider_id'], 'remote_instance_id' => $ci['remote_instance_id'], 'billing_cycle' => 'monthly', 'total' => '120.00'];
+$db->prepare('UPDATE instances SET start_date=DATE_SUB(?,INTERVAL 2 MONTH),due_date=? WHERE id=?')->execute([$base, $end, $cal]);
+$db->prepare("INSERT INTO invoices(user_id,instance_id,type,total,status,price_snapshot) VALUES(?,?,'renew','120.00','paid',?)")->execute([$uid, $cal, json_encode($cp)]);
+$cv = (int) $db->lastInsertId();
+$db->prepare("INSERT INTO tasks(instance_id,invoice_id,idempotency_key,action,status,payload) VALUES(?,?,?,'renew','success',?)")->execute([$cal, $cv, 'adjust-calendar-'.$cal, json_encode($cp)]);
+$p = maPreview($cal, '240.00');
+maCheck($p['basis']['invoice_id'] === $cv && $p['basis']['original_price'] === '120.00' && $p['period_seconds'] === strtotime($end.' UTC') - strtotime($base.' UTC'), 'renewal price basis uses frozen full calendar interval');
+maCheck(maVal("SELECT DATE_FORMAT(DATE_ADD(?,INTERVAL 1 MONTH),'%Y-%m-%d %H:%i:%s')", ['2027-01-31 12:00:00']) === '2027-02-28 12:00:00' && maVal("SELECT DATE_FORMAT(DATE_ADD(?,INTERVAL 1 YEAR),'%Y-%m-%d %H:%i:%s')", ['2024-02-29 12:00:00']) === '2025-02-28 12:00:00', 'database calendar semantics preserve month-end and leap-year rule');
 // Original gateway intent paid after manual settlement must remain attributable wallet funds.
-$late=maResource();$oldInvoice=maUnpaid($late);$payment=new App\Services\PaymentService();$form=$payment->checkout($uid,$oldInvoice,'epay')['checkout'];
-$notice=['pid'=>'adjust-fixture','out_trade_no'=>$form['fields']['out_trade_no'],'trade_no'=>'adjust-late-original','money'=>$form['fields']['money'],'trade_status'=>'TRADE_SUCCESS','sign_type'=>'MD5'];$notice['sign']=\Plugins\payments\epay\EpayDriver::sign($notice,'adjust-secret');
-$svc->settle($aid,$late,maInput(maPreview($late)));$balance=maVal('SELECT balance FROM users WHERE id=?',[$uid]);$spent=maVal('SELECT total_spent FROM users WHERE id=?',[$uid]);$due=maRow('instances',$late)['due_date'];$payment->notify('epay',$notice);$payment->notify('epay',$notice);
-maCheck(maVal('SELECT balance FROM users WHERE id=?',[$uid])===bcadd($balance,'100.00',2)&&maVal('SELECT total_spent FROM users WHERE id=?',[$uid])===$spent,'old cashier duplicate receipts credit wallet once without additional consumption');
-maCheck(maVal('SELECT status FROM invoices WHERE id=?',[$oldInvoice])==='cancelled'&&maRow('instances',$late)['due_date']===$due&&(int)maVal('SELECT COUNT(*) FROM tasks WHERE invoice_id=?',[$oldInvoice])===0,'late old-price receipt cannot renew or change original entitlement');
+$late = maResource();
+$oldInvoice = maUnpaid($late);
+$payment = new App\Services\PaymentService();
+$form = $payment->checkout($uid, $oldInvoice, 'epay')['checkout'];
+$notice = ['pid' => 'adjust-fixture', 'out_trade_no' => $form['fields']['out_trade_no'], 'trade_no' => 'adjust-late-original', 'money' => $form['fields']['money'], 'trade_status' => 'TRADE_SUCCESS', 'sign_type' => 'MD5'];
+$notice['sign'] = \Plugins\payments\epay\EpayDriver::sign($notice, 'adjust-secret');
+$svc->settle($aid, $late, maInput(maPreview($late)));
+$balance = maVal('SELECT balance FROM users WHERE id=?', [$uid]);
+$spent = maVal('SELECT total_spent FROM users WHERE id=?', [$uid]);
+$due = maRow('instances', $late)['due_date'];
+$payment->notify('epay', $notice);
+$payment->notify('epay', $notice);
+maCheck(maVal('SELECT balance FROM users WHERE id=?', [$uid]) === bcadd($balance, '100.00', 2) && maVal('SELECT total_spent FROM users WHERE id=?', [$uid]) === $spent, 'old cashier duplicate receipts credit wallet once without additional consumption');
+maCheck(maVal('SELECT status FROM invoices WHERE id=?', [$oldInvoice]) === 'cancelled' && maRow('instances', $late)['due_date'] === $due && (int) maVal('SELECT COUNT(*) FROM tasks WHERE invoice_id=?', [$oldInvoice]) === 0, 'late old-price receipt cannot renew or change original entitlement');
 // Real two-connection contention: settlement wins, automatic debit cannot pay cancelled old invoice.
-$race=maResource();$unpaid=maUnpaid($race);$p=maPreview($race);$input=maInput($p);$child=null;Database::transaction(function()use($race,$uid,$unpaid,$svc,$aid,$input,&$child){maLock($race);$child=maSpawn(['op'=>'pay','user'=>$uid,'invoice'=>$unpaid]);maWait($child);$svc->settle($aid,$race,$input);});$result=maFinish($child);maCheck($result['status']===409&&maVal('SELECT status FROM invoices WHERE id=?',[$unpaid])==='cancelled','manual settlement wins actual lock competition against debit');
+$race = maResource();
+$unpaid = maUnpaid($race);
+$p = maPreview($race);
+$input = maInput($p);
+$child = null;
+Database::transaction(function () use ($race, $uid, $unpaid, $svc, $aid, $input, &$child) {
+    maLock($race);
+    $child = maSpawn(['op' => 'pay', 'user' => $uid, 'invoice' => $unpaid]);
+    maWait($child);
+    $svc->settle($aid, $race, $input);
+});
+$result = maFinish($child);
+maCheck($result['status'] === 409 && maVal('SELECT status FROM invoices WHERE id=?', [$unpaid]) === 'cancelled', 'manual settlement wins actual lock competition against debit');
 // Debit wins: local period and renew Outbox invalidate original adjustment preview.
-$race=maResource();$unpaid=maUnpaid($race);$p=maPreview($race);$input=maInput($p);$child=null;Database::transaction(function()use($race,$aid,$input,$billing,$uid,$unpaid,&$child){maLock($race);$child=maSpawn(['op'=>'settle','admin'=>$aid,'instance'=>$race,'input'=>$input]);maWait($child);$billing->pay($uid,$unpaid,true);});$result=maFinish($child);maCheck($result['status']===409&&(int)maVal('SELECT COUNT(*) FROM tasks WHERE invoice_id=?',[$unpaid])===1,'winning debit creates one renewal and rejects old adjustment preview');$db->prepare("UPDATE tasks SET status='success' WHERE invoice_id=?")->execute([$unpaid]);
+$race = maResource();
+$unpaid = maUnpaid($race);
+$p = maPreview($race);
+$input = maInput($p);
+$child = null;
+Database::transaction(function () use ($race, $aid, $input, $billing, $uid, $unpaid, &$child) {
+    maLock($race);
+    $child = maSpawn(['op' => 'settle', 'admin' => $aid, 'instance' => $race, 'input' => $input]);
+    maWait($child);
+    $billing->pay($uid, $unpaid, true);
+});
+$result = maFinish($child);
+maCheck($result['status'] === 409 && (int) maVal('SELECT COUNT(*) FROM tasks WHERE invoice_id=?', [$unpaid]) === 1, 'winning debit creates one renewal and rejects old adjustment preview');
+$db->prepare("UPDATE tasks SET status='success' WHERE invoice_id=?")->execute([$unpaid]);
 // Concurrent original request replay, including response loss, cannot debit twice.
-$race=maResource();$input=maInput(maPreview($race));$c1=$c2=null;Database::transaction(function()use($race,$aid,$input,&$c1,&$c2){maLock($race);$c1=maSpawn(['op'=>'settle','admin'=>$aid,'instance'=>$race,'input'=>$input]);maWait($c1);$c2=maSpawn(['op'=>'settle','admin'=>$aid,'instance'=>$race,'input'=>$input]);maWait($c2);});$r1=maFinish($c1);$r2=maFinish($c2);maCheck($r1['status']===200&&$r2['status']===200&&$r1['result']['invoice_id']===$r2['result']['invoice_id']&&(bool)$r1['result']['replayed']!==(bool)$r2['result']['replayed'],'concurrent duplicate settlement returns one original invoice');$ri=$r1['result']['invoice_id'];maCheck((int)maVal('SELECT COUNT(*) FROM transactions WHERE invoice_id=?',[$ri])===1&&(int)maVal('SELECT COUNT(*) FROM payment_records WHERE invoice_id=?',[$ri])===1,'concurrent replay has one debit and one receipt');
+$race = maResource();
+$input = maInput(maPreview($race));
+$c1 = $c2 = null;
+Database::transaction(function () use ($race, $aid, $input, &$c1, &$c2) {
+    maLock($race);
+    $c1 = maSpawn(['op' => 'settle', 'admin' => $aid, 'instance' => $race, 'input' => $input]);
+    maWait($c1);
+    $c2 = maSpawn(['op' => 'settle', 'admin' => $aid, 'instance' => $race, 'input' => $input]);
+    maWait($c2);
+});
+$r1 = maFinish($c1);
+$r2 = maFinish($c2);
+maCheck($r1['status'] === 200 && $r2['status'] === 200 && $r1['result']['invoice_id'] === $r2['result']['invoice_id'] && (bool) $r1['result']['replayed'] !== (bool) $r2['result']['replayed'], 'concurrent duplicate settlement returns one original invoice');
+$ri = $r1['result']['invoice_id'];
+maCheck((int) maVal('SELECT COUNT(*) FROM transactions WHERE invoice_id=?', [$ri]) === 1 && (int) maVal('SELECT COUNT(*) FROM payment_records WHERE invoice_id=?', [$ri]) === 1, 'concurrent replay has one debit and one receipt');
 // Customer, admin-role and owner boundaries through real HTTP.
-$path='/admin/instances/'.$x.'/manual-adjustment';maCheck(maHttp($path)[0]===401&&maHttp($path,$user['token'])[0]===401,'admin entry rejects anonymous and customer sessions');
-foreach(['support','operator'] as $role){maCheck(maHttp($path,$tokens[$role])[0]===403,'non-financial role cannot read adjustment facts');}
-[$code,$data,$headers]=maHttp($path,$tokens['finance']);maCheck($code===200&&!$data['data']['editable']&&str_contains(strtolower($headers),'no-store'),'finance may read without edit or cache');
-maCheck(maHttp($path.'/preview',$tokens['finance'],'POST',['new_price'=>'200.00','evidence'=>'TEST already completed change'])[0]===403,'finance cannot create a settlement preview');
-[$code,$data]=maHttp($path.'/preview',$at,'POST',['new_price'=>'200.00','evidence'=>'TEST already completed change']);maCheck($code===200&&isset($data['data']['preview_token']),'super admin HTTP preview uses domain service');
-$p=$data['data'];maCheck(maHttp($path.'/settle',$at,'POST',maInput($p))[0]===200,'super admin HTTP settlement succeeds');
-maReject(fn()=>$billing->pay($uid,$invoice),400,'manual upgrade cannot use normal balance-pay endpoint');maReject(fn()=>(new App\Services\PaymentService())->checkout($uid,$invoice,'epay'),409,'manual upgrade cannot open a gateway cashier');
-$other=(new AuthService())->register(['email'=>'adjust-other@example.test','password'=>'AdjustOther!2026']);maReject(fn()=>$billing->invoice((int)$other['user']['id'],$invoice),403,'customer invoice ownership remains isolated');
-$x=maResource();$p=maPreview($x);$db->prepare("UPDATE admins SET role='finance' WHERE id=?")->execute([$aid]);maReject(fn()=>$svc->settle($aid,$x,maInput($p)),403,'current role rechecked after preview');$db->prepare("UPDATE admins SET role='super_admin' WHERE id=?")->execute([$aid]);
+$path = '/admin/instances/'.$x.'/manual-adjustment';
+maCheck(maHttp($path)[0] === 401 && maHttp($path, $user['token'])[0] === 401, 'admin entry rejects anonymous and customer sessions');
+foreach (['support', 'operator'] as $role) {
+    maCheck(maHttp($path, $tokens[$role])[0] === 403, 'non-financial role cannot read adjustment facts');
+}
+[$code,$data,$headers] = maHttp($path, $tokens['finance']);
+maCheck($code === 200 && ! $data['data']['editable'] && str_contains(strtolower($headers), 'no-store'), 'finance may read without edit or cache');
+maCheck(maHttp($path.'/preview', $tokens['finance'], 'POST', ['new_price' => '200.00', 'evidence' => 'TEST already completed change'])[0] === 403, 'finance cannot create a settlement preview');
+[$code,$data] = maHttp($path.'/preview', $at, 'POST', ['new_price' => '200.00', 'evidence' => 'TEST already completed change']);
+maCheck($code === 200 && isset($data['data']['preview_token']), 'super admin HTTP preview uses domain service');
+$p = $data['data'];
+maCheck(maHttp($path.'/settle', $at, 'POST', maInput($p))[0] === 200, 'super admin HTTP settlement succeeds');
+maReject(fn () => $billing->pay($uid, $invoice), 400, 'manual upgrade cannot use normal balance-pay endpoint');
+maReject(fn () => (new App\Services\PaymentService())->checkout($uid, $invoice, 'epay'), 409, 'manual upgrade cannot open a gateway cashier');
+$other = (new AuthService())->register(['email' => 'adjust-other@example.test', 'password' => 'AdjustOther!2026']);
+maReject(fn () => $billing->invoice((int) $other['user']['id'], $invoice), 403, 'customer invoice ownership remains isolated');
+$x = maResource();
+$p = maPreview($x);
+$db->prepare("UPDATE admins SET role='finance' WHERE id=?")->execute([$aid]);
+maReject(fn () => $svc->settle($aid, $x, maInput($p)), 403, 'current role rechecked after preview');
+$db->prepare("UPDATE admins SET role='super_admin' WHERE id=?")->execute([$aid]);
 // A paid upgrade with no matching audit must remain a delivery exception.
-$db->prepare("INSERT INTO invoices(user_id,instance_id,type,total,status,price_snapshot) VALUES(?,?,'upgrade',1,'paid',?)")->execute([$uid,$x,json_encode(['kind'=>'manual_adjustment_v1','admin_id'=>$aid])]);$fake=(int)$db->lastInsertId();maCheck($billing->invoice($uid,$fake)['fulfillment_status']==='needs_review','arbitrary paid upgrade without completion audit never claims settled');maReject(fn()=>maPreview($x),409,'ambiguous historical upgrade blocks new automatic calculation');
+$db->prepare("INSERT INTO invoices(user_id,instance_id,type,total,status,price_snapshot) VALUES(?,?,'upgrade',1,'paid',?)")->execute([$uid, $x, json_encode(['kind' => 'manual_adjustment_v1', 'admin_id' => $aid])]);
+$fake = (int) $db->lastInsertId();
+maCheck($billing->invoice($uid, $fake)['fulfillment_status'] === 'needs_review', 'arbitrary paid upgrade without completion audit never claims settled');
+maReject(fn () => maPreview($x), 409, 'ambiguous historical upgrade blocks new automatic calculation');
 echo "Manual adjustment checks: $checks\n";

@@ -1,5 +1,7 @@
 <?php
+
 declare(strict_types=1);
+
 namespace App\Http\Middleware;
 
 use Closure;
@@ -13,10 +15,11 @@ final class VerifyCaptcha
     public function handle(Request $request, Closure $next, string $scene): Response
     {
         $payload = Input::body()['captcha_payload'] ?? [];
-        if (!is_array($payload)) {
+        if (! is_array($payload)) {
             throw new ApiException('Invalid captcha payload', 422, 422);
         }
         app(CaptchaService::class)->verify($scene, $payload, Security::getClientIp());
+
         return $next($request);
     }
 }

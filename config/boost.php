@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 use Laravel\Boost\Mcp\Tools\{BrowserLogs, DatabaseConnections, DatabaseQuery, DatabaseSchema, LastError, ReadLogEntries, RecordRule, Tinker};

@@ -1,5 +1,7 @@
 <?php
+
 declare(strict_types=1);
+
 namespace App\Core;
 
 use Illuminate\Support\Facades\DB;
@@ -11,15 +13,16 @@ final class Database
     public static function getInstance(): PDO
     {
         $credentials = config('database.connections.mysql');
-        if (!is_string($credentials['username']) || $credentials['username'] === ''
-            || !is_string($credentials['password']) || $credentials['password'] === '') {
+        if (! is_string($credentials['username']) || $credentials['username'] === ''
+            || ! is_string($credentials['password']) || $credentials['password'] === '') {
             throw new \RuntimeException('DB_USERNAME and DB_PASSWORD are required');
         }
+
         return DB::connection()->getPdo();
     }
 
     public static function transaction(callable $callback, int $attempts = 1): mixed
     {
-        return DB::connection()->transaction(static fn() => $callback(self::getInstance()), $attempts);
+        return DB::connection()->transaction(static fn () => $callback(self::getInstance()), $attempts);
     }
 }

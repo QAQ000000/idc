@@ -7,7 +7,7 @@ class Security
     private static function getAppKey(): string
     {
         $key = config('app.key');
-        if (!is_string($key) || $key === '') {
+        if (! is_string($key) || $key === '') {
             // 主密钥只允许来自环境变量；缺少时必须拒绝启动，
             // 严禁静默降级到任何代码内置的固定密钥（等于加密形同虚设）。
             throw new \RuntimeException(
@@ -19,8 +19,10 @@ class Security
             if ($decoded === false || strlen($decoded) !== 32) {
                 throw new \RuntimeException('APP_KEY must decode to exactly 32 bytes');
             }
+
             return $decoded;
         }
+
         return hash('sha256', $key, true);
     }
 
@@ -37,6 +39,7 @@ class Security
         if (str_contains($password, "\0")) {
             throw new ApiException('Invalid password');
         }
+
         return password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]);
     }
 
@@ -71,7 +74,7 @@ class Security
             throw new \RuntimeException('Encryption failed');
         }
 
-        return base64_encode($iv . $tag . $cipherText);
+        return base64_encode($iv.$tag.$cipherText);
     }
 
     /**
@@ -90,6 +93,7 @@ class Security
         $cipherText = substr($data, 28);
 
         $decrypted = openssl_decrypt($cipherText, 'aes-256-gcm', $key, OPENSSL_RAW_DATA, $iv, $tag);
+
         return $decrypted !== false ? $decrypted : null;
     }
 
@@ -127,15 +131,15 @@ class Security
         [$b64Header, $b64Payload, $b64Signature] = $parts;
         $expectedSignature = rtrim(strtr(base64_encode(hash_hmac('sha256', "{$b64Header}.{$b64Payload}", self::getAppKey(), true)), '+/', '-_'), '=');
 
-        if (!hash_equals($expectedSignature, $b64Signature)) {
+        if (! hash_equals($expectedSignature, $b64Signature)) {
             return null;
         }
 
         $header = json_decode(base64_decode(strtr($b64Header, '-_', '+/'), true) ?: '', true);
         $payload = json_decode(base64_decode(strtr($b64Payload, '-_', '+/'), true) ?: '', true);
-        if (!is_array($header) || ($header['alg'] ?? '') !== 'HS256' || ($header['typ'] ?? '') !== 'JWT'
-            || !is_array($payload) || !is_int($payload['exp'] ?? null) || time() >= $payload['exp']
-            || !is_int($payload['uid'] ?? null) || $payload['uid'] < 1) {
+        if (! is_array($header) || ($header['alg'] ?? '') !== 'HS256' || ($header['typ'] ?? '') !== 'JWT'
+            || ! is_array($payload) || ! is_int($payload['exp'] ?? null) || time() >= $payload['exp']
+            || ! is_int($payload['uid'] ?? null) || $payload['uid'] < 1) {
             return null;
         }
 
@@ -143,10 +147,12 @@ class Security
     }
 
     /** Missing av is compatible only with the pre-revocation version zero. */
-    public static function assertUserVersion(array $claims,int $current):void
+    public static function assertUserVersion(array $claims, int $current): void
     {
-        $version=$claims['av']??0;
-        if (!is_int($version) || $version!==$current) { throw new ApiException('Session revoked; log in again',401,401); }
+        $version = $claims['av'] ?? 0;
+        if (! is_int($version) || $version !== $current) {
+            throw new ApiException('Session revoked; log in again', 401, 401);
+        }
     }
 
     /**
@@ -155,14 +161,14 @@ class Security
     public static function getClientIp(): string
     {
         $peer = $_SERVER['REMOTE_ADDR'] ?? '';
-        if (!is_string($peer) || !filter_var($peer, FILTER_VALIDATE_IP)) {
+        if (! is_string($peer) || ! filter_var($peer, FILTER_VALIDATE_IP)) {
             return '0.0.0.0';
         }
-        if (!self::isTrustedProxy($peer)) {
+        if (! self::isTrustedProxy($peer)) {
             return $peer;
         }
         $header = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? '';
-        if (!is_string($header) || $header === '' || strlen($header) > 8192) {
+        if (! is_string($header) || $header === '' || strlen($header) > 8192) {
             return $peer;
         }
         $hops = array_map('trim', explode(',', $header));
@@ -170,17 +176,18 @@ class Security
             return $peer;
         }
         foreach ($hops as $hop) {
-            if (!filter_var($hop, FILTER_VALIDATE_IP)) {
+            if (! filter_var($hop, FILTER_VALIDATE_IP)) {
                 return $peer; // 不跳过畸形跳点，整条转发链拒绝采纳。
             }
         }
         $current = $peer;
         foreach (array_reverse($hops) as $hop) {
-            if (!self::isTrustedProxy($current)) {
+            if (! self::isTrustedProxy($current)) {
                 break;
             }
             $current = $hop;
         }
+
         return $current;
     }
 
@@ -189,7 +196,7 @@ class Security
         $address = inet_pton($ip);
         foreach (explode(',', config('jianyun.trusted_proxies', '')) as $entry) {
             $parts = explode('/', trim($entry));
-            if (count($parts) > 2 || !filter_var($parts[0], FILTER_VALIDATE_IP)) {
+            if (count($parts) > 2 || ! filter_var($parts[0], FILTER_VALIDATE_IP)) {
                 continue;
             }
             $network = inet_pton($parts[0]);
@@ -197,11 +204,11 @@ class Security
                 continue;
             }
             $maxBits = strlen($network) * 8;
-            $prefix = $parts[1] ?? (string)$maxBits;
-            if (!ctype_digit($prefix) || (int)$prefix > $maxBits) {
+            $prefix = $parts[1] ?? (string) $maxBits;
+            if (! ctype_digit($prefix) || (int) $prefix > $maxBits) {
                 continue;
             }
-            $bits = (int)$prefix;
+            $bits = (int) $prefix;
             $bytes = intdiv($bits, 8);
             $remainder = $bits % 8;
             if (substr($address, 0, $bytes) === substr($network, 0, $bytes)
@@ -209,6 +216,7 @@ class Security
                 return true;
             }
         }
+
         return false;
     }
 }

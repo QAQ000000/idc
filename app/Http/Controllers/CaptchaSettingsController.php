@@ -1,5 +1,7 @@
 <?php
+
 declare(strict_types=1);
+
 namespace App\Http\Controllers;
 
 use App\Core\Request;
@@ -12,11 +14,13 @@ final class CaptchaSettingsController
 {
     public function show(CaptchaSettingsService $service): JsonResponse
     {
-        return ApiResponse::success($service->show((int)AdminAuthMiddleware::admin()['id'],AdminAuthMiddleware::authVersion()))->header('Cache-Control','no-store');
+        return ApiResponse::success($service->show((int) AdminAuthMiddleware::admin()['id'], AdminAuthMiddleware::authVersion()))->header('Cache-Control', 'no-store');
     }
-    public function save(string $scene,CaptchaSettingsService $service): JsonResponse
+
+    public function save(string $scene, CaptchaSettingsService $service): JsonResponse
     {
-        $service->save((int)AdminAuthMiddleware::admin()['id'],AdminAuthMiddleware::authVersion(),$scene,Request::body());
-        return ApiResponse::success(['saved'=>true])->header('Cache-Control','no-store');
+        $service->save((int) AdminAuthMiddleware::admin()['id'], AdminAuthMiddleware::authVersion(), $scene, Request::body());
+
+        return ApiResponse::success(['saved' => true])->header('Cache-Control', 'no-store');
     }
 }

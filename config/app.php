@@ -1,4 +1,5 @@
 <?php
+
 return [
     'name' => env('APP_NAME', 'JianYun'), 'env' => env('APP_ENV', 'production'),
     'debug' => false, 'url' => env('APP_URL', 'http://localhost'), 'timezone' => 'UTC',

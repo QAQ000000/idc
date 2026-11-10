@@ -1,5 +1,7 @@
 <?php
+
 declare(strict_types=1);
+
 namespace App\Http\Middleware;
 
 use Closure;
@@ -17,6 +19,7 @@ final class ApiContext
             $response = $next($request);
             $response->headers->set('Cache-Control', 'no-store');
             $response->headers->set('X-Content-Type-Options', 'nosniff');
+
             return $response;
         } finally {
             AuthMiddleware::reset();

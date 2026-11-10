@@ -170,6 +170,8 @@ REDIS_SERVER=/absolute/path/to/redis-server python3 scripts/test_integration.py
 
 调度器专项：`npm --prefix web run test:catalog-batch`（使用前端已安装的TypeScript，仅在内存验证，不连接数据库／上游）。
 
+M2真实导入已验：上游16／392映射本地4／5，月付不加价、默认下架，配置／价格摘要、唯一审计与目录已导入识别一致；无上架或购买。两阶段功能主线收口，运行边界和已有553状态差异见[验收记录](docs/M2_CATALOG_IMPORT_ACCEPTANCE.md)。
+
 ## 商品管理、上下架与加价
 
 后台 `/admin/products` 提供商品列表/详情、上游绑定、可售账期、默认配置参考价和审计。所有启用管理员可读，只有 super_admin 可编辑名称/销售状态/none、fixed、percent 加价，以及从已配置上游导入或刷新快照。后台导航与登录回跳沿用同一 Vue 应用，无第二后台。

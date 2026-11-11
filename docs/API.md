@@ -414,8 +414,8 @@ allowed_actions 是当前一致性快照下的候选操作，不能当作授权�
 | GET /admin/providers | 仅返回 id/name/driver/status/snapshot_supported，不返回 endpoint 或 credentials。保留选择既有上游的数组响应；连接管理使用独立接口，见 [上游接入](#admin-provider-connections)。 |
 | GET /admin/products | page 默认 1、最大 100000；per_page 默认 20、最大 100。按 status=active/hidden/retired、provider_id 和 name 子串筛选，按 ID 倒序返回 items/total/page/per_page。名称中的 `%`、`_` 按普通字符匹配。 |
 | GET /admin/products/{id} | 商品绑定、类型、销售状态、可售账期、默认参考首期价/新购续费参考价、加价规则、安全配置字段/默认选择、version 和分页审计。audit_page 默认 1，20 条/页，最大 100000；无商品 404。旧快照未记录续费参考价时明确缺失，不假定等于首期。 |
-| PATCH /admin/products/{id} | `{name,status,markup_type,markup_value,expected_version}`；完整提交以上字段，日常编辑无需依据。兼容旧客户端可选 evidence（字符串、最多1000 UTF-8字节；空字符串或全空白不记录），其他写字段拒绝。status=active/hidden/retired，markup_type=none/fixed/percent，markup_value 必须非负十进制字符串。none 规范化为 0.00。只改目录、不跨写账单/实例/任务。 |
-| POST /admin/products/preview | `{provider_id,remote_pid,name,type,markup_type,markup_value,billing_cycles,config_options?}`；从已配置且启用上游读取 Schema、只读报价，返回 fields/defaults/prices/recurring_prices/billing_cycles/preview_token/expires_at。支持驱动已声明的独立配置与固定商品，其他能力拒绝。 |
+| PATCH /admin/products/{id} | `{name,status,markup_type,markup_value,expected_version,category_id?}`；完整提交以上字段，日常编辑无需依据。兼容旧客户端可选 evidence（字符串、最多1000 UTF-8字节；空字符串或全空白不记录），其他写字段拒绝。status=active/hidden/retired，markup_type=none/fixed/percent，markup_value 必须非负十进制字符串。none 规范化为 0.00。只改目录、不跨写账单/实例/任务。 |
+| POST /admin/products/preview | `{provider_id,remote_pid,name,type,markup_type,markup_value,billing_cycles,config_options?,category_id?}`；从已配置且启用上游读取 Schema、只读报价，返回 fields/defaults/prices/recurring_prices/billing_cycles/category_id/category_path/preview_token/expires_at。支持驱动已声明的独立配置与固定商品，其他能力拒绝。 |
 | POST /admin/products/import | 上述输入加 preview_token/evidence，再次读取上游比对预览；新商品默认 hidden，返回 product_id/prices。相同导入确认重放返回原 product_id，不新增商品/审计；同 Provider/远端 PID 的不同导入意图拒绝 409，需刷新既有商品。 |
 | POST /admin/products/{id}/snapshot/preview | `{expected_version,billing_cycles?,config_options?}`；由原商品决定 Provider/PID/名称/类型/加价，不能通过请求重绑；省略配置使用上游默认值。 |
 | POST /admin/products/{id}/snapshot | 同刷新预览输入加 preview_token/evidence；保持原销售状态和订单命名空间，整体保存该商品 JSON 快照。返回 product_id/prices/changed；同内容 changed=false，不重写商品，仍追加本次人工操作审计。 |
@@ -598,3 +598,21 @@ GET返回account={id,email,status,version}、audit=[{id,admin_id,username,action
 不新增批量端点。`POST /admin/products/import`成功添加`outcome=created|replayed`，保留原product_id及其他字段；重复绑定仍409，绝不作为本批成功。原HTTP状态保持，code细分40910连接禁用、40911确认过期、40912配置／价格漂移、40913已有绑定、40914纯配置投影不支持或明确售罄。其他无法分类409／读取异常整批暂停，提交5xx或无可信结果待核对；400／422权威单品拒绝可继续。原快照刷新响应不加outcome，原客户端只读product_id继续兼容。
 
 `GET /admin/products/{id}?import_operation=<64位小写SHA256(preview_token)>`是原详情可选只读参数，额外返回`import_operation={matched:boolean}`；仅当前超管核对本人product_import审计，独立于审计第一页及令牌有效期，不回显hash或令牌、不发上游请求、不授权写入。空／数组／非hex参数400，其他角色403；不匹配仍为未知，不能凭已有product_id认定成功。普通详情不提供此字段。原商品列表新增可选remote_pid正整数筛选，可与provider_id组合用于本地精确查找，不依赖目录或连接启用。分页／金额／权限白名单保持，完整边界见[第二阶段契约](UPSTREAM_CATALOG_DISCOVERY_AND_BATCH_IMPORT_SPEC.md#第二阶段实施契约2026-11-11)。
+
+
+## 两级商品分类（2026-11-11）
+
+接口前缀 `/api/v1`，标准 envelope 与 no-store 保持。所有启用管理员可读，写入仅当前启用超级管理员；匿名／客户401、其他角色写403。
+
+| 路径 | 契约 |
+|---|---|
+| GET /categories | 公开启用的一级分组与启用子分类数组。仅id/parent_id（子级）/name/slug/type/headline/description/order_num/children；不输出审计、版本、管理状态或凭据。分类失败时页面仍可显示全部商品。 |
+| GET /admin/categories | `{items,tree}`，含全部启用／隐藏节点、子分类／商品数量、内容字段和version。 |
+| GET /admin/categories/{id} | 单节点管理投影；缺失404。 |
+| POST /admin/categories | 必填name/slug，parent_id可空；可选type/headline/description/seo_title/seo_keywords/seo_description/order_num/status。父节点须一级，最多两级。 |
+| PATCH /admin/categories/{id} | 上述可选修改字段＋必填64位expected_version，支持parent_id移动。空字符串显式清空可选文本，省略保留；有商品的二级不得升根，有子分类的分组不得降级。 |
+| DELETE /admin/categories/{id} | JSON `{expected_version}`；锁内重核版本、子分类和商品。缺版本400、版本过期409、有子分类或商品409；成功`{success:true}`。 |
+
+新增／改变商品归属必须选择启用父分组下的启用二级分类，`category_id:null`为未分类。保留原隐藏归属允许编辑／下架，快照手工和计划刷新均保留原归属（客户端不能借刷新改分类）。管理商品列表／详情及公开商品数组追加category_id，不泄露上游身份。
+
+单品及逐件批量预览返回category_id／category_path，原签名包含分类ID、父ID、完整路径及节点／父节点版本；持久化事务再次行锁重读比较。预览后移动／改名／禁用等返回40912，须重新预览确认，不自动换令牌。分类上下文不进入配置／价格指纹；匹配原审计的已提交操作仍按原逻辑恢复。分类创建、修改、删除与原审计同事务，商品归类沿用product_update审计；完整边界见[规范](CATALOG_GROUPING_AND_SERIES_ARCHITECTURE_SPEC.md#七-仓库实施契约与缺口修复2026-11-11)。

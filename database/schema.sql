@@ -81,6 +81,7 @@ CREATE TABLE IF NOT EXISTS `providers` (
 
 CREATE TABLE IF NOT EXISTS `product_categories` (
     `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    `parent_id` INT UNSIGNED NULL DEFAULT NULL COMMENT '父级分类/分组ID，NULL表示一级分组',
     `name` VARCHAR(100) NOT NULL COMMENT '分类名称 (如: 香港CN2云服务器 / 洛杉矶Cera大带宽)',
     `slug` VARCHAR(100) NOT NULL UNIQUE COMMENT 'SEO友好URL别名 (如: hk-cn2-cloud)',
     `type` ENUM('cloud', 'dedicated', 'cdn', 'hosting', 'software') NOT NULL DEFAULT 'cloud' COMMENT '业务类型',
@@ -93,7 +94,9 @@ CREATE TABLE IF NOT EXISTS `product_categories` (
     `status` TINYINT(1) NOT NULL DEFAULT 1 COMMENT '1启用, 0隐藏',
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    INDEX `idx_type_status` (`type`, `status`)
+    INDEX `idx_parent_id` (`parent_id`),
+    INDEX `idx_type_status` (`type`, `status`),
+    CONSTRAINT `fk_product_categories_parent` FOREIGN KEY (`parent_id`) REFERENCES `product_categories` (`id`) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='产品分类与聚合落地页表';
 
 CREATE TABLE IF NOT EXISTS `products` (

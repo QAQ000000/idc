@@ -6,6 +6,7 @@ export interface ImportInput {
   provider_id: number; remote_pid: number; name: string; type: string;
   markup_type: string; markup_value: string; billing_cycles: string[];
   config_options?: Record<string, string>;
+  category_id?: number | null;
 }
 export interface BatchItem {
   input: ImportInput; state: ItemState; message: string; preview?: SnapshotPreview;
@@ -33,7 +34,7 @@ export class ImportBatch {
   constructor(private transport: BatchTransport, private now: () => number = () => Date.now() / 1000) {}
   get unknown() { return this.items.some(item => item.state === "unknown"); }
   get ready() { return this.items.filter(item => item.state === "ready"); }
-  start(provider: number, selected: UpstreamCatalogItem[], plan: { markup_type: string; markup_value: string; billing_cycles: string[]; evidence: string }) {
+  start(provider: number, selected: UpstreamCatalogItem[], plan: { markup_type: string; markup_value: string; billing_cycles: string[]; evidence: string; category_id?: number | null }) {
     if (this.running || this.unknown || this.disposed || !selected.length || selected.length > 20
       || new Set(selected.map(item => item.remote_pid)).size !== selected.length
       || selected.some(item => item.imported || item.type === "unsupported") || !plan.billing_cycles.length
@@ -42,6 +43,7 @@ export class ImportBatch {
     this.items = selected.map(item => ({ state: "pending", message: "尚未预检", input: {
       provider_id: provider, remote_pid: item.remote_pid, name: item.name, type: item.type,
       markup_type: plan.markup_type, markup_value: plan.markup_value, billing_cycles: [...plan.billing_cycles],
+      category_id: plan.category_id ?? null,
     } }));
     this.paused = false; this.notice = "先分组预检，再核对摘要确认导入；新商品始终默认下架。";
     return true;

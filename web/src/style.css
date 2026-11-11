@@ -451,6 +451,91 @@ p {
   gap: 20px;
   margin-bottom: 24px;
 }
+.catalog-navigation {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+.level1-group-pills {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+}
+.level1-group-pills::-webkit-scrollbar {
+  display: none;
+}
+.nav-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 16px;
+  border-radius: 9999px;
+  border: 1px solid var(--el-border-color);
+  background: var(--el-bg-color);
+  color: var(--el-text-color-regular);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+}
+.nav-pill:hover {
+  border-color: var(--el-color-primary-light-3);
+  color: var(--el-color-primary);
+}
+.nav-pill.active {
+  background: var(--el-color-primary);
+  border-color: var(--el-color-primary);
+  color: #fff;
+}
+.level2-subcategory-tabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding: 4px 6px;
+  background: var(--el-fill-color-light);
+  border-radius: 8px;
+  width: fit-content;
+  max-width: 100%;
+}
+.level2-subcategory-tabs::-webkit-scrollbar {
+  display: none;
+}
+.nav-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 12px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+.nav-tab:hover {
+  color: var(--el-color-primary);
+}
+.nav-tab.active {
+  background: var(--el-bg-color);
+  color: var(--el-color-primary);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
 .category-filters {
   display: flex;
   flex-wrap: wrap;
@@ -761,6 +846,13 @@ p {
   .catalog-toolbar {
     flex-direction: column;
     gap: 16px;
+  }
+  .catalog-navigation {
+    width: 100%;
+  }
+  .level1-group-pills,
+  .level2-subcategory-tabs {
+    width: 100%;
   }
   .catalog-search {
     max-width: 100%;

@@ -25,6 +25,7 @@ const links = computed(() =>
         { to: "/admin/instances", label: "实例查询", mark: "▦" },
         { to: "/admin/providers", label: "上游接入", mark: "⇄" },
         { to: "/admin/products", label: "商品管理", mark: "◇" },
+        { to: "/admin/categories", label: "分类管理", mark: "☵" },
         { to: "/admin/tickets", label: "客服工单", mark: "✉" },
         ...(adminAccount.admin?.role === "super_admin" ? [{to:"/admin/notifications", label:"邮件与通知", mark:"⚙"}] : []),
         ...(adminAccount.admin?.role === "super_admin" ? [{to:"/admin/payments", label:"易支付配置", mark:"¥"}] : []),

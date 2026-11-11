@@ -10,6 +10,7 @@ Route::post('auth/login', [ApiController::class, 'login'])->middleware(['custome
 Route::post('auth/password/forgot', [ApiController::class, 'forgot'])->middleware('captcha:password_reset');
 Route::post('auth/password/reset', [ApiController::class, 'resetPassword']);
 Route::get('products', [ApiController::class, 'products']);
+Route::get('categories', [\App\Http\Controllers\CategoryController::class, 'publicTree']);
 Route::get('products/{id}/config', [ApiController::class, 'configuration']);
 Route::post('products/{id}/calculate', [ApiController::class, 'calculate']);
 Route::post('products/{id}/preview', [ApiController::class, 'preview']);
@@ -96,6 +97,11 @@ Route::middleware('admin')->group(function (): void {
     Route::get('admin/finance/{kind}', [\App\Http\Controllers\FinanceController::class, 'index'])->whereIn('kind', ['invoices', 'receipts', 'transactions']);
     Route::get('admin/providers', [\App\Http\Controllers\AdminProductController::class, 'providers']);
     Route::get('admin/products', [\App\Http\Controllers\AdminProductController::class, 'index']);
+    Route::get('admin/categories', [\App\Http\Controllers\CategoryController::class, 'index']);
+    Route::post('admin/categories', [\App\Http\Controllers\CategoryController::class, 'store']);
+    Route::get('admin/categories/{id}', [\App\Http\Controllers\CategoryController::class, 'show']);
+    Route::patch('admin/categories/{id}', [\App\Http\Controllers\CategoryController::class, 'update']);
+    Route::delete('admin/categories/{id}', [\App\Http\Controllers\CategoryController::class, 'destroy']);
     Route::post('admin/products/preview', [\App\Http\Controllers\AdminProductController::class, 'preview']);
     Route::post('admin/products/import', [\App\Http\Controllers\AdminProductController::class, 'import']);
     Route::get('admin/products/{id}', [\App\Http\Controllers\AdminProductController::class, 'show']);

@@ -2,15 +2,22 @@
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { api, message, type Product } from "../api/request";
+import { fetchPublicCategories, type PublicCategoryGroup } from "../api/categories";
 import { useSite } from "../stores/site";
 import ProductStock from "../components/ProductStock.vue";
+
 const site = useSite();
 const router = useRouter();
-const products = ref<Product[]>([]),
-  loading = ref(true),
-  error = ref("");
-const search = ref(""),
-  category = ref("");
+
+const products = ref<Product[]>([]);
+const categoryGroups = ref<PublicCategoryGroup[]>([]);
+const loading = ref(true);
+const error = ref("");
+
+const search = ref("");
+const selectedGroupId = ref<string>("all");
+const selectedSubcategoryId = ref<string>("all");
+
 const types: Record<string, string> = {
   cloud: "云服务器",
   dedicated: "独立服务器",
@@ -18,9 +25,7 @@ const types: Record<string, string> = {
   cdn: "CDN",
   software: "软件服务",
 };
-function canOrder(product: Product) {
-  return Number(product.stock) !== 0 && Object.keys(product.prices).length > 0;
-}
+
 const cycles: Record<string, string> = {
   monthly: "月付",
   annually: "年付",
@@ -30,36 +35,104 @@ const cycles: Record<string, string> = {
   triennially: "三年付",
   onetime: "一次性",
 };
-const categories = computed(() => [
-  ...new Set(products.value.map((p) => p.type)),
-]);
-const filtered = computed(() =>
-  products.value.filter(
-    (p) =>
-      (!category.value || p.type === category.value) &&
-      p.name
-        .toLocaleLowerCase()
-        .includes(search.value.trim().toLocaleLowerCase()),
-  ),
+
+function canOrder(product: Product) {
+  return Number(product.stock) !== 0 && Object.keys(product.prices).length > 0;
+}
+
+const subCategoryMap = computed(() => {
+  const map = new Map<number, { id: number; name: string; groupName: string; groupId: number }>();
+  for (const group of categoryGroups.value) {
+    for (const sub of group.children || []) {
+      map.set(sub.id, {
+        id: sub.id,
+        name: sub.name,
+        groupName: group.name,
+        groupId: group.id,
+      });
+    }
+  }
+  return map;
+});
+
+const hasUncategorized = computed(() =>
+  products.value.some((p) => p.category_id == null),
 );
+
+const activeGroup = computed(() => {
+  if (selectedGroupId.value === "all" || selectedGroupId.value === "uncategorized") {
+    return null;
+  }
+  const gid = Number(selectedGroupId.value);
+  return categoryGroups.value.find((g) => g.id === gid) || null;
+});
+
+const availableSubcategories = computed(() => activeGroup.value?.children || []);
+
+function selectGroup(groupId: string) {
+  selectedGroupId.value = groupId;
+  selectedSubcategoryId.value = "all";
+}
+
+function getCategoryBreadcrumb(product: Product): string {
+  if (product.category_id != null) {
+    const sub = subCategoryMap.value.get(product.category_id);
+    if (sub) {
+      return `${sub.groupName} · ${sub.name}`;
+    }
+  }
+  return types[product.type] || product.type;
+}
+
+const filtered = computed(() => {
+  const q = search.value.trim().toLocaleLowerCase();
+  return products.value.filter((p) => {
+    if (q && !p.name.toLocaleLowerCase().includes(q)) {
+      return false;
+    }
+    if (selectedGroupId.value === "all") {
+      return true;
+    }
+    if (selectedGroupId.value === "uncategorized") {
+      return p.category_id == null;
+    }
+    if (!activeGroup.value) {
+      return false;
+    }
+    if (selectedSubcategoryId.value === "all") {
+      const childIds = new Set(activeGroup.value.children.map((c) => c.id));
+      return p.category_id != null && childIds.has(p.category_id);
+    }
+    return p.category_id === Number(selectedSubcategoryId.value);
+  });
+});
+
 async function load() {
   loading.value = true;
   error.value = "";
-  products.value = [];
   try {
-    products.value = await api<Product[]>("/products");
+    const [prods, cats] = await Promise.all([
+      api<Product[]>("/products"),
+      fetchPublicCategories().catch(() => [] as PublicCategoryGroup[]),
+    ]);
+    products.value = prods;
+    categoryGroups.value = cats;
   } catch (e) {
     error.value = message(e);
   } finally {
     loading.value = false;
   }
 }
+
 function clearFilters() {
   search.value = "";
-  category.value = "";
+  selectedGroupId.value = "all";
+  selectedSubcategoryId.value = "all";
 }
+
 onMounted(load);
 </script>
+
 <template>
   <section class="catalog-page" aria-labelledby="catalog-title">
     <div class="catalog-hero">
@@ -106,6 +179,7 @@ onMounted(load);
         <span class="art-caption">云端资源 · 统一管理</span>
       </div>
     </div>
+
     <div id="products" class="section-heading">
       <div>
         <p class="eyebrow">产品目录</p>
@@ -115,27 +189,78 @@ onMounted(load);
         {{ filtered.length }} 款可见产品
       </span>
     </div>
+
     <div class="catalog-toolbar">
-      <div class="category-filters" role="group" aria-label="产品类型筛选">
-        <el-button
-          :type="category === '' ? 'primary' : 'default'"
-          :plain="category === ''"
-          :aria-pressed="category === ''"
-          @click="category = ''"
+      <div class="catalog-navigation" role="navigation" aria-label="商品分类导航">
+        <!-- 一级分组胶囊 -->
+        <div class="level1-group-pills" role="tablist" aria-label="一级分组">
+          <button
+            type="button"
+            class="nav-pill"
+            :class="{ active: selectedGroupId === 'all' }"
+            role="tab"
+            :aria-selected="selectedGroupId === 'all'"
+            @click="selectGroup('all')"
+          >
+            全部商品
+          </button>
+          <button
+            v-for="group in categoryGroups"
+            :key="group.id"
+            type="button"
+            class="nav-pill"
+            :class="{ active: selectedGroupId === String(group.id) }"
+            role="tab"
+            :aria-selected="selectedGroupId === String(group.id)"
+            @click="selectGroup(String(group.id))"
+          >
+            {{ group.name }}
+          </button>
+          <button
+            v-if="hasUncategorized"
+            type="button"
+            class="nav-pill"
+            :class="{ active: selectedGroupId === 'uncategorized' }"
+            role="tab"
+            :aria-selected="selectedGroupId === 'uncategorized'"
+            @click="selectGroup('uncategorized')"
+          >
+            未分类
+          </button>
+        </div>
+
+        <!-- 二级分类标签（选中一级分组且有子分类时呈现） -->
+        <div
+          v-if="availableSubcategories.length"
+          class="level2-subcategory-tabs"
+          role="tablist"
+          aria-label="二级分类"
         >
-          全部产品
-        </el-button>
-        <el-button
-          v-for="type in categories"
-          :key="type"
-          :type="category === type ? 'primary' : 'default'"
-          :plain="category === type"
-          :aria-pressed="category === type"
-          @click="category = type"
-        >
-          {{ types[type] || type }}
-        </el-button>
+          <button
+            type="button"
+            class="nav-tab"
+            :class="{ active: selectedSubcategoryId === 'all' }"
+            role="tab"
+            :aria-selected="selectedSubcategoryId === 'all'"
+            @click="selectedSubcategoryId = 'all'"
+          >
+            全部
+          </button>
+          <button
+            v-for="sub in availableSubcategories"
+            :key="sub.id"
+            type="button"
+            class="nav-tab"
+            :class="{ active: selectedSubcategoryId === String(sub.id) }"
+            role="tab"
+            :aria-selected="selectedSubcategoryId === String(sub.id)"
+            @click="selectedSubcategoryId = String(sub.id)"
+          >
+            {{ sub.name }}
+          </button>
+        </div>
       </div>
+
       <el-input
         v-model="search"
         class="catalog-search"
@@ -145,6 +270,7 @@ onMounted(load);
         :disabled="loading || Boolean(error)"
       />
     </div>
+
     <el-alert
       v-if="error"
       :title="error"
@@ -154,6 +280,7 @@ onMounted(load);
     >
       <el-button @click="load">重新加载</el-button>
     </el-alert>
+
     <div
       v-if="loading"
       class="product-grid"
@@ -164,6 +291,7 @@ onMounted(load);
         <el-skeleton :rows="5" animated />
       </el-card>
     </div>
+
     <div v-else-if="!error && filtered.length" class="product-grid">
       <el-card
         v-for="product in filtered"
@@ -183,7 +311,7 @@ onMounted(load);
             }}
           </el-tag>
         </div>
-        <p class="eyebrow">{{ types[product.type] || product.type }}</p>
+        <p class="eyebrow">{{ getCategoryBreadcrumb(product) }}</p>
         <h3>{{ product.name }}</h3>
         <p class="muted">
           {{
@@ -216,15 +344,16 @@ onMounted(load);
           <el-button
             type="primary"
             :disabled="!canOrder(product)"
-            :aria-label="'选购 ' + product.name"
+            :aria-label="'选购配置 ' + product.name"
             @click="router.push('/checkout/' + product.id)"
           >
-            选购
+            选购配置
             <span aria-hidden="true">↗</span>
           </el-button>
         </div>
       </el-card>
     </div>
+
     <el-empty
       v-else-if="!error"
       :description="
@@ -236,6 +365,7 @@ onMounted(load);
       </el-button>
       <el-button v-else @click="load">刷新目录</el-button>
     </el-empty>
+
     <p class="catalog-note muted">
       价格与可售配置以订单确认页为准，已有订单可在「我的账单」中继续处理。
     </p>

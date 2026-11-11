@@ -13,7 +13,7 @@ final class CatalogService
 {
     public function products(): array
     {
-        $rows = Database::getInstance()->query("SELECT p.id, p.name, p.type, p.stock, p.config_cache, p.provider_id, p.remote_pid FROM products p JOIN providers r ON r.id = p.provider_id WHERE p.status = 'active' AND r.status = 1 AND p.commission_rate = 0 ORDER BY p.order_num DESC, p.id DESC")->fetchAll();
+        $rows = Database::getInstance()->query("SELECT p.id, p.category_id, p.name, p.type, p.stock, p.config_cache, p.provider_id, p.remote_pid FROM products p JOIN providers r ON r.id = p.provider_id WHERE p.status = 'active' AND r.status = 1 AND p.commission_rate = 0 ORDER BY p.order_num DESC, p.id DESC")->fetchAll();
         $bindings = [];
         foreach ($rows as $row) {
             $bindings[(int) $row['id']] = [(int) $row['provider_id'], (int) $row['remote_pid']];
@@ -23,6 +23,7 @@ final class CatalogService
         return array_map(static function (array $row) use ($observations): array {
             $cache = json_decode($row['config_cache'] ?? '{}', true, 64, JSON_THROW_ON_ERROR);
             unset($row['config_cache']);
+            $row['category_id'] = $row['category_id'] !== null ? (int) $row['category_id'] : null;
             $row['prices'] = $cache['prices'] ?? [];
             $row['configurable'] = (bool) ($cache['configurable'] ?? false);
             $row['upstream_stock'] = $observations[(int) $row['id']];

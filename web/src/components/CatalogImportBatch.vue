@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, reactive, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { adminApi, type Admin, type Page } from "../api/admin";
+import { fetchAdminCategories, type CategoryItem } from "../api/adminCategories";
+import { categoryOptionsFor } from "../utils/categoryOptions";
 import type { SnapshotPreview, ProductDetail, AdminProduct } from "../api/adminProducts";
 import { cycleLabels } from "../api/adminProducts";
 import type { ProviderDetail, UpstreamCatalogItem } from "../api/adminProviders";
@@ -9,8 +11,25 @@ import { ImportBatch, BatchRequestError, type BatchItem, type ItemState } from "
 const props = defineProps<{ providerId: number; selection: UpstreamCatalogItem[]; enabled: boolean; blocked: boolean }>();
 const emit = defineEmits<{ state: [value: { running: boolean; unknown: boolean; active: boolean }]; imported: []; created: [] }>();
 const opened = ref(false), formError = ref("");
-const plan = reactive({ markup_type: "none", markup_value: "0.00", billing_cycles: ["monthly"], evidence: "" });
+const categoryTree = ref<CategoryItem[]>([]);
+const selectedCategoryPath = ref<number[]>([]);
+const batchCategoryLabel = ref("未分类");
+const categoryOptions = computed(() => categoryOptionsFor(categoryTree.value, null));
+function onCategoryChange(val: unknown) {
+  const arr = Array.isArray(val) ? (val as number[]) : [];
+  if (arr.length !== 2) selectedCategoryPath.value = [];
+  plan.category_id = arr.length === 2 && typeof arr[1] === "number" ? arr[1] : null;
+}
+const plan = reactive({ markup_type: "none", markup_value: "0.00", billing_cycles: ["monthly"], evidence: "", category_id: null as number | null });
 const identity = sessionStorage.getItem("jianyun_admin_token");
+onMounted(async () => {
+  try {
+    const res = await fetchAdminCategories();
+    categoryTree.value = res.tree;
+  } catch (err) {
+    void err;
+  }
+});
 async function request<T>(path: string, options: { method?: string; body?: unknown } = {}): Promise<T> {
   const controller = new AbortController(), timer = window.setTimeout(() => controller.abort(), 90_000);
   try { return await adminApi<T>(path, { ...options, signal: controller.signal }); }
@@ -49,6 +68,9 @@ watch(() => props.enabled, enabled => { if (!enabled && batch.items.length) batc
 function start() {
   formError.value = "";
   if (props.blocked || !props.enabled || !batch.start(props.providerId, props.selection, plan)) { formError.value = "请选择1–20个未导入商品、可售账期，并填写10–1000字节依据；单品未决时不能开始批次。"; return; }
+  const group = categoryTree.value.find(g => g.id === selectedCategoryPath.value[0]);
+  const child = group?.children?.find(c => c.id === plan.category_id);
+  batchCategoryLabel.value = child ? `${group?.name} / ${child.name}` : "未分类";
   emit("created");
 }
 function configuration(item: BatchItem) {
@@ -70,12 +92,25 @@ onBeforeUnmount(() => { batch.dispose(); window.removeEventListener("beforeunloa
         <p>连接 #{{ providerId }} · 已选 {{ selection.length }} 项（最多20项），各商品使用上游默认配置。</p>
         <el-form-item label="统一加价规则"><el-select v-model="plan.markup_type" aria-label="批量加价规则"><el-option label="不加价" value="none" /><el-option label="固定金额" value="fixed" /><el-option label="百分比" value="percent" /></el-select></el-form-item>
         <el-form-item v-if="plan.markup_type !== 'none'" label="加价值（元／%）"><el-input v-model="plan.markup_value" aria-label="批量加价值" inputmode="decimal" /></el-form-item>
+        <el-form-item label="目标分类（可选）">
+          <el-cascader
+            v-model="selectedCategoryPath"
+            aria-label="批量目标分类"
+            :options="categoryOptions"
+            :props="{ checkStrictly: false }"
+            placeholder="未分类（保持独立）"
+            clearable
+            style="width: 100%"
+            @change="onCategoryChange"
+          />
+        </el-form-item>
         <el-form-item label="统一可售账期"><el-checkbox-group v-model="plan.billing_cycles"><el-checkbox value="monthly">月付</el-checkbox><el-checkbox value="annually">年付</el-checkbox></el-checkbox-group></el-form-item>
         <el-form-item label="导入依据（不填密钥）"><el-input v-model="plan.evidence" aria-label="批量导入依据" type="textarea" :rows="3" maxlength="1000" /></el-form-item>
         <el-button native-type="submit" type="primary" :disabled="blocked || !enabled">建立批次，等待分组预检</el-button>
       </el-form>
       <template v-else>
         <p>统一规则：{{ plan.markup_type === 'none' ? '不加价' : `${plan.markup_type === 'fixed' ? '固定加价' : '百分比加价'} ${plan.markup_value}` }} · {{ plan.billing_cycles.map(c => cycleLabels[c]).join('／') }} · 每项采用预检摘要中的配置。</p>
+        <p class="batch-text">目标分类：{{ batchCategoryLabel }}<span v-if="plan.category_id">（#{{ plan.category_id }}）</span></p>
         <p class="batch-text">导入依据：{{ plan.evidence }}</p>
         <el-alert :title="batch.notice" :type="batch.unknown || batch.paused ? 'warning' : 'info'" :closable="false" />
         <div class="batch-actions">
@@ -88,6 +123,7 @@ onBeforeUnmount(() => { batch.dispose(); window.removeEventListener("beforeunloa
           <h3>#{{ item.input.remote_pid }} · {{ item.input.name }} <el-tag :type="item.state === 'success' ? 'success' : item.state === 'unknown' ? 'danger' : 'info'">{{ labels[item.state] }}</el-tag></h3>
           <p class="batch-text" role="status">{{ item.message }}</p>
           <template v-if="item.preview">
+            <p class="batch-text">预检目标分类：{{ item.preview.category_path || "未分类" }}<span v-if="item.preview.category_id">（#{{ item.preview.category_id }}）</span></p>
             <p v-for="cycle in item.preview.billing_cycles" :key="cycle">{{ cycleLabels[cycle] }} · 首期 ¥{{ item.preview.prices[cycle] }} · 续费参考 ¥{{ item.preview.recurring_prices[cycle] }}</p>
             <details><summary>查看配置与确认期限</summary><p class="batch-text">{{ configuration(item) }}</p><p>预检有效至 {{ item.preview.expires_at }} UTC；到期后不能按此确认新导入。</p></details>
           </template>

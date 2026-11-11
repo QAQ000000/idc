@@ -1,19 +1,27 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { adminApi, type Page } from "../api/admin";
+import { fetchAdminCategories, type CategoryItem } from "../api/adminCategories";
 import { cycleLabels, salesLabels, type AdminProduct, type Provider } from "../api/adminProducts";
 import { message } from "../api/request";
 import { useAdmin } from "../stores/admin";
 const account = useAdmin(), route = useRoute(), router = useRouter();
 const filters = reactive({ status: String(route.query.status || ""), provider_id: String(route.query.provider_id || ""), name: String(route.query.name || "") });
 const page = ref(Number(route.query.page) || 1), data = ref<Page<AdminProduct>>(), providers = ref<Provider[]>([]), busy = ref(false), error = ref("");
+const categories = ref<CategoryItem[]>([]);
+const categoryMap = computed(() => new Map(categories.value.map(c => [c.id, c.name])));
 async function load() {
   busy.value = true; error.value = "";
   try {
-    [data.value, providers.value] = await Promise.all([
-      adminApi<Page<AdminProduct>>("/products?" + new URLSearchParams({ ...filters, page: String(page.value) })), adminApi<Provider[]>("/providers"),
+    const [prodData, provData, catData] = await Promise.all([
+      adminApi<Page<AdminProduct>>("/products?" + new URLSearchParams({ ...filters, page: String(page.value) })),
+      adminApi<Provider[]>("/providers"),
+      fetchAdminCategories(),
     ]);
+    data.value = prodData;
+    providers.value = provData;
+    categories.value = catData.items;
   } catch (e) { error.value = message(e); data.value = undefined; }
   finally { busy.value = false; }
 }
@@ -37,6 +45,7 @@ onMounted(load);
     </el-form>
     <el-table v-loading="busy" :data="data?.items || []" empty-text="没有匹配的商品">
       <el-table-column label="商品" min-width="190"><template #default="{ row }"><RouterLink :to="`/admin/products/${row.id}`">#{{ row.id }} {{ row.name }}</RouterLink></template></el-table-column>
+      <el-table-column label="分类" width="130"><template #default="{ row }"><el-tag v-if="row.category_id" size="small">{{ categoryMap.get(row.category_id) || `#${row.category_id}` }}</el-tag><span v-else class="muted">未分类</span></template></el-table-column>
       <el-table-column label="上游 / 商品编号" min-width="200"><template #default="{ row }">{{ row.provider_name }} (#{{ row.provider_id }})<br>{{ row.driver }} · PID {{ row.remote_pid }}</template></el-table-column>
       <el-table-column label="销售状态" width="120"><template #default="{ row }">{{ salesLabels[row.status] }}<span v-if="!row.provider_status"> / 上游禁用</span></template></el-table-column>
       <el-table-column label="默认配置参考首期价" min-width="200"><template #default="{ row }"><div v-for="cycle in row.billing_cycles" :key="cycle">{{ cycleLabels[cycle] || cycle }} ¥{{ row.prices[cycle] }}</div><span v-if="!row.billing_cycles.length">暂无可售账期</span></template></el-table-column>

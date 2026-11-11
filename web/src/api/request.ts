@@ -54,6 +54,7 @@ export interface User {
 }
 export interface Product {
   id: number;
+  category_id?: number | null;
   name: string;
   type: string;
   stock: number;

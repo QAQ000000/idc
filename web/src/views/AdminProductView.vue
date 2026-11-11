@@ -3,6 +3,8 @@ import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute } from "vue-router";
 import { ElMessage } from "element-plus";
 import { adminApi } from "../api/admin";
+import { fetchAdminCategories, type CategoryItem } from "../api/adminCategories";
+import { categoryOptionsFor } from "../utils/categoryOptions";
 import { cycleLabels, salesLabels, type ProductDetail } from "../api/adminProducts";
 import { ApiError, message } from "../api/request";
 import { useAdmin } from "../stores/admin";
@@ -11,16 +13,58 @@ import AdminSnapshotForm from "../components/AdminSnapshotForm.vue";
 const route = useRoute(), account = useAdmin();
 const detail = ref<ProductDetail>(), busy = ref(false), saving = ref(false), error = ref(""), dialog = ref(false), formError = ref(""), auditPage = ref(1);
 const editable = computed(() => account.admin?.role === "super_admin");
-const form = reactive({ name: "", status: "hidden", markup_type: "none", markup_value: "0.00", expected_version: "" });
+const allCategories = ref<CategoryItem[]>([]);
+const categoryTree = ref<CategoryItem[]>([]);
+const selectedCategoryPath = ref<number[]>([]);
+const form = reactive({ name: "", status: "hidden", markup_type: "none", markup_value: "0.00", category_id: null as number | null, expected_version: "" });
+
+const categoryMap = computed(() => {
+  const map = new Map<number, CategoryItem>();
+  for (const item of allCategories.value) map.set(item.id, item);
+  return map;
+});
+
+const categoryLabel = computed(() => {
+  if (!detail.value || detail.value.category_id === null) return "未分类";
+  const cat = categoryMap.value.get(detail.value.category_id);
+  if (!cat) return `#${detail.value.category_id}`;
+  if (cat.parent_id !== null) {
+    const parent = categoryMap.value.get(cat.parent_id);
+    return parent ? `${parent.name} / ${cat.name}` : cat.name;
+  }
+  return cat.name;
+});
+
+const categoryOptions = computed(() => categoryOptionsFor(categoryTree.value, detail.value?.category_id ?? null));
+function onCategoryChange(val: unknown) {
+  const arr = Array.isArray(val) ? (val as number[]) : [];
+  if (arr.length !== 2) selectedCategoryPath.value = [];
+  form.category_id = arr.length === 2 && typeof arr[1] === "number" ? arr[1] : null;
+}
+
 async function load(page = auditPage.value) {
   busy.value = true; error.value = ""; detail.value = undefined; auditPage.value = page;
-  try { detail.value = await adminApi<ProductDetail>(`/products/${route.params.id}?audit_page=${page}`); }
+  try {
+    detail.value = await adminApi<ProductDetail>(`/products/${route.params.id}?audit_page=${page}`);
+    const cats = await fetchAdminCategories();
+    allCategories.value = cats.items;
+    categoryTree.value = cats.tree;
+  }
   catch (e) { error.value = message(e); }
   finally { busy.value = false; }
 }
 function edit() {
   if (!detail.value) return;
-  Object.assign(form, { name: detail.value.name, status: detail.value.status, markup_type: detail.value.markup_type, markup_value: detail.value.markup_value, expected_version: detail.value.version });
+  const catId = detail.value.category_id ?? null;
+  let path: number[] = [];
+  if (catId !== null) {
+    const cat = categoryMap.value.get(catId);
+    if (cat && cat.parent_id !== null) {
+      path = [cat.parent_id, cat.id];
+    }
+  }
+  selectedCategoryPath.value = path;
+  Object.assign(form, { name: detail.value.name, status: detail.value.status, markup_type: detail.value.markup_type, markup_value: detail.value.markup_value, category_id: catId, expected_version: detail.value.version });
   formError.value = ""; dialog.value = true;
 }
 async function save() {
@@ -46,6 +90,7 @@ onMounted(() => load());
         <h2>{{ detail.name }}</h2>
         <el-descriptions :column="1" border>
           <el-descriptions-item label="销售状态">{{ salesLabels[detail.status] }} · {{ detail.provider_status ? '上游已启用' : '上游已禁用' }}</el-descriptions-item>
+          <el-descriptions-item label="所属分类">{{ categoryLabel }}</el-descriptions-item>
           <el-descriptions-item label="上游绑定"><RouterLink :to="`/admin/providers/${detail.provider_id}`">#{{ detail.provider_id }} {{ detail.provider_name }}</RouterLink> · {{ detail.driver }} · 商品 PID {{ detail.remote_pid }}</el-descriptions-item>
           <el-descriptions-item label="商品类型 / 库存">{{ detail.type }} / {{ detail.stock === -1 ? '不限或以上游为准' : detail.stock }}</el-descriptions-item>
           <el-descriptions-item label="加价规则">{{ detail.markup_type === 'none' ? '不加价' : detail.markup_type === 'fixed' ? `固定 +¥${detail.markup_value}` : `百分比 +${detail.markup_value}%` }}</el-descriptions-item>
@@ -83,6 +128,16 @@ onMounted(() => load());
     <el-alert title="只修改商品目录；不重算历史账单或实例续费价。保存时检查版本，过期编辑会被拒绝。" type="info" :closable="false" />
     <el-form label-position="top" :disabled="saving" @submit.prevent="save">
       <el-form-item label="商品名称"><el-input v-model="form.name" aria-label="编辑商品名称" maxlength="100" /></el-form-item>
+      <el-form-item label="所属分类（一级分组 → 二级分类）">
+        <el-cascader
+          v-model="selectedCategoryPath"
+          :options="categoryOptions"
+          placeholder="选择二级分类（不选则为未分类）"
+          clearable
+          style="width: 100%"
+          @change="onCategoryChange"
+        />
+      </el-form-item>
       <el-form-item label="销售状态"><el-select v-model="form.status" aria-label="编辑销售状态"><el-option v-for="(label,key) in salesLabels" :key="key" :value="key" :label="label" /></el-select></el-form-item>
       <el-form-item label="加价类型"><el-select v-model="form.markup_type" aria-label="编辑加价类型"><el-option label="不加价" value="none" /><el-option label="固定金额" value="fixed" /><el-option label="百分比" value="percent" /></el-select></el-form-item>
       <el-form-item v-if="form.markup_type !== 'none'" label="加价值（元 / %）"><el-input v-model="form.markup_value" aria-label="编辑加价值" inputmode="decimal" maxlength="20" /></el-form-item>

@@ -1,5 +1,7 @@
 # JianYun (简云)
 
+**两级分类（2026-11-11）**：后台分类管理、商品归类、单品／批量导入分类摘要与前台两级筛选已完成开发和隔离验收；补齐层级角色保护、隐藏旧归属维护、移动后重新确认及删除版本校验。已有库启用前须执行 `000010`；本轮未接 M2，系列聚合延期，见[规范](docs/CATALOG_GROUPING_AND_SERIES_ARCHITECTURE_SPEC.md)和[验收记录](docs/CATEGORY_HIERARCHY_ACCEPTANCE.md)。
+
 **客户快速选配**：有效完整快照支持本站后端本地预览，失败条件显式转在线；提交仍实时复核，变价重新确认，原请求键／资金／Outbox不改。默认关闭；M2刷新范围为本地商品2、3，其中3对应上游553并保持下架，客户仍只能预览在售商品。速度和恢复边界见[契约](docs/M2_LOCAL_PREVIEW.md)，新增双数量范围见[553验收](docs/M2_553_ACCEPTANCE.md)。
 
 **计划刷新与快照发布**：显式本地商品ID范围、有界批次、完整规则校验与并发发布；失败保留旧快照，相同内容不改报价版本。时间／结果独立观察，可选独立systemd service/timer，默认关闭，客户calculate／checkout在线复核；无迁移，启用／证据见[契约](docs/M2_PRODUCT_REFRESH.md)。

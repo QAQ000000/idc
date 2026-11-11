@@ -4,7 +4,7 @@ export const salesLabels: Record<string, string> = { active: "上架", hidden: "
 export const cycleLabels: Record<string, string> = { monthly: "月付", annually: "年付" };
 export interface Provider { id: number; name: string; driver: string; status: number; snapshot_supported: boolean }
 export interface AdminProduct {
-  id: number; provider_id: number; remote_pid: number; name: string; type: string;
+  id: number; category_id: number | null; provider_id: number; remote_pid: number; name: string; type: string;
   status: string; markup_type: string; markup_value: string; stock: number;
   provider_name: string; driver: string; provider_status: number;
   prices: Record<string, string>; recurring_prices: Record<string, string>;
@@ -17,4 +17,5 @@ export interface ProductDetail extends AdminProduct {
 export interface SnapshotPreview {
   fields: ConfigField[]; defaults: Record<string, string>; prices: Record<string, string>;
   recurring_prices: Record<string, string>; billing_cycles: string[]; preview_token: string; expires_at: string;
+  category_id?: number | null; category_path?: string | null;
 }

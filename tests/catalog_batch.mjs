@@ -153,4 +153,33 @@ for (const stage of ['preview', 'submit']) {
   check(!batch.start(9, [{ ...selected()[0], imported: true }], plan) && !batch.start(9, [{ ...selected()[0], type: 'unsupported' }], plan), 'imported or unsupported candidates cannot be batched');
   check(!batch.start(9, selected(), { ...plan, evidence: 'tiny' }), 'batch still requires evidence');
 }
+// Category assignment belongs to the frozen per-item request, not the live selector.
+{
+  const { batch, transport, log } = setup(1);
+  const assignedPlan = { ...plan, category_id: 42 };
+  batch.start(9, selected(1), assignedPlan);
+  assignedPlan.category_id = 99;
+  const originalPreview = transport.preview;
+  transport.preview = async input => ({ ...await originalPreview(input), category_id: input.category_id, category_path: 'Group A / Category C' });
+  await batch.previewNext();
+  check(batch.items[0].preview.category_path === 'Group A / Category C', 'prepared category path retained for confirmation summary');
+  await batch.confirm();
+  check(dispatches(log)[0][1].category_id === 42, 'changing selector plan cannot replace frozen category assignment');
+}
+{
+  const source = readFileSync(new URL('../web/src/utils/categoryOptions.ts', import.meta.url), 'utf8');
+  const { outputText } = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } });
+  const { categoryOptionsFor } = await import('data:text/javascript;base64,' + Buffer.from(outputText).toString('base64'));
+  const groups = [
+    { id: 1, parent_id: null, name: 'Empty', status: 1, children: [] },
+    { id: 2, parent_id: null, name: 'Only hidden children', status: 1, children: [{ id: 3, parent_id: 2, name: 'Hidden', status: 0 }] },
+    { id: 4, parent_id: null, name: 'Available', status: 1, children: [{ id: 5, parent_id: 4, name: 'Visible', status: 1 }] },
+    { id: 6, parent_id: null, name: 'Hidden group', status: 0, children: [{ id: 7, parent_id: 6, name: 'Old leaf', status: 1 }] },
+  ];
+  const options = categoryOptionsFor(groups);
+  check(options.length === 1 && options[0].children[0].value === 5, 'new assignment excludes empty groups and hidden paths');
+  const retained = categoryOptionsFor(groups, 3).find(g => g.value === 2);
+  check(retained.children[0].disabled === true && retained.children[0].label.includes('隐藏'), 'hidden old leaf remains labeled and cannot be newly selected');
+  check(categoryOptionsFor(groups, 7).find(g => g.value === 6).children[0].disabled, 'hidden old parent remains displayable without becoming assignable');
+}
 console.log(`Catalog batch checks: ${checks}`);

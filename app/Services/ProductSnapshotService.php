@@ -100,8 +100,23 @@ final class ProductSnapshotService
             throw new ApiException('Upstream schema or quote unavailable; no snapshot saved', 409, 409);
         }
 
+        $productId = isset($input['product_id']) ? Request::id($input['product_id']) : null;
+        $retained = null;
+        if ($productId !== null) {
+            $s = Database::getInstance()->prepare('SELECT category_id FROM products WHERE id=?');
+            $s->execute([$productId]);
+            $existing = $s->fetch();
+            if (! $existing) {
+                throw new ApiException('Product not found', 404, 404);
+            }
+            $retained = $existing['category_id'] !== null ? (int) $existing['category_id'] : null;
+        }
+        $categoryId = $productId !== null ? $retained : (isset($input['category_id']) && $input['category_id'] !== '' ? Request::id($input['category_id']) : null);
+        $categoryContext = (new CategoryService())->bindingContext($categoryId, $retained);
+
         return ['product_id' => isset($input['product_id']) ? Request::id($input['product_id']) : null,
             'provider_id' => $providerId, 'remote_pid' => $remotePid, 'name' => $name, 'type' => $type, 'markup_type' => $markupType, 'markup_value' => $markupValue,
+            'category_id' => $categoryId, 'category_context' => $categoryContext,
             'schema' => $schema, 'fields' => $form, 'config_options' => $config, 'prices' => $prices, 'recurring_prices' => $recurring, 'reference_costs' => $costs];
     }
 
@@ -126,6 +141,14 @@ final class ProductSnapshotService
                 throw new ApiException('Missing order namespace; operator review required', 409, 409);
             }
             $namespace = $oldCache['order_namespace'];
+        }
+        try {
+            $context = (new CategoryService())->bindingContext($p['category_id'] ?? null, $id && $old['category_id'] !== null ? (int) $old['category_id'] : null, $db);
+        } catch (ApiException) {
+            throw new ApiException('Category unavailable; preview again', 409, 40912);
+        }
+        if ($context !== ($p['category_context'] ?? null)) {
+            throw new ApiException('Category path changed; preview again', 409, 40912);
         }
         $cache = ['configurable' => (bool) $p['fields'], 'prices' => $p['prices'], 'recurring_prices' => $p['recurring_prices'],
             'reference_costs' => $p['reference_costs'], 'default_config' => $p['config_options'], 'schema' => $p['schema'], 'order_namespace' => $namespace];
@@ -157,8 +180,8 @@ final class ProductSnapshotService
         if ($id) {
             $db->prepare('UPDATE products SET name=?,type=?,markup_type=?,markup_value=?,config_cache=? WHERE id=?')->execute([$p['name'], $p['type'], $p['markup_type'], $p['markup_value'], $encoded, $id]);
         } else {
-            $db->prepare('INSERT INTO products(provider_id,remote_pid,name,type,markup_type,markup_value,config_cache,is_auto_setup,status) VALUES(?,?,?,?,?,?,?,1,?)')
-                ->execute([$p['provider_id'], $p['remote_pid'], $p['name'], $p['type'], $p['markup_type'], $p['markup_value'], $encoded, $initialStatus ?? 'active']);
+            $db->prepare('INSERT INTO products(provider_id,remote_pid,name,type,markup_type,markup_value,config_cache,is_auto_setup,status,category_id) VALUES(?,?,?,?,?,?,?,1,?,?)')
+                ->execute([$p['provider_id'], $p['remote_pid'], $p['name'], $p['type'], $p['markup_type'], $p['markup_value'], $encoded, $initialStatus ?? 'active', $p['category_id'] ?? null]);
             $id = (int) $db->lastInsertId();
         }
 

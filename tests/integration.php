@@ -497,7 +497,9 @@ foreach ($pipes as $pipe) {
 check(proc_close($process) === 0, 'standard Laravel migrator upgrades the reviewed native MVP');
 check(scalar('SELECT balance FROM users WHERE id = ?', [$uid]) === $preservedBalance && scalar('SELECT COUNT(*) FROM tasks') === $preservedTasks, 'schema upgrade preserves wallet and pending task facts');
 check((int) scalar("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'invoices' AND column_name IN ('checkout_key','checkout_hash')") === 2, 'upgrade installs checkout idempotency columns');
-check((int) scalar('SELECT COUNT(*) FROM migrations') === 8, 'framework records exactly eight reviewed schema versions');
+check((int) scalar('SELECT COUNT(*) FROM migrations') === 9, 'framework records exactly nine reviewed schema versions');
+check((int) scalar("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='product_categories' AND column_name='parent_id'") === 1,
+    'upgrade adds category parent_id hierarchy column without a new table');
 check((int) scalar("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='notification_deliveries' AND column_name IN ('admin_id','context')") === 2,
     'upgrade adds typed notification recipients and event context without a new table');
 check((int) scalar("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='users' AND column_name='auth_version'") === 1,

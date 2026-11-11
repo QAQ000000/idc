@@ -23,6 +23,7 @@ const router = createRouter({
     { path: "/admin/providers/new", component: () => import("../views/AdminProviderCreateView.vue"), meta: { admin: true } },
     { path: "/admin/providers/:id", component: () => import("../views/AdminProviderView.vue"), meta: { admin: true } },
     { path: "/admin/products", component: () => import("../views/AdminProductsView.vue"), meta: { admin: true } },
+    { path: "/admin/categories", component: () => import("../views/AdminCategoriesView.vue"), meta: { admin: true } },
     { path: "/admin/products/import", component: () => import("../views/AdminProductImportView.vue"), meta: { admin: true } },
     { path: "/admin/products/:id", component: () => import("../views/AdminProductView.vue"), meta: { admin: true } },
     { path: "/admin/tickets", component: () => import("../views/TicketsView.vue"), props: { admin: true }, meta: { admin: true } },

@@ -1,5 +1,7 @@
 # JianYun (简云) · 数据库设计字典 (Database Schema)
 
+**两级分类增量**：`product_categories.parent_id` 可空，根分组／二级分类复用原表，`idx_parent_id`与自引用外键`ON DELETE RESTRICT`由000010维护。业务层锁内限制两级树、商品仅挂二级及有绑定禁止升根；不新增版本列，版本来自字段与原分类审计。删除须expected_version且有子／商品禁止删除，不能依赖products外键SET NULL自动抹去归属；全库仍27表。已有库迁移与M2验收另行安排，见[规范](CATALOG_GROUPING_AND_SERIES_ARCHITECTURE_SPEC.md)。
+
 **上游目录发现**：候选仅存600秒Laravel Cache，products原provider_id／remote_pid实时叠加导入状态；不建目录镜像表或批次表。第二阶段批次与原确认仅存页内内存，原admin_audit_logs.operation_key（JSON字段）用于只读找回，无DDL变更。原商品／审计同事务导入保持，27表／DDL／迁移不变，见[规范](UPSTREAM_CATALOG_DISCOVERY_AND_BATCH_IMPORT_SPEC.md)。
 
 **实例展示缓存（2026-11-10）**：电源观察／安全镜像投影及加密上游Token仅存短期Redis，任务和资金门禁仍读MySQL；无新增业务事实副本、表、DDL或迁移，仍27表，见[契约](M2_INSTANCE_DISPLAY_CACHE.md)。
@@ -189,6 +191,7 @@ CREATE TABLE IF NOT EXISTS `providers` (
 ```sql
 CREATE TABLE IF NOT EXISTS `product_categories` (
     `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    `parent_id` INT UNSIGNED NULL DEFAULT NULL COMMENT '父级分类/分组ID，NULL表示一级分组',
     `name` VARCHAR(100) NOT NULL COMMENT '分类名称 (如: 香港CN2云服务器 / 洛杉矶Cera大带宽)',
     `slug` VARCHAR(100) NOT NULL UNIQUE COMMENT 'SEO友好URL别名 (如: hk-cn2-cloud)',
     `type` ENUM('cloud', 'dedicated', 'cdn', 'hosting', 'software') NOT NULL DEFAULT 'cloud' COMMENT '业务类型',
@@ -201,7 +204,9 @@ CREATE TABLE IF NOT EXISTS `product_categories` (
     `status` TINYINT(1) NOT NULL DEFAULT 1 COMMENT '1启用, 0隐藏',
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    INDEX `idx_type_status` (`type`, `status`)
+    INDEX `idx_parent_id` (`parent_id`),
+    INDEX `idx_type_status` (`type`, `status`),
+    CONSTRAINT `fk_product_categories_parent` FOREIGN KEY (`parent_id`) REFERENCES `product_categories` (`id`) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='产品分类与聚合落地页表';
 ```
 

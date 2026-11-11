@@ -128,7 +128,8 @@ final class AdminProductService
     private function project(array $p): array
     {
         $cache = json_decode($p['config_cache'] ?? '{}', true, 64, JSON_THROW_ON_ERROR);
-        $out = array_intersect_key($p, array_flip(['id', 'provider_id', 'remote_pid', 'name', 'type', 'status', 'markup_type', 'markup_value', 'stock', 'provider_name', 'driver', 'provider_status', 'updated_at']));
+        $out = array_intersect_key($p, array_flip(['id', 'category_id', 'provider_id', 'remote_pid', 'name', 'type', 'status', 'markup_type', 'markup_value', 'stock', 'provider_name', 'driver', 'provider_status', 'updated_at']));
+        $out['category_id'] = $p['category_id'] !== null ? (int) $p['category_id'] : null;
         $out['prices'] = $cache['prices'] ?? [];
         $out['recurring_prices'] = $cache['recurring_prices'] ?? [];
         $out['billing_cycles'] = array_keys($out['prices']);
@@ -147,7 +148,7 @@ final class AdminProductService
         $s = Database::getInstance()->prepare("SELECT COALESCE(MAX(id),0) FROM admin_audit_logs WHERE target_type='product' AND target_id=?");
         $s->execute([$p['id']]);
 
-        return Security::requestFingerprint(json_encode([array_intersect_key($p, array_flip(['id', 'provider_id', 'remote_pid', 'name', 'type', 'status', 'markup_type', 'markup_value', 'config_cache', 'is_auto_setup', 'commission_rate'])), $s->fetchColumn()], JSON_THROW_ON_ERROR));
+        return Security::requestFingerprint(json_encode([array_intersect_key($p, array_flip(['id', 'category_id', 'provider_id', 'remote_pid', 'name', 'type', 'status', 'markup_type', 'markup_value', 'config_cache', 'is_auto_setup', 'commission_rate'])), $s->fetchColumn()], JSON_THROW_ON_ERROR));
     }
 
     private function checkVersion(?array $p, array $input): void
@@ -184,7 +185,7 @@ final class AdminProductService
         // Older clients may still send a note; routine edits no longer require one.
         $evidence = array_key_exists('evidence', $input) ? trim(Request::text($input, 'evidence', 0, 1000)) : '';
         foreach (array_keys($input) as $key) {
-            if (! in_array($key, ['name', 'status', 'markup_type', 'markup_value', 'expected_version', 'evidence'], true)) {
+            if (! in_array($key, ['name', 'status', 'markup_type', 'markup_value', 'category_id', 'expected_version', 'evidence'], true)) {
                 throw new ApiException('Unsupported product edit field');
             }
         }
@@ -195,6 +196,16 @@ final class AdminProductService
         if ($name === '' || ! in_array($status, ['active', 'hidden', 'retired'], true)) {
             throw new ApiException('Invalid name or sales status');
         }
+
+        $categoryId = $old['category_id'] !== null ? (int) $old['category_id'] : null;
+        if (array_key_exists('category_id', $input)) {
+            if ($input['category_id'] === null || $input['category_id'] === '') {
+                $categoryId = null;
+            } else {
+                $categoryId = Request::id($input['category_id']);
+            }
+        }
+
         Money::markup('1.00', $type, $value);
         $value = $type === 'none' ? '0.00' : bcadd($value, '0', 2);
         $cache = json_decode($old['config_cache'] ?? '{}', true, 64, JSON_THROW_ON_ERROR);
@@ -231,14 +242,21 @@ final class AdminProductService
             $cache['reference_costs'] = $costs;
         }
 
-        return Database::transaction(function (PDO $db) use ($admin, $id, $input, $old, $cache, $name, $status, $type, $value, $evidence): array {
+        return Database::transaction(function (PDO $db) use ($admin, $id, $input, $old, $cache, $name, $status, $type, $value, $categoryId, $evidence): array {
             $s = $db->prepare('SELECT * FROM products WHERE id=? FOR UPDATE');
             $s->execute([$id]);
             $current = $s->fetch();
             $this->checkVersion($current, $input);
             $this->authorize($admin, $db);
-            $db->prepare('UPDATE products SET name=?,status=?,markup_type=?,markup_value=?,config_cache=? WHERE id=?')->execute([$name, $status, $type, $value, json_encode($cache, JSON_THROW_ON_ERROR), $id]);
-            $this->audit($db, $admin, $id, 'product_update', ($evidence !== '' ? ['evidence' => $evidence] : []) + ['before' => array_intersect_key($old, array_flip(['name', 'status', 'markup_type', 'markup_value'])), 'after' => ['name' => $name, 'status' => $status, 'markup_type' => $type, 'markup_value' => $value], 'prices' => $cache['prices'] ?? []]);
+
+            (new CategoryService())->bindingContext($categoryId, $current['category_id'] !== null ? (int) $current['category_id'] : null, $db);
+
+            $db->prepare('UPDATE products SET name=?,status=?,markup_type=?,markup_value=?,config_cache=?,category_id=? WHERE id=?')->execute([$name, $status, $type, $value, json_encode($cache, JSON_THROW_ON_ERROR), $categoryId, $id]);
+            $this->audit($db, $admin, $id, 'product_update', ($evidence !== '' ? ['evidence' => $evidence] : []) + [
+                'before' => array_intersect_key($old, array_flip(['name', 'status', 'markup_type', 'markup_value', 'category_id'])),
+                'after' => ['name' => $name, 'status' => $status, 'markup_type' => $type, 'markup_value' => $value, 'category_id' => $categoryId],
+                'prices' => $cache['prices'] ?? [],
+            ]);
 
             return ['product_id' => $id];
         });
@@ -250,10 +268,10 @@ final class AdminProductService
             $old = $this->read($id);
             $this->checkVersion($old, $input);
 
-            return ['product_id' => $id, 'provider_id' => (int) $old['provider_id'], 'remote_pid' => (int) $old['remote_pid'], 'name' => $old['name'], 'type' => $old['type'], 'markup_type' => $old['markup_type'], 'markup_value' => $old['markup_value'], 'billing_cycles' => $input['billing_cycles'] ?? array_keys(json_decode($old['config_cache'], true)['prices']), 'config_options' => $input['config_options'] ?? null];
+            return ['product_id' => $id, 'provider_id' => (int) $old['provider_id'], 'remote_pid' => (int) $old['remote_pid'], 'name' => $old['name'], 'type' => $old['type'], 'markup_type' => $old['markup_type'], 'markup_value' => $old['markup_value'], 'category_id' => $old['category_id'] !== null ? (int) $old['category_id'] : null, 'billing_cycles' => $input['billing_cycles'] ?? array_keys(json_decode($old['config_cache'], true)['prices']), 'config_options' => $input['config_options'] ?? null];
         }
 
-        return array_intersect_key($input, array_flip(['provider_id', 'remote_pid', 'name', 'type', 'markup_type', 'markup_value', 'billing_cycles', 'config_options']));
+        return array_intersect_key($input, array_flip(['provider_id', 'remote_pid', 'name', 'type', 'markup_type', 'markup_value', 'billing_cycles', 'config_options', 'category_id']));
     }
 
     private function prepared(array $input, ?int $id): array
@@ -282,7 +300,7 @@ final class AdminProductService
         $p = $this->prepared($input, $id);
         $expires = time() + 300;
 
-        return ['fields' => $p['fields'], 'defaults' => $p['config_options'], 'prices' => $p['prices'], 'recurring_prices' => $p['recurring_prices'], 'billing_cycles' => array_keys($p['prices']), 'preview_token' => $expires.'.'.$this->signature($admin, $p, $input, $expires), 'expires_at' => gmdate('Y-m-d H:i:s', $expires)];
+        return ['fields' => $p['fields'], 'defaults' => $p['config_options'], 'prices' => $p['prices'], 'recurring_prices' => $p['recurring_prices'], 'billing_cycles' => array_keys($p['prices']), 'category_id' => $p['category_id'] ?? null, 'category_path' => $p['category_context']['path'] ?? null, 'preview_token' => $expires.'.'.$this->signature($admin, $p, $input, $expires), 'expires_at' => gmdate('Y-m-d H:i:s', $expires)];
     }
 
     public function snapshot(int $admin, array $input, ?int $id = null): array
@@ -327,7 +345,14 @@ final class AdminProductService
             }
             $this->authorize($admin, $db);
             $result = (new ProductSnapshotService())->persist($db, $p, 'hidden');
-            $this->audit($db, $admin, $result['product_id'], $id ? 'product_snapshot_refresh' : 'product_import', ['evidence' => $evidence, 'operation_key' => $operation, 'before' => $id ? ['name' => $old['name'], 'status' => $old['status'], 'snapshot_hash' => hash('sha256', $old['config_cache'])] : null, 'after' => ['provider_id' => $p['provider_id'], 'remote_pid' => $p['remote_pid'], 'billing_cycles' => array_keys($p['prices']), 'config_options' => $p['config_options'], 'schema_hash' => ConfigOptions::hash($p['fields'])], 'prices' => $p['prices']]);
+            $this->audit($db, $admin, $result['product_id'], $id ? 'product_snapshot_refresh' : 'product_import', [
+                'evidence' => $evidence,
+                'operation_key' => $operation,
+                'category_id' => $p['category_id'] ?? null,
+                'before' => $id ? ['name' => $old['name'], 'status' => $old['status'], 'snapshot_hash' => hash('sha256', $old['config_cache']), 'category_id' => $old['category_id'] !== null ? (int) $old['category_id'] : null] : null,
+                'after' => ['provider_id' => $p['provider_id'], 'remote_pid' => $p['remote_pid'], 'category_id' => $p['category_id'] ?? null, 'billing_cycles' => array_keys($p['prices']), 'config_options' => $p['config_options'], 'schema_hash' => ConfigOptions::hash($p['fields'])],
+                'prices' => $p['prices'],
+            ]);
 
             return $id ? $result : $result + ['outcome' => 'created'];
         });

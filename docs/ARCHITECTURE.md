@@ -1,5 +1,7 @@
 # JianYun (简云) · 系统全景架构设计文档
 
+**分类增量**：原 product_categories 采用两级 parent_id；CategoryService 统一层级、归属、版本与事务审计，商品只挂二级。导入准备上下文绑定父路径和双版本，原签名及持久化锁内重核；保留隐藏旧归属不阻断维护，分类不进入计价快照。新分类迁移000010仍27表，系列聚合延期，见[实施契约](CATALOG_GROUPING_AND_SERIES_ARCHITECTURE_SPEC.md#七-仓库实施契约与缺口修复2026-11-11)。
+
 **上游目录第一阶段**：可选CatalogDiscoveryDriverInterface／UpstreamCatalogItem保持核心与魔方协议隔离，UpstreamCatalogService以Laravel Cache暂存候选白名单；超管会话及连接在返回前重核，本地导入状态不缓存。只读目录不改商品生命周期；原AdminProductService承担单品核价、确认及同事务商品／审计，第二阶段页内ImportBatch只编排原preview／import，不新增后端批次实体或任务引擎；纯商品错误／变价／重复绑定分类与只读原审计恢复仍由原服务承接，见[规范](UPSTREAM_CATALOG_DISCOVERY_AND_BATCH_IMPORT_SPEC.md)。
 
 **实例展示读取增量**：可选PowerObservationDriverInterface只读原绑定状态，核心InstanceDisplayService只投影电源观察和镜像；Redis短缓存／在途合并不能授权或释放任务。连接及密文凭据修订作用域由ProviderService提供，上游Token期限与认证重试留在插件。原full准备、提交及Worker实时检查保持，27表无迁移，见[契约](M2_INSTANCE_DISPLAY_CACHE.md)。
